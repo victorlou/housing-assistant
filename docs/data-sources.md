@@ -82,4 +82,4 @@ For each source above, the YAML file holds:
 - `tier` (1, 2, 3)
 - `notes` (any quirks)
 
-The ingestion pipelines parse this YAML to know what to fetch.
+The ingestion pipelines parse this YAML to know what to fetch. LINZ WFS pull settings are in `config/sources/linz_nz_addresses.yml`.

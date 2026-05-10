@@ -25,7 +25,7 @@ terraform/
 
 - One environment (`dev`) for now. If we add a second, copy `envs/dev` to `envs/<new>`.
 - Modules are small and single-purpose. New resource type means a new module, unless it's clearly part of an existing one.
-- Tag every resource with `project = "housing-assistant"` for cost tracking.
+- Managed Unity Catalog schemas and the tenancy_bonds volume are tagged with project = housing-assistant (see `terraform/modules/catalog/tags.tf`). If apply fails on tag assignment, allow that tag key in your metastore tag policy or register the key in Catalog Explorer.
 - Never commit `terraform.tfvars` or `.terraform/`.
 - Remote state lives in an S3 bucket configured in `backend.tf` (set up once, then forget).
 

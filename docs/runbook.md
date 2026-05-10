@@ -18,6 +18,20 @@ You will need:
   - Node 20 + pnpm (only if you're working on the React frontend)
 - **GitHub access** to `github.com/victorlou/housing-assistant`. Branch protection is enabled on `main`; you'll work on feature branches and merge via PR.
 
+## Docker (local Python)
+
+Use this when you want the same Python 3.11 and locked dev tools as CI without touching the host Python install. It does **not** replace the Databricks CLI or Terraform on your machine unless you extend the image.
+
+```bash
+# from repository root
+docker compose build dev
+docker compose run --rm dev
+```
+
+Inside the container the repo is at `/workspace` (bind-mounted). Run `ruff check .`, `pytest`, and future app commands there.
+
+For the slim image used when you deploy a long-running service (only application folders, not the full monorepo), see [`docker/README.md`](../docker/README.md).
+
 ## First-time setup
 
 ```bash
@@ -66,6 +80,15 @@ Conventions:
 - A new resource type generally means a new module. Keep modules small and single-purpose.
 - Never commit `terraform.tfvars` or `.terraform/` directories. Both are in `.gitignore`.
 - Remote state lives in an S3 bucket configured in `backend.tf`.
+
+## LINZ NZ Addresses (WFS landings)
+
+1. Set `LINZ_API_KEY` in `.env` (see `.env.example`). Edit `config/sources/linz_nz_addresses.yml` only for non-secret fields (for example `wfs.type_names`).
+2. `uv run python -m ingestion.linz_wfs --output ./out` (default config: `config/sources/linz_nz_addresses.yml`).
+3. `databricks fs cp` the JSONL into the path from `terraform output linz_nz_addresses_files_path`.
+4. Deploy the DLT bundle under `pipelines/linz_nz_addresses/` (`databricks bundle deploy --target dev`).
+
+Details: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [`.devnotes/linz-lds-apis.md`](../.devnotes/linz-lds-apis.md).
 
 ## Working on pipelines
 

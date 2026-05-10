@@ -26,3 +26,16 @@ resource "databricks_grants" "tenancy_bonds_volume" {
     }
   }
 }
+
+resource "databricks_grants" "linz_nz_addresses_volume" {
+  count  = length(var.data_principal_names) > 0 ? 1 : 0
+  volume = databricks_volume.linz_nz_addresses.id
+
+  dynamic "grant" {
+    for_each = var.data_principal_names
+    content {
+      principal  = grant.value
+      privileges = ["READ_VOLUME", "WRITE_VOLUME"]
+    }
+  }
+}

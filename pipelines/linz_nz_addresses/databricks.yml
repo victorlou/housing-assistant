@@ -1,0 +1,27 @@
+bundle:
+  name: linz_nz_addresses
+
+variables:
+  catalog:
+    description: Unity Catalog name (must match Terraform uc_catalog_name).
+    default: workspace
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      catalog: workspace
+
+resources:
+  pipelines:
+    linz_nz_addresses:
+      name: housing_assistant_linz_nz_addresses
+      catalog: ${var.catalog}
+      target: bronze
+      development: true
+      channel: CURRENT
+      serverless: true
+      libraries:
+        - file:
+            path: ./transformations/bronze.sql

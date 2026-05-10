@@ -17,7 +17,17 @@ variable "tenancy_bonds_volume_comment" {
 variable "data_principal_names" {
   type        = list(string)
   default     = []
-  description = "Principals granted bronze DDL and READ/WRITE on the tenancy_bonds volume. No catalog-level grants are applied (avoids overwriting ACLs on shared catalogs like workspace)."
+  description = "Principals granted bronze DDL and READ/WRITE on raw-data volumes (tenancy_bonds, linz_nz_addresses). No catalog-level grants are applied (avoids overwriting ACLs on shared catalogs like workspace)."
+}
+
+variable "linz_nz_addresses_volume_name" {
+  type        = string
+  description = "Managed volume under bronze for LINZ NZ Street Address WFS / file landings."
+}
+
+variable "linz_nz_addresses_volume_comment" {
+  type        = string
+  description = "Volume description in UC."
 }
 
 variable "layer_schema_names" {

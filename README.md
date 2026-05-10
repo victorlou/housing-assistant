@@ -63,11 +63,14 @@ housing-assistant/
 ├── dashboards/                  ← AI/BI dashboard exports
 ├── notebooks/                   ← exploration, prototypes
 ├── data/                        ← canonical source registry (sources.yaml)
-├── scripts/                     ← dev + deploy helpers
+├── config/                      ← sources/*.yml (operator YAML; LINZ WFS)
+├── ingestion/                   ← small fetch helpers (e.g. LINZ WFS → JSONL)
+├── docker/                      ← Dockerfile (dev + runtime targets)
+├── docker-compose.yml           ← local dev shell (bind-mounts repo)
 └── .github/                     ← CI workflows, PR template, CODEOWNERS
 ```
 
-Every subfolder has its own `README.md` explaining what belongs there.
+Most top-level folders have a `README.md`. `config/` holds only `sources/` YAML for ingestion helpers (no extra scaffolding).
 
 ## Getting started
 
@@ -86,7 +89,7 @@ terraform plan
 terraform apply
 ```
 
-You will need Databricks credentials in the environment (for example `databricks auth login --profile <name>` plus `DATABRICKS_CONFIG_PROFILE=<name>` for Terraform) and AWS credentials with read access to the workspace when your task needs S3 or other AWS access.
+You will need Databricks credentials in the environment (for example `databricks auth login --profile <name>` plus `DATABRICKS_CONFIG_PROFILE=<name>` for Terraform) and AWS credentials with read access to the workspace when your task needs S3 or other AWS access. Optional Docker usage is in [`docs/runbook.md`](docs/runbook.md) and [`docker/README.md`](docker/README.md).
 
 ## Further reading
 

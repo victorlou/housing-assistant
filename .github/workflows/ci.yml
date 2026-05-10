@@ -34,15 +34,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
+          version: "0.11.7"
           python-version: "3.11"
-      - name: Install ruff
-        run: pip install ruff
+      - name: Sync dev dependencies
+        run: uv sync --frozen --group dev
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
       - name: Format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest
 
   markdown:
     name: Markdown lint

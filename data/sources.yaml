@@ -2,7 +2,22 @@
 # See docs/data-sources.md for human-readable descriptions and rationale.
 # Ingestion pipelines parse this file to know what to fetch.
 
-sources: []
+sources:
+  - name: linz_nz_addresses
+    publisher: Toitū Te Whenua LINZ
+    licence: CC-BY-4.0
+    url: https://data.linz.govt.nz/
+    auth: api-key
+    cadence: continuous
+    ingestion_pipeline: pipelines/linz_nz_addresses
+    target_tables:
+      - workspace.gold.dim_address
+    tier: 2
+    notes: |
+      WFS GetFeature with paging; config/sources/linz_nz_addresses.yml drives ingestion.linz_wfs.
+      Land JSONL into the UC volume from terraform output linz_nz_addresses_files_path, then run the DLT bundle.
+      See .devnotes/linz-lds-apis.md for API choice and LINZ_API_KEY handling.
+
 # Sources will be added as they are wired up. Schema:
 #
 #   - name: tenancy_bonds
