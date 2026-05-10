@@ -96,14 +96,15 @@ dist/
 Thumbs.db
 
 # ─────────────────────────────────────────────────────────────────────
-#  Secrets — never commit
+#  Secrets, never commit
 # ─────────────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
 *.pem
 *.key
-secrets/
+# Anchored to root so it doesn't match terraform/modules/secrets/
+/secrets/
 credentials.json
 service-account*.json
 
