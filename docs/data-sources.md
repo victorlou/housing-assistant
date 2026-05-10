@@ -1,0 +1,85 @@
+# Open data sources
+
+This is the canonical catalogue of open data sources Housing Assistant uses. Every source listed here should also appear in `data/sources.yaml` in machine-readable form, used by ingestion pipelines.
+
+## Selection criteria
+
+A source qualifies if it is:
+
+1. **Open.** Published by a NZ government agency or under a permissive licence (CC-BY or similar).
+2. **National in coverage.** Sources tied to a single region are de-prioritised, with transit GTFS feeds the deliberate exception.
+3. **Refreshed at a useful cadence.** Quarterly at worst.
+4. **Joinable.** Has a usable spatial or administrative key (suburb, SA2, territorial authority, electorate, address, or coordinates).
+
+We deliberately avoid:
+
+- **CoreLogic / OneRoof / homes.co.nz scraped sale prices.** Behind a paywall in their canonical form. Scraping creates legal and stability risks. Stats NZ HPI plus council valuations is sufficient for our purposes.
+- **Trade Me listings.** Same reasoning.
+- **Anything requiring per-user OAuth.** Incompatible with our timeline.
+
+## Source catalogue
+
+### Tier 1. Day-1 priorities
+
+| Source | Publisher | What it gives us | Cadence | Target gold table |
+|---|---|---|---|---|
+| **Tenancy Bond data** | MBIE Tenancy Services | Rent paid, dwelling type, location for every bond lodged. The single most important source. | Monthly | `fact_rent_by_suburb_month` |
+| **Census 2023 income / dwellings** | Stats NZ | Median household income, deprivation index, dwelling tenure by SA1/SA2. | Per census (2023) | `fact_income_by_suburb_year`, `dim_suburb` |
+| **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `fact_hpi_by_ta_month` |
+| **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `fact_isochrone` |
+| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `fact_crime_by_area_month` |
+
+### Tier 2. Second wave
+
+| Source | Publisher | What it gives us | Cadence | Target gold table |
+|---|---|---|---|---|
+| **Education Counts schools directory + EQI** | Ministry of Education | Every school, year levels, roll, EQI (replaces decile), location. | Annual | `dim_school` |
+| **LINZ NZ Addresses** | LINZ Data Service | Authoritative address layer. Used for geocoding and place disambiguation. | Continuous | `dim_address` |
+| **Metlink GTFS** | Greater Wellington | Transit for Wellington region. | Weekly | `fact_isochrone` |
+| **Environment Canterbury GTFS** | ECan | Transit for Christchurch / Canterbury. | Weekly | `fact_isochrone` |
+| **NIWA flood hazard layers** | NIWA / regional councils | Flood risk extent. | Annual or per-event | `dim_hazard` |
+| **EQC / Toka Tū Ake natural hazard layers** | EQC | Liquefaction, coastal inundation, sea-level rise. | Annual | `dim_hazard` |
+
+### Tier 3. Stretch
+
+| Source | Publisher | What it gives us | Cadence | Target gold table |
+|---|---|---|---|---|
+| **Council valuation rolls (CV/QV)** | Various councils | Per-property capital values. Auckland Council exposes via GeoMaps; smaller councils vary. | Triennial | `dim_property_valuation` |
+| **Other regional GTFS feeds** | Waikato, BOP, Otago, Tasman | Transit isochrones for remaining metros. | Weekly | `fact_isochrone` |
+| **Stats NZ tertiary education data** | Stats NZ | University and polytech locations and demographics. Useful for the student-renter persona. | Annual | `dim_education_provider` |
+| **Healthpoint / Te Whatu Ora facility list** | Te Whatu Ora | GP and ED locations. | Quarterly | `dim_health_facility` |
+| **Stats NZ employment / industry by area** | Stats NZ | Employment density and sector mix by suburb. Useful for "where can I get to my industry's jobs?" | Quarterly | `fact_employment_by_suburb` |
+
+## Ingestion pattern
+
+Every source follows the same pattern:
+
+1. **Land** raw files into `housing.bronze.<source>_volume`. Filename convention: `{source}_{YYYYMMDD}.{ext}`.
+2. **Parse** in a Lakeflow pipeline into a typed `bronze.<source>_raw` table. No business logic at this stage. Only typing and basic structure.
+3. **Conform** in the silver layer. Normalise place names to the canonical key, geocode where needed, deduplicate, validate.
+4. **Materialise** into the relevant gold table(s).
+
+For sources updated on a fixed cadence, ingestion is a scheduled job. For census-style snapshots, ingestion is one-shot and we just rerun on schema change.
+
+## Place-name normalisation
+
+A canonical lookup table `silver.place_lookup` maps every variant of a place name to `(canonical_suburb, ta_code, region_code)`. The agent uses this to disambiguate ("Newton" prompts "Auckland or Christchurch?"). Maintained from Stats NZ Statistical Area concordances plus manual overrides.
+
+## Licensing
+
+All Tier 1 and 2 sources are CC-BY, CC-BY-SA, or in the public domain by virtue of being NZ government data. Attribution is rolled up into a single `docs/attributions.md` file (TODO). We do not redistribute raw third-party data; we only publish derived aggregates and explanations.
+
+## What lives in `data/sources.yaml`
+
+For each source above, the YAML file holds:
+
+- `name`, `publisher`, `licence`
+- `url` (download endpoint or API base)
+- `auth` (none / api-key / etc.)
+- `cadence`
+- `ingestion_pipeline` (path to the pipeline that ingests it)
+- `target_tables` (list)
+- `tier` (1, 2, 3)
+- `notes` (any quirks)
+
+The ingestion pipelines parse this YAML to know what to fetch.

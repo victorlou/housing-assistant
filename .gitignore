@@ -1,0 +1,120 @@
+# ─────────────────────────────────────────────────────────────────────
+#  Terraform
+# ─────────────────────────────────────────────────────────────────────
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ─────────────────────────────────────────────────────────────────────
+#  Python
+# ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# uv
+uv.lock
+!uv.lock
+.uv/
+
+# ─────────────────────────────────────────────────────────────────────
+#  Node / frontend
+# ─────────────────────────────────────────────────────────────────────
+node_modules/
+.next/
+.nuxt/
+.svelte-kit/
+.vite/
+.parcel-cache/
+dist/
+.turbo/
+.pnpm-store/
+
+# ─────────────────────────────────────────────────────────────────────
+#  Databricks
+# ─────────────────────────────────────────────────────────────────────
+.databricks/
+.databricks-cli/
+
+# ─────────────────────────────────────────────────────────────────────
+#  IDE / editor
+# ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────────────────────────────────
+#  Secrets — never commit
+# ─────────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
+service-account*.json
+
+# ─────────────────────────────────────────────────────────────────────
+#  Notebooks
+# ─────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ─────────────────────────────────────────────────────────────────────
+#  Logs and tmp
+# ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+tmp/
+.tmp/

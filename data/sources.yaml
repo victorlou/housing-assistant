@@ -1,0 +1,19 @@
+# Canonical registry of open data sources used by Housing Assistant.
+# See docs/data-sources.md for human-readable descriptions and rationale.
+# Ingestion pipelines parse this file to know what to fetch.
+
+sources: []
+# Sources will be added as they are wired up. Schema:
+#
+#   - name: tenancy_bonds
+#     publisher: MBIE Tenancy Services
+#     licence: CC-BY-4.0
+#     url: https://www.tenancy.govt.nz/about-tenancy-services/data-and-statistics/rental-bond-data/
+#     auth: none
+#     cadence: monthly
+#     ingestion_pipeline: pipelines/tenancy_bonds
+#     target_tables:
+#       - housing.gold.fact_rent_by_suburb_month
+#     tier: 1
+#     notes: |
+#       Published as zipped CSV. Geographic key is suburb at SA2 level.
