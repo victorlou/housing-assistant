@@ -11,7 +11,6 @@
 # databricks_host    = "https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
 # databricks_profile = "DEFAULT"
 
-# project_tag       = "housing-assistant"
-# environment       = "dev"
-# catalog_name      = "housing"
-# lakebase_capacity = "CU_1"
+# project_tag  = "housing-assistant"
+# environment  = "dev"
+# catalog_name = "housing"

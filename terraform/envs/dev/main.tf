@@ -40,13 +40,13 @@ module "compute" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Lakebase. Managed Postgres for user state.
+# Lakebase. Managed Postgres for user state, on the Autoscaling platform.
+# Scale-to-zero is enabled as a one-time post-apply step (see runbook).
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase" {
-  source        = "../../modules/lakebase"
-  project_tag   = var.project_tag
-  instance_name = local.name_prefix
-  capacity      = var.lakebase_capacity
+  source       = "../../modules/lakebase"
+  project_id   = local.name_prefix
+  display_name = "Housing Assistant ${title(var.environment)}"
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -93,15 +93,17 @@ resource "databricks_grant" "catalog_usage_app" {
 }
 
 # Gold schema: the app reads, the jobs SP writes (write grant lives in catalog module).
+# Reference the schema via the module output so Terraform infers the dependency
+# on the schema resource and doesn't race ahead of its creation.
 resource "databricks_grant" "gold_app_read" {
-  schema     = "${module.catalog.catalog_name}.gold"
+  schema     = module.catalog.schema_names["gold"]
   principal  = module.app.app_service_principal_client_id
   privileges = ["USE_SCHEMA", "SELECT"]
 }
 
 # App schema: the app reads + writes its own user state.
 resource "databricks_grant" "app_state_rw" {
-  schema     = "${module.catalog.catalog_name}.app"
+  schema     = module.catalog.schema_names["app"]
   principal  = module.app.app_service_principal_client_id
   privileges = ["USE_SCHEMA", "SELECT", "MODIFY", "CREATE_TABLE"]
 }

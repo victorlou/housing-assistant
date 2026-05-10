@@ -1,15 +1,21 @@
-# Managed Postgres for user state. The schema (users, user_constraints,
-# saved_searches, alerts, conversation_turns) is bootstrapped from a notebook
-# rather than from Terraform — keeps DDL out of the state file.
+# Managed Postgres for user state, on the Lakebase Autoscaling platform.
 #
-# NOTE on naming: a Lakebase database instance maps to a Postgres server.
-# Inside it, the app-specific Postgres database (typical name: `housing`) is
-# created out-of-band the first time we connect. Mirror tables in the
-# `housing.app` UC schema reflect a subset of these.
-resource "databricks_database_instance" "main" {
-  name     = var.instance_name
-  capacity = var.capacity
+# Creating a project auto-provisions:
+#   - a `production` branch
+#   - a `primary` read-write endpoint on that branch
+#
+# Scale-to-zero is OFF by default on the auto-created endpoint. Autoscaling
+# range and scale-to-zero are configured via the Postgres API or the Lakebase
+# Autoscaling UI, not via the Database instance API. We do that as a one-time
+# post-apply step — see docs/runbook.md.
+#
+# Resource is in Beta. Spec/status field names may change; pin a working
+# provider version in versions.tf and re-verify on upgrades.
+resource "databricks_postgres_project" "main" {
+  project_id = var.project_id
 
-  # 1 node = no readable replicas. Fine for development.
-  node_count = var.node_count
+  spec = {
+    pg_version   = var.pg_version
+    display_name = var.display_name
+  }
 }

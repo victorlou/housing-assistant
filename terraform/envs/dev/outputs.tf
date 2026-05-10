@@ -13,14 +13,19 @@ output "warehouse_jdbc_url" {
   value       = module.compute.warehouse_jdbc_url
 }
 
-output "lakebase_instance_name" {
-  description = "Lakebase database instance name."
-  value       = module.lakebase.instance_name
+output "lakebase_project_name" {
+  description = "Lakebase project resource name (Postgres API)."
+  value       = module.lakebase.project_name
 }
 
-output "lakebase_read_write_dns" {
-  description = "Lakebase read-write DNS endpoint."
-  value       = module.lakebase.read_write_dns
+output "lakebase_project_id" {
+  description = "Lakebase project ID."
+  value       = module.lakebase.project_id
+}
+
+output "lakebase_production_endpoint_name" {
+  description = "Postgres API name of the auto-created production endpoint. Use with `databricks postgres update-endpoint` to enable scale-to-zero."
+  value       = module.lakebase.production_endpoint_name
 }
 
 output "app_url" {

@@ -22,6 +22,15 @@ resource "databricks_catalog" "main" {
   properties = {
     project = var.project_tag
   }
+
+  # In Default Storage workspaces, Databricks auto-allocates storage_root when
+  # the catalog is created via the UI. Terraform's databricks_catalog resource
+  # cannot trigger that path itself (open issue: databricks/cli#4513), so we
+  # rely on a manual UI create + `terraform import`. Once imported, ignore
+  # storage_root drift — any change to it would force replacement and fail.
+  lifecycle {
+    ignore_changes = [storage_root]
+  }
 }
 
 resource "databricks_schema" "schemas" {

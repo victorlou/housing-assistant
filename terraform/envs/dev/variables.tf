@@ -27,9 +27,3 @@ variable "catalog_name" {
   type        = string
   default     = "housing"
 }
-
-variable "lakebase_capacity" {
-  description = "Lakebase compute capacity tier (e.g. CU_1, CU_2). Smallest is fine for development."
-  type        = string
-  default     = "CU_1"
-}
