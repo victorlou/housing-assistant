@@ -2,7 +2,8 @@
 #  Terraform
 # ─────────────────────────────────────────────────────────────────────
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally NOT ignored — commit it so the team
+# and CI use identical provider versions.
 *.tfstate
 *.tfstate.*
 *.tfvars
