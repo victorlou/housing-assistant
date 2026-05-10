@@ -13,7 +13,7 @@ sources: []
 #     cadence: monthly
 #     ingestion_pipeline: pipelines/tenancy_bonds
 #     target_tables:
-#       - housing.gold.fact_rent_by_suburb_month
+#       - workspace.gold.fact_rent_by_suburb_month
 #     tier: 1
 #     notes: |
 #       Published as zipped CSV. Geographic key is suburb at SA2 level.

@@ -54,7 +54,7 @@ We deliberately avoid:
 
 Every source follows the same pattern:
 
-1. **Land** raw files into `housing.bronze.<source>_volume`. Filename convention: `{source}_{YYYYMMDD}.{ext}`.
+1. **Land** raw files into the bronze managed volume for that source (default catalog `workspace`: `workspace.bronze.<volume>`; override with Terraform `uc_catalog_name` if you use a dedicated catalog). Filename convention: `{source}_{YYYYMMDD}.{ext}`.
 2. **Parse** in a Lakeflow pipeline into a typed `bronze.<source>_raw` table. No business logic at this stage. Only typing and basic structure.
 3. **Conform** in the silver layer. Normalise place names to the canonical key, geocode where needed, deduplicate, validate.
 4. **Materialise** into the relevant gold table(s).

@@ -80,13 +80,13 @@ cd housing-assistant
 
 # infra
 cd terraform/envs/dev
-cp terraform.tfvars.example terraform.tfvars   # fill in your values
+# set DATABRICKS_CONFIG_PROFILE (or HOST + TOKEN); see docs/runbook.md
 terraform init
 terraform plan
 terraform apply
 ```
 
-You will need a Databricks personal access token and AWS credentials with read access to the workspace.
+You will need Databricks credentials in the environment (for example `databricks auth login --profile <name>` plus `DATABRICKS_CONFIG_PROFILE=<name>` for Terraform) and AWS credentials with read access to the workspace when your task needs S3 or other AWS access.
 
 ## Further reading
 

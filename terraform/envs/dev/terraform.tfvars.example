@@ -1,0 +1,4 @@
+# Optional. Copy to terraform.tfvars if you use them; never commit secrets.
+#
+# uc_catalog_name = "workspace"
+# data_principal_names = ["some-uc-group-or-user"]

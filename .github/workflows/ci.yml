@@ -14,7 +14,6 @@ jobs:
   terraform:
     name: Terraform validate
     runs-on: ubuntu-latest
-    if: contains(github.event.pull_request.changed_files, 'terraform/') || github.event_name == 'push'
     defaults:
       run:
         working-directory: terraform/envs/dev

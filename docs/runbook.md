@@ -7,7 +7,7 @@ This is the practical guide to working on Housing Assistant. If something here i
 You will need:
 
 - **Databricks workspace access.** AWS, `us-west-2`, Premium tier. Workspace admin can grant you access.
-- **Personal access token** (Databricks → User Settings → Access Tokens). Used for CLI and Terraform.
+- **Databricks CLI** from `databricks auth login --profile <name>` (stored in `~/.databrickscfg`). Terraform uses the same credentials via environment variables (see below), not committed config.
 - **AWS credentials** with at least read access to the Databricks-managed buckets, only if your task needs it. Most tasks do not.
 - **Local toolchain:**
   - `terraform` ≥ 1.7
@@ -28,13 +28,16 @@ cd housing-assistant
 # install pre-commit
 pre-commit install
 
-# configure databricks CLI
-databricks configure --token
-# host: https://<your-workspace>.cloud.databricks.com
-# token: <your PAT>
+# authenticate CLI (writes ~/.databrickscfg)
+databricks auth login --profile <name>
 
-# verify access
-databricks workspace list /
+# Terraform reads credentials from the environment (pick one approach; do not commit profile names)
+#   Unix:    export DATABRICKS_CONFIG_PROFILE=<name>
+#   PowerShell: $env:DATABRICKS_CONFIG_PROFILE = "<name>"
+# Alternative: export DATABRICKS_HOST=... and DATABRICKS_TOKEN=... (e.g. CI)
+
+# verify access (same profile as above)
+databricks workspace list / --profile <name>
 ```
 
 ## Working on infrastructure (Terraform)
@@ -42,15 +45,20 @@ databricks workspace list /
 ```bash
 cd terraform/envs/dev
 
-# only the first time on a new machine
-cp terraform.tfvars.example terraform.tfvars
-# fill in your values; never commit terraform.tfvars
+# optional: only if you set variables such as data_principal_names
+# cp terraform.tfvars.example terraform.tfvars
 
 terraform init
 terraform plan
 # review the plan carefully before applying
 terraform apply
 ```
+
+Ensure `DATABRICKS_CONFIG_PROFILE` (or `DATABRICKS_HOST` / `DATABRICKS_TOKEN`) is set in your shell before `plan` / `apply`, as described in First-time setup.
+
+By default Terraform creates `bronze` / `silver` / `gold` / `app` and the `tenancy_bonds` volume under the existing **`workspace`** catalog (required on accounts where new catalogs must use Default Storage from the UI). To use a dedicated **`housing`** catalog instead, create it in the Catalog UI first, then set `uc_catalog_name = "housing"` in `terraform.tfvars` and re-apply.
+
+After `terraform apply`, copy the output `tenancy_bonds_files_path` (if shown). That is the Unity Catalog volume path where raw tenancy bond files should land. Upload with the Catalog explorer or `databricks fs cp --profile <name> local.csv <tenancy_bonds_files_path>/tenancy_bonds_YYYYMMDD.csv`, using the `{source}_{YYYYMMDD}.csv` naming convention described in `docs/data-sources.md`.
 
 Conventions:
 
@@ -79,7 +87,7 @@ Conventions:
 
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
-- Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
+- Every pipeline writes only under the UC catalog from Terraform (`uc_catalog_name`, default `workspace`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
 
 ## Working on the agent
 
