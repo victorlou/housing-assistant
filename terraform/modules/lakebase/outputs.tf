@@ -1,29 +1,19 @@
-output "instance_id" {
-  description = "Lakebase instance resource ID"
-  value       = databricks_database_instance.this.id
+output "project_name" {
+  description = "Postgres API resource name (e.g. projects/housing-assistant-dev). Used as the parent for branch and endpoint resources."
+  value       = databricks_postgres_project.main.name
 }
 
-output "instance_uid" {
-  description = "Lakebase instance UID (stable, used in CLI commands)"
-  value       = databricks_database_instance.this.uid
+output "project_id" {
+  description = "Lakebase project ID — the lowercase identifier used in CLI paths and the UI."
+  value       = var.project_id
 }
 
-output "host" {
-  description = "Postgres host"
-  value       = databricks_database_instance.this.pgconn[0].host
+output "production_branch_name" {
+  description = "Postgres API name of the auto-created production branch."
+  value       = "${databricks_postgres_project.main.name}/branches/production"
 }
 
-output "port" {
-  description = "Postgres port"
-  value       = databricks_database_instance.this.pgconn[0].port
-}
-
-output "dbname" {
-  description = "Postgres database name"
-  value       = databricks_database_instance.this.pgconn[0].dbname
-}
-
-output "connection_name" {
-  description = "UC connection name (used when wiring agent tools)"
-  value       = databricks_connection.lakebase.name
+output "production_endpoint_name" {
+  description = "Postgres API name of the auto-created primary endpoint on the production branch."
+  value       = "${databricks_postgres_project.main.name}/branches/production/endpoints/primary"
 }

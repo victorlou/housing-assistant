@@ -1,27 +1,29 @@
 variable "databricks_host" {
-  description = "Databricks workspace URL, e.g. https://<workspace>.cloud.databricks.com"
+  description = "Workspace URL, e.g. https://dbc-xxxxx.cloud.databricks.com. May be left empty if DATABRICKS_HOST is set."
   type        = string
+  default     = ""
 }
 
-variable "databricks_token" {
-  description = "Databricks personal access token"
+variable "databricks_profile" {
+  description = "Databricks CLI profile to authenticate as. May be left empty if DATABRICKS_HOST + DATABRICKS_TOKEN are set."
   type        = string
-  sensitive   = true
+  default     = ""
 }
 
-variable "aws_region" {
-  description = "AWS region hosting the workspace"
+variable "project_tag" {
+  description = "Tag applied to every resource for cost tracking and discovery."
   type        = string
-  default     = "us-west-2"
+  default     = "housing-assistant"
 }
 
-variable "env" {
-  description = "Environment label applied to all resource names and tags"
+variable "environment" {
+  description = "Short environment name used as a suffix for resources that share a workspace."
   type        = string
   default     = "dev"
 }
 
 variable "catalog_name" {
+<<<<<<< HEAD
   description = "Unity Catalog catalog name for the lakehouse"
   type        = string
   default     = "housing"
@@ -62,3 +64,9 @@ variable "sp_app_name" {
   type        = string
   default     = "sp-housing-app"
 }
+=======
+  description = "Unity Catalog name."
+  type        = string
+  default     = "housing"
+}
+>>>>>>> origin/feature/terraform-base

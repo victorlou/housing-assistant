@@ -21,62 +21,62 @@ This document describes how Housing Assistant is built end-to-end. It is the can
 
 ## High-level diagram
 
-```
-                                  ┌─────────────────────────────────┐
-                                  │   Open data sources (NZ)        │
-                                  │   MBIE bonds · Stats NZ · LINZ  │
-                                  │   Police · Education Counts ·   │
-                                  │   GTFS feeds · NIWA · EQC       │
-                                  └────────────────┬────────────────┘
-                                                   │
-                                       Lakeflow Declarative Pipelines
-                                                   │
-       ┌───────────────────────────────────────────▼───────────────────────────────────────────┐
-       │                              Unity Catalog (housing)                                   │
-       │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐│
-       │  │   bronze     │ ─▶ │    silver    │ ─▶ │     gold     │    │        app          ││
-       │  │ raw landings │    │  cleaned +   │    │  semantic    │    │ Lakebase-mirrored   ││
-       │  │              │    │  conformed   │    │   marts      │    │  user state tables  ││
-       │  └──────────────┘    └──────────────┘    └──────┬───────┘    └──────────┬───────────┘│
-       └────────────────────────────────────────────────┼───────────────────────┼─────────────┘
-                                                        │                       │
-                                       ┌────────────────▼────────┐    ┌────────▼────────┐
-                                       │      Genie Space        │    │    Lakebase     │
-                                       │ (semantic + glossary)   │    │ (Postgres OLTP) │
-                                       └────────────┬────────────┘    └────────┬────────┘
-                                                    │                          │
-                                       ┌────────────▼──────────────────────────▼─────────────┐
-                                       │                AgentBricks orchestrator              │
-                                       │   tools: query_genie · compute_isochrone ·          │
-                                       │          score_affordability · lookup_hazards ·     │
-                                       │          save_user_profile · set_alert              │
-                                       └────────────┬─────────────────────┬──────────────────┘
-                                                    │                     │
-                                       ┌────────────▼────────┐  ┌────────▼─────────────┐
-                                       │   Databricks App    │  │  AI/BI Dashboard     │
-                                       │  (consumer surface) │  │  (planner surface)   │
-                                       └─────────────────────┘  └──────────────────────┘
-```
+```mermaid
+flowchart TB
+    classDef sourceStyle fill:#f6f8fa,stroke:#57606a,color:#1f2328
+    classDef lakeStyle fill:#dbedff,stroke:#0969da,color:#0a3069
+    classDef agentStyle fill:#fff8c5,stroke:#9a6700,color:#633c01
+    classDef surfaceStyle fill:#dafbe1,stroke:#1a7f37,color:#0a3622
 
-A polished version of this diagram lives at `docs/diagrams/architecture.png` (TODO).
+    Sources["Open NZ data sources<br>MBIE bonds · Stats NZ · LINZ · Police<br>Education Counts · GTFS feeds · NIWA · EQC"]
+
+    subgraph UC["Unity Catalog · housing"]
+      direction LR
+      B["bronze<br>raw landings"]
+      Si["silver<br>cleaned + conformed"]
+      G["gold<br>semantic marts"]
+      Ap["app<br>Lakebase mirror"]
+      B --> Si --> G
+    end
+
+    Sources -- "Lakeflow Declarative Pipelines" --> B
+
+    G --> Genie["Genie Space<br>semantic + glossary"]
+    LB[("Lakebase<br>Postgres OLTP")] --> Ap
+
+    Genie --> Agent
+    LB <--> Agent
+
+    Agent["AgentBricks orchestrator<br>query_genie · compute_isochrone<br>score_affordability · lookup_hazards<br>save_user_profile · set_alert"]
+
+    Agent --> AppUI["Databricks App<br>consumer surface"]
+    G --> Dash["AI/BI Dashboard<br>planner surface"]
+    Genie -.-> Dash
+
+    class Sources sourceStyle
+    class B,Si,G,Ap,Genie,LB lakeStyle
+    class Agent agentStyle
+    class AppUI,Dash surfaceStyle
+```
 
 ## Layer 1. Lakehouse over open NZ data
 
 **Catalog:** `housing`, with schemas `bronze`, `silver`, `gold`, and `app`.
 
-**Bronze.** One volume per source, keyed by a load timestamp. We never edit bronze. Sources land as their native format (CSV, JSON, GTFS zips, GeoTIFF where applicable). A Lakeflow pipeline parses each source into a typed `bronze.<source>_raw` table.
+**Bronze.** One volume per source (`housing.bronze.<source>_files`), keyed by a load timestamp. We never edit bronze. Sources land as their native format (CSV, JSON, GTFS zips, GeoTIFF where applicable). A Lakeflow pipeline parses each source into a typed `housing.bronze.<source>` table.
 
 **Silver.** Cleaned, deduplicated, geocoded. Place names normalised to a canonical `(suburb, territorial_authority, region)` key. Geometries stored as H3 cells at resolution 8 for fast spatial joins. We chose H3 over PostGIS-style polygons because it makes nearest-neighbour and isochrone joins SQL-friendly and cheap on Databricks.
 
-**Gold.** Semantic marts that the Genie semantic layer reads from. Initial set:
+**Gold.** Semantic marts that the Genie semantic layer reads from. Naming follows the project convention: dimension-style tables use the entity name; aggregated tables follow `<entity>__<time_grain>__<breakdowns>`. Initial set:
 
-- `dim_suburb`. Canonical suburb dimension with H3 cells, parent TA and region, demographic snapshot.
-- `dim_school`. School dimension with EQI, roll, year levels, location.
-- `dim_hazard`. Flood, coastal, liquefaction risk per H3 cell.
-- `fact_rent_by_suburb_month`. Median rent, p25/p75, dwelling type, sample size.
-- `fact_income_by_suburb_year`. Median household income deciles per suburb.
-- `fact_crime_by_area_month`. Crime counts per category per area unit.
-- `fact_isochrone`. Pre-computed travel time from H3 origin cell to commercial centres, by mode and minute bucket. This is the table that makes the consumer demo feel fast.
+- `suburb`. Canonical suburb dimension with H3 cells, parent TA and region, demographic snapshot.
+- `school`. School dimension with EQI, roll, year levels, location.
+- `hazard`. Flood, coastal, liquefaction risk per H3 cell.
+- `isochrone`. Pre-computed travel time from H3 origin cell to commercial centres, by mode and minute bucket. This is the table that makes the consumer demo feel fast.
+- `rent__month__suburb`. Median rent, p25/p75, dwelling type, sample size.
+- `income__year__suburb`. Median household income deciles per suburb.
+- `crime__month__area_unit`. Crime counts per category per area unit.
+- `house_price__month__territorial_authority`. Stats NZ HPI by TA and dwelling type.
 
 **Pipelines.** All transformations are Lakeflow Declarative Pipelines. We prefer SQL over Python where the transformation is expressible in SQL. Each source has a dedicated pipeline. A top-level "marts" pipeline depends on them and refreshes the gold tables.
 
@@ -84,7 +84,7 @@ A polished version of this diagram lives at `docs/diagrams/architecture.png` (TO
 
 The Genie Space wraps the gold catalog with a curated semantic model.
 
-**Synonyms.** "Rent" maps to `fact_rent_by_suburb_month.median_rent_weekly`, "income" to `fact_income_by_suburb_year.median_household_income`. "Decile" includes both school-decile and income-decile concepts, disambiguated by context.
+**Synonyms.** "Rent" maps to `rent__month__suburb.median_rent_weekly`, "income" to `income__year__suburb.median_household_income`. "Decile" includes both school-decile and income-decile concepts, disambiguated by context.
 
 **Joins.** All canonical joins are pre-defined so users do not need to know our schema.
 
@@ -106,7 +106,7 @@ We use AgentBricks (Mosaic AI Agent Framework). The agent's job is not to replac
 | Tool | Purpose |
 |---|---|
 | `query_genie(question)` | Hand a structured question to Genie and get back a result set. |
-| `compute_isochrone(origin, mode, minutes)` | Lookup pre-computed isochrones from `fact_isochrone`. |
+| `compute_isochrone(origin, mode, minutes)` | Lookup pre-computed isochrones from `housing.gold.isochrone`. |
 | `score_affordability(suburb, household_income)` | Apply the affordability rule (rent ≤ 30% income) and return a normalised score. |
 | `lookup_hazards(suburb)` | Pull flood / coastal / liquefaction risk for a suburb's H3 cells. |
 | `save_user_profile(profile)` | Upsert the user's constraints into Lakebase. |
