@@ -2,7 +2,8 @@
 #  Terraform
 # ─────────────────────────────────────────────────────────────────────
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally NOT ignored — commit it so the team
+# and CI use identical provider versions.
 *.tfstate
 *.tfstate.*
 *.tfvars
@@ -95,14 +96,15 @@ dist/
 Thumbs.db
 
 # ─────────────────────────────────────────────────────────────────────
-#  Secrets — never commit
+#  Secrets, never commit
 # ─────────────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
 *.pem
 *.key
-secrets/
+# Anchored to root so it doesn't match terraform/modules/secrets/
+/secrets/
 credentials.json
 service-account*.json
 
