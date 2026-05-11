@@ -10,10 +10,30 @@ output "project_id" {
 
 output "production_branch_name" {
   description = "Postgres API name of the auto-created production branch."
-  value       = "${databricks_postgres_project.main.name}/branches/production"
+  value       = local.production_branch_name
 }
 
 output "production_endpoint_name" {
   description = "Postgres API name of the auto-created primary endpoint on the production branch."
-  value       = "${databricks_postgres_project.main.name}/branches/production/endpoints/primary"
+  value       = local.production_endpoint_name
+}
+
+output "database_name" {
+  description = "Postgres database name (use as PGDATABASE in agents/.env)."
+  value       = local.postgres_database_name
+}
+
+output "database_resource_name" {
+  description = "Full Lakebase API resource name for the application database."
+  value       = databricks_postgres_database.main.name
+}
+
+output "role_name" {
+  description = "Postgres role name — the SP application ID (use as PGUSER in agents/.env)."
+  value       = databricks_postgres_role.main.spec.postgres_role
+}
+
+output "role_resource_name" {
+  description = "Full Lakebase API resource name for the database role."
+  value       = databricks_postgres_role.main.name
 }

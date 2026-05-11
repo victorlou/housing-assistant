@@ -40,23 +40,29 @@ module "compute" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Lakebase. Managed Postgres for user state, on the Autoscaling platform.
-# Scale-to-zero is enabled as a one-time post-apply step (see runbook).
-# ─────────────────────────────────────────────────────────────────────
-module "lakebase" {
-  source       = "../../modules/lakebase"
-  project_id   = local.name_prefix
-  display_name = "Housing Assistant ${title(var.environment)}"
-}
-
-# ─────────────────────────────────────────────────────────────────────
 # App. Databricks App and the warehouse binding it depends on.
+# Its auto-created service principal owns Lakebase application state.
 # ─────────────────────────────────────────────────────────────────────
 module "app" {
   source       = "../../modules/app"
   project_tag  = var.project_tag
   app_name     = local.name_prefix
   warehouse_id = module.compute.warehouse_id
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Lakebase. Managed Postgres for user state, on the Autoscaling platform.
+# Scale-to-zero is enabled as a one-time post-apply step (see runbook).
+# ─────────────────────────────────────────────────────────────────────
+module "lakebase" {
+  source                 = "../../modules/lakebase"
+  project_id             = local.name_prefix
+  display_name           = "Housing Assistant ${title(var.environment)}"
+  databricks_profile     = var.databricks_profile
+  sp_application_id      = module.app.app_service_principal_client_id
+  role_id                = "${local.name_prefix}-role"
+  database_id            = "${local.name_prefix}-db"
+  postgres_database_name = "${replace(local.name_prefix, "-", "_")}_db"
 }
 
 # ─────────────────────────────────────────────────────────────────────

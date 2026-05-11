@@ -28,6 +28,16 @@ output "lakebase_production_endpoint_name" {
   value       = module.lakebase.production_endpoint_name
 }
 
+output "lakebase_database_name" {
+  description = "Postgres database name created for application state."
+  value       = module.lakebase.database_name
+}
+
+output "lakebase_role_name" {
+  description = "Postgres role name that owns the Lakebase database."
+  value       = module.lakebase.role_name
+}
+
 output "app_url" {
   description = "Public URL of the Databricks App."
   value       = module.app.app_url

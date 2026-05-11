@@ -10,9 +10,12 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- One row per user; budget and commute preferences live here.
+-- One row per constraint profile; a user may have many (e.g. different budgets or work sites).
 CREATE TABLE IF NOT EXISTS user_constraints (
-  user_id           TEXT        PRIMARY KEY REFERENCES users (user_id) ON DELETE CASCADE,
+  constraint_id     TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  user_id           TEXT        NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
+  name              TEXT,                   -- optional label, e.g. "tight budget", "near CBD"
+  is_default        BOOLEAN     NOT NULL DEFAULT FALSE,
   budget_weekly_max INTEGER,                -- NZD
   household_size    SMALLINT,
   has_pets          BOOLEAN,
@@ -21,6 +24,9 @@ CREATE TABLE IF NOT EXISTS user_constraints (
   max_commute_mins  SMALLINT,
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_user_constraints_user
+  ON user_constraints (user_id);
 
 CREATE TABLE IF NOT EXISTS saved_searches (
   search_id  TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
