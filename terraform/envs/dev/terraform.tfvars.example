@@ -1,0 +1,12 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# Never commit terraform.tfvars — it is git-ignored.
+
+databricks_host         = "https://<workspace-id>.cloud.databricks.com"
+databricks_token        = "<your-pat>"
+lakebase_admin_password = "<choose-a-strong-password>"
+
+# Defaults are usually fine for dev:
+# env                   = "dev"
+# catalog_name          = "housing"
+# secret_scope          = "housing-assistant"
+# lakebase_capacity     = 1

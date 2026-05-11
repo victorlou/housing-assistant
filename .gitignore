@@ -118,3 +118,11 @@ service-account*.json
 logs/
 tmp/
 .tmp/
+
+# ─────────────────────────────────────────────────────────────────────
+#  Internal working notes — not for version control
+# ─────────────────────────────────────────────────────────────────────
+internal-workings/
+
+# Claude worktrees
+.claude/worktrees
