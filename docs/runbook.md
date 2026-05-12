@@ -146,6 +146,35 @@ PRs should be small enough to review in 10 minutes. Aim for one logical change p
 
 ## Common operations
 
+### Account-level Terraform authentication (one-time setup)
+
+Terraform manages an account-level admin group, so it needs account-level credentials in addition to your workspace credentials. Set this up once:
+
+```bash
+databricks auth login \
+  --host https://accounts.cloud.databricks.com \
+  --account-id <YOUR-ACCOUNT-UUID>
+# When prompted for a profile name, use: hackathon-account
+```
+
+A browser opens; sign in as an account admin. The CLI caches your token in `~/.databricks/token-cache.json` and adds a `[hackathon-account]` profile to `~/.databrickscfg`. Verify with:
+
+```bash
+databricks --profile hackathon-account account groups list
+```
+
+You also need to add `databricks_account_id` and `workspace_id` to your `terraform.tfvars`. Both are visible in the account console (`https://accounts.cloud.databricks.com` → User profile / Workspaces).
+
+### Onboard a teammate
+
+Terraform provisions an **account-level** admin group (`housing-assistant-dev-admins`) with full data access on every schema, `USE_CATALOG` on the catalog, and `CAN_MANAGE` on the SQL warehouse. Permissions live in code; **membership lives in the account console**, so adding a teammate is a click and doesn't need a `terraform apply`.
+
+1. Go to https://accounts.cloud.databricks.com → **User management → Groups**.
+2. Find `housing-assistant-dev-admins`.
+3. **Add member** → search by email → confirm.
+
+The teammate gets workspace access (via the permission assignment in Terraform) and full data access immediately. To remove a teammate, the same flow in reverse. No code change required.
+
 ### Enable scale-to-zero on Lakebase (one-time, after first apply)
 
 Lakebase Autoscaling supports suspending the compute when idle, but the setting is **not** controlled by the Terraform `databricks_postgres_project` resource. Enable it once after the project is first created.
