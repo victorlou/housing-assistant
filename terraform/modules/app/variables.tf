@@ -18,7 +18,7 @@ variable "lakebase_branch_name" {
   type        = string
 }
 
-variable "lakebase_database_name" {
-  description = "Postgres database name to bind to the Databricks App."
+variable "lakebase_database_resource_name" {
+  description = "Full Lakebase Autoscaling database resource name to bind to the Databricks App, e.g. projects/<project>/branches/production/databases/<database_id>."
   type        = string
 }

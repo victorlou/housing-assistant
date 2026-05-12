@@ -25,7 +25,7 @@ resource "databricks_app" "main" {
       description = "Lakebase Autoscaling Postgres database for application state."
       postgres = {
         branch     = var.lakebase_branch_name
-        database   = var.lakebase_database_name
+        database   = var.lakebase_database_resource_name
         permission = "CAN_CONNECT_AND_CREATE"
       }
     }

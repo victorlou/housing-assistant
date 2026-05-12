@@ -13,20 +13,8 @@ variable "postgres_database_name" {
   type        = string
 }
 
-variable "databricks_profile" {
-  description = "Databricks CLI profile to use for local schema migrations. Leave empty to use DATABRICKS_HOST + DATABRICKS_TOKEN or the CLI default profile."
-  type        = string
-  default     = ""
-}
-
-variable "database_user" {
-  description = "Optional Postgres username to use for migration. If omitted, the module resolves the current Databricks CLI user and uses the generated Lakebase credential for that identity."
-  type        = string
-  default     = ""
-}
-
 variable "app_service_principal_client_id" {
-  description = "Application/client ID UUID of the Databricks App's auto-created service principal. Mapped to a Postgres role that owns the app database."
+  description = "Application/client ID UUID of the Databricks App's auto-created service principal used as the Postgres user for schema migrations."
   type        = string
 
   validation {
@@ -35,12 +23,18 @@ variable "app_service_principal_client_id" {
   }
 }
 
-variable "database_id" {
-  description = "Lakebase database resource ID (4-63 chars, lowercase letters, numbers, hyphens)."
+variable "app_service_principal_client_secret" {
+  description = "Client secret for the Databricks App's auto-created service principal. Used only to authenticate Databricks CLI calls for Lakebase migrations."
+  type        = string
+  sensitive   = true
+}
+
+variable "databricks_host" {
+  description = "Workspace URL, e.g. https://dbc-xxxxx.cloud.databricks.com."
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{2,61}[a-z0-9]$", var.database_id))
-    error_message = "database_id must be 4-63 characters: lowercase letters, numbers, and hyphens; cannot start or end with a hyphen."
+    condition     = can(regex("^https://", var.databricks_host))
+    error_message = "databricks_host must be set to the Databricks workspace URL, e.g. https://dbc-xxxxx.cloud.databricks.com."
   }
 }

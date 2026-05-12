@@ -4,6 +4,10 @@
 #   - a `production` branch
 #   - a `primary` read-write endpoint on that branch
 #
+# This module owns the Lakebase infrastructure, including the Postgres role and
+# application database. Schema migrations are intentionally kept in the
+# lakebase_migration module.
+#
 # Scale-to-zero is OFF by default on the auto-created endpoint. Autoscaling
 # range and scale-to-zero are configured via the Postgres API or the Lakebase
 # Autoscaling UI, not via the Database instance API. We do that as a one-time
@@ -15,7 +19,14 @@ locals {
   production_branch_name   = "${databricks_postgres_project.main.name}/branches/production"
   production_endpoint_name = "${local.production_branch_name}/endpoints/primary"
   postgres_database_name   = coalesce(var.postgres_database_name, replace(var.database_id, "-", "_"))
-  database_resource_name   = "${local.production_branch_name}/databases/${local.postgres_database_name}"
+  database_resource_name   = "${local.production_branch_name}/databases/${var.database_id}"
+}
+
+resource "databricks_service_principal" "app_database_owner" {
+  display_name          = "${var.project_id}-lakebase-app"
+  workspace_access      = true
+  databricks_sql_access = true
+  force                 = true
 }
 
 resource "databricks_postgres_project" "main" {
@@ -25,4 +36,34 @@ resource "databricks_postgres_project" "main" {
     pg_version   = var.pg_version
     display_name = var.display_name
   }
+}
+
+resource "databricks_postgres_role" "app" {
+  role_id = "app-sp"
+  parent  = local.production_branch_name
+
+  spec = {
+    identity_type    = "SERVICE_PRINCIPAL"
+    postgres_role    = databricks_service_principal.app_database_owner.application_id
+    auth_method      = "LAKEBASE_OAUTH_V1"
+    membership_roles = ["DATABRICKS_SUPERUSER"]
+
+    attributes = {
+      createdb   = false
+      createrole = false
+      bypassrls  = false
+    }
+  }
+}
+
+resource "databricks_postgres_database" "main" {
+  database_id = var.database_id
+  parent      = local.production_branch_name
+
+  spec = {
+    postgres_database = local.postgres_database_name
+    role              = databricks_postgres_role.app.name
+  }
+
+  depends_on = [databricks_postgres_role.app]
 }

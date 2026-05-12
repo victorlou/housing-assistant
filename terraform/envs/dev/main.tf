@@ -43,8 +43,8 @@ module "compute" {
 # ─────────────────────────────────────────────────────────────────────
 # Lakebase. Managed Postgres for user state, on the Autoscaling platform.
 # Scale-to-zero is enabled as a one-time post-apply step (see runbook).
-# Only creates the Postgres project; role and database are created in
-# lakebase_migration after the app service principal is known.
+# Creates the Postgres project, service-principal-backed Postgres role, and
+# application database. Migrations are handled separately below.
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase" {
   source                 = "../../modules/lakebase"
@@ -60,31 +60,39 @@ module "lakebase" {
 # CAN_CONNECT_AND_CREATE on the Lakebase Autoscaling database.
 # ─────────────────────────────────────────────────────────────────────
 module "app" {
-  source                 = "../../modules/app"
-  project_tag            = var.project_tag
-  app_name               = local.name_prefix
-  warehouse_id           = module.compute.warehouse_id
-  lakebase_branch_name   = module.lakebase.production_branch_name
-  lakebase_database_name = module.lakebase.database_resource_name
+  source                          = "../../modules/app"
+  project_tag                     = var.project_tag
+  app_name                        = local.name_prefix
+  warehouse_id                    = module.compute.warehouse_id
+  lakebase_branch_name            = module.lakebase.production_branch_name
+  lakebase_database_resource_name = module.lakebase.database_resource_name
 
   depends_on = [module.compute, module.lakebase]
 }
 
+# Client secret used by the migration step to authenticate Databricks CLI
+# commands as the Databricks App service principal. This keeps the Lakebase
+# database credential subject aligned with the Postgres username.
+resource "databricks_service_principal_secret" "app" {
+  service_principal_id = module.app.app_service_principal_id
+
+  depends_on = [module.app]
+}
+
 # ─────────────────────────────────────────────────────────────────────
-# Lakebase migration. Runs after both lakebase and app are ready:
-# creates the Postgres role + database for the app service principal,
-# then applies schema.sql.
+# Lakebase migration. Runs after both lakebase and app are ready and only
+# applies schema.sql using the Databricks App service-principal identity.
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase_migration" {
-  source                          = "../../modules/lakebase_migration"
-  production_branch_name          = module.lakebase.production_branch_name
-  production_endpoint_name        = module.lakebase.production_endpoint_name
-  postgres_database_name          = module.lakebase.database_name
-  database_id                     = "${local.name_prefix}-db"
-  app_service_principal_client_id = module.app.app_service_principal_client_id
-  databricks_profile              = var.databricks_profile
+  source                              = "../../modules/lakebase_migration"
+  production_branch_name              = module.lakebase.production_branch_name
+  production_endpoint_name            = module.lakebase.production_endpoint_name
+  postgres_database_name              = module.lakebase.database_name
+  app_service_principal_client_id     = module.app.app_service_principal_client_id
+  app_service_principal_client_secret = databricks_service_principal_secret.app.secret
+  databricks_host                     = var.databricks_host
 
-  depends_on = [module.lakebase, module.app]
+  depends_on = [module.lakebase, module.app, databricks_service_principal_secret.app]
 }
 
 # ─────────────────────────────────────────────────────────────────────

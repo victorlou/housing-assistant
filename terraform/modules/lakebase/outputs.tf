@@ -24,7 +24,17 @@ output "database_name" {
 }
 
 output "database_resource_name" {
-  description = "Full Lakebase API resource name for the application database. Computed from the project branch and database ID so the app can bind to it without depending on database creation."
+  description = "Full Lakebase API resource name for the application database, e.g. projects/<project>/branches/production/databases/<database_id>."
   value       = local.database_resource_name
+}
+
+output "app_database_owner_service_principal_client_id" {
+  description = "Application/client ID UUID of the service principal used as the Lakebase database owner role."
+  value       = databricks_service_principal.app_database_owner.application_id
+}
+
+output "app_database_owner_service_principal_id" {
+  description = "Numeric Databricks ID of the service principal used as the Lakebase database owner role."
+  value       = databricks_service_principal.app_database_owner.id
 }
 
