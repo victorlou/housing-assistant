@@ -19,27 +19,6 @@ variable "pg_version" {
   default     = 17
 }
 
-variable "databricks_profile" {
-  description = "Databricks CLI profile to use for local schema migrations. Leave empty to use DATABRICKS_HOST + DATABRICKS_TOKEN or the CLI default profile."
-  type        = string
-  default     = ""
-}
-
-variable "sp_application_id" {
-  description = "Application ID of the Databricks service principal that owns the database. Used as the Postgres role's postgres_role (SERVICE_PRINCIPAL identity) and as the psql username during migrations."
-  type        = string
-}
-
-variable "role_id" {
-  description = "API path identifier for the Lakebase role resource (4-63 chars, lowercase letters, numbers, hyphens)."
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{2,61}[a-z0-9]$", var.role_id))
-    error_message = "role_id must be 4-63 characters: lowercase letters, numbers, and hyphens; cannot start or end with a hyphen."
-  }
-}
-
 variable "database_id" {
   description = "Lakebase database resource ID (4-63 chars, lowercase letters, numbers, hyphens). This becomes the final component of the API resource path."
   type        = string
@@ -60,3 +39,4 @@ variable "postgres_database_name" {
     error_message = "postgres_database_name must be 1-63 characters and match an unquoted lowercase Postgres identifier: start with a letter or underscore, then letters, digits, or underscores."
   }
 }
+

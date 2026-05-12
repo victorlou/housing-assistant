@@ -4,7 +4,8 @@ locals {
 
 # ─────────────────────────────────────────────────────────────────────
 # Identity. The jobs service principal owns pipelines and ingestion.
-# The app gets its own auto-created service principal (see app module).
+# The Databricks App gets its own auto-created service principal, which is
+# granted Lakebase access through the app resource binding.
 # ─────────────────────────────────────────────────────────────────────
 module "identity" {
   source      = "../../modules/identity"
@@ -40,29 +41,50 @@ module "compute" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# App. Databricks App and the warehouse binding it depends on.
-# Its auto-created service principal owns Lakebase application state.
-# ─────────────────────────────────────────────────────────────────────
-module "app" {
-  source       = "../../modules/app"
-  project_tag  = var.project_tag
-  app_name     = local.name_prefix
-  warehouse_id = module.compute.warehouse_id
-}
-
-# ─────────────────────────────────────────────────────────────────────
 # Lakebase. Managed Postgres for user state, on the Autoscaling platform.
 # Scale-to-zero is enabled as a one-time post-apply step (see runbook).
+# Only creates the Postgres project; role and database are created in
+# lakebase_migration after the app service principal is known.
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase" {
   source                 = "../../modules/lakebase"
   project_id             = local.name_prefix
   display_name           = "Housing Assistant ${title(var.environment)}"
-  databricks_profile     = var.databricks_profile
-  sp_application_id      = module.app.app_service_principal_client_id
-  role_id                = "${local.name_prefix}-role"
   database_id            = "${local.name_prefix}-db"
   postgres_database_name = "${replace(local.name_prefix, "-", "_")}_db"
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# App. Databricks App and the warehouse/Lakebase bindings it depends on.
+# The app resource binding grants the app's auto-created service principal
+# CAN_CONNECT_AND_CREATE on the Lakebase Autoscaling database.
+# ─────────────────────────────────────────────────────────────────────
+module "app" {
+  source                 = "../../modules/app"
+  project_tag            = var.project_tag
+  app_name               = local.name_prefix
+  warehouse_id           = module.compute.warehouse_id
+  lakebase_branch_name   = module.lakebase.production_branch_name
+  lakebase_database_name = module.lakebase.database_resource_name
+
+  depends_on = [module.compute, module.lakebase]
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Lakebase migration. Runs after both lakebase and app are ready:
+# creates the Postgres role + database for the app service principal,
+# then applies schema.sql.
+# ─────────────────────────────────────────────────────────────────────
+module "lakebase_migration" {
+  source                          = "../../modules/lakebase_migration"
+  production_branch_name          = module.lakebase.production_branch_name
+  production_endpoint_name        = module.lakebase.production_endpoint_name
+  postgres_database_name          = module.lakebase.database_name
+  database_id                     = "${local.name_prefix}-db"
+  app_service_principal_client_id = module.app.app_service_principal_client_id
+  databricks_profile              = var.databricks_profile
+
+  depends_on = [module.lakebase, module.app]
 }
 
 # ─────────────────────────────────────────────────────────────────────

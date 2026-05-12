@@ -9,11 +9,11 @@ output "app_url" {
 }
 
 output "app_service_principal_client_id" {
-  description = "Client ID (UUID) of the auto-created service principal — use as the principal in grants and permissions."
+  description = "Client ID (UUID) of the Databricks App's auto-created service principal. The app resource binding grants this identity CAN_CONNECT_AND_CREATE on Lakebase."
   value       = databricks_app.main.service_principal_client_id
 }
 
 output "app_service_principal_id" {
-  description = "Numeric Databricks ID of the app's service principal."
+  description = "Numeric Databricks ID of the Databricks App's auto-created service principal."
   value       = databricks_app.main.service_principal_id
 }

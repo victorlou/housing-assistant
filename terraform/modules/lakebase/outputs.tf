@@ -24,16 +24,7 @@ output "database_name" {
 }
 
 output "database_resource_name" {
-  description = "Full Lakebase API resource name for the application database."
-  value       = databricks_postgres_database.main.name
+  description = "Full Lakebase API resource name for the application database. Computed from the project branch and database ID so the app can bind to it without depending on database creation."
+  value       = local.database_resource_name
 }
 
-output "role_name" {
-  description = "Postgres role name — the SP application ID (use as PGUSER in agents/.env)."
-  value       = databricks_postgres_role.main.spec.postgres_role
-}
-
-output "role_resource_name" {
-  description = "Full Lakebase API resource name for the database role."
-  value       = databricks_postgres_role.main.name
-}

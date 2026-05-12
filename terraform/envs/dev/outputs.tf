@@ -33,18 +33,13 @@ output "lakebase_database_name" {
   value       = module.lakebase.database_name
 }
 
-output "lakebase_role_name" {
-  description = "Postgres role name that owns the Lakebase database."
-  value       = module.lakebase.role_name
-}
-
 output "app_url" {
   description = "Public URL of the Databricks App."
   value       = module.app.app_url
 }
 
 output "app_service_principal_client_id" {
-  description = "Client ID of the app's auto-created service principal."
+  description = "Client ID of the Databricks App's auto-created service principal. The app resource binding grants this identity CAN_CONNECT_AND_CREATE on Lakebase."
   value       = module.app.app_service_principal_client_id
 }
 
