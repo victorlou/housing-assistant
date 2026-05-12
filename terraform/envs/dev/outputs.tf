@@ -43,6 +43,11 @@ output "jobs_service_principal_application_id" {
   value       = module.identity.jobs_application_id
 }
 
+output "admins_group_display_name" {
+  description = "Account-level admin group. Add yourself and teammates to it in the account console (User management → Groups) to inherit full data access."
+  value       = module.identity.admins_group_display_name
+}
+
 output "secret_scope_name" {
   description = "Databricks-backed secret scope name."
   value       = module.secrets.scope_name

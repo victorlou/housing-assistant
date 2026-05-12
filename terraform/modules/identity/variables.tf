@@ -8,3 +8,8 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "workspace_id" {
+  description = "Numeric Databricks workspace ID. Used to assign the account-level admin group to this workspace."
+  type        = string
+}
