@@ -123,6 +123,7 @@ async def stream_handler(
             # For on-behalf-of user authentication, pass get_user_workspace_client() to init_agent.
             agent = await init_agent(store=store, checkpointer=checkpointer)
 
+            # process_agent_astream_events - works on agent.astream - which emits events and then our below function handles emission on their end
             async for event in process_agent_astream_events(
                 agent.astream(input_state, config, stream_mode=["updates", "messages"])
             ):
