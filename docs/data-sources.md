@@ -23,39 +23,39 @@ We deliberately avoid:
 
 | Source | Publisher | What it gives us | Cadence | Target gold table |
 |---|---|---|---|---|
-| **Tenancy Bond data** | MBIE Tenancy Services | Rent paid, dwelling type, location for every bond lodged. The single most important source. | Monthly | `fact_rent_by_suburb_month` |
-| **Census 2023 income / dwellings** | Stats NZ | Median household income, deprivation index, dwelling tenure by SA1/SA2. | Per census (2023) | `fact_income_by_suburb_year`, `dim_suburb` |
-| **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `fact_hpi_by_ta_month` |
-| **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `fact_isochrone` |
-| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `fact_crime_by_area_month` |
+| **Tenancy Bond data** | MBIE Tenancy Services | Rent paid, dwelling type, location for every bond lodged. The single most important source. | Monthly | `rent__month__suburb` |
+| **Census 2023 income / dwellings** | Stats NZ | Median household income, deprivation index, dwelling tenure by SA1/SA2. | Per census (2023) | `income__year__suburb`, `suburb` |
+| **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `house_price__month__territorial_authority` |
+| **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `isochrone` |
+| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `crime__month__area_unit` |
 
 ### Tier 2. Second wave
 
 | Source | Publisher | What it gives us | Cadence | Target gold table |
 |---|---|---|---|---|
-| **Education Counts schools directory + EQI** | Ministry of Education | Every school, year levels, roll, EQI (replaces decile), location. | Annual | `dim_school` |
-| **LINZ NZ Addresses** | LINZ Data Service | Authoritative address layer. Used for geocoding and place disambiguation. | Continuous | `dim_address` |
-| **Metlink GTFS** | Greater Wellington | Transit for Wellington region. | Weekly | `fact_isochrone` |
-| **Environment Canterbury GTFS** | ECan | Transit for Christchurch / Canterbury. | Weekly | `fact_isochrone` |
-| **NIWA flood hazard layers** | NIWA / regional councils | Flood risk extent. | Annual or per-event | `dim_hazard` |
-| **EQC / Toka Tū Ake natural hazard layers** | EQC | Liquefaction, coastal inundation, sea-level rise. | Annual | `dim_hazard` |
+| **Education Counts schools directory + EQI** | Ministry of Education | Every school, year levels, roll, EQI (replaces decile), location. | Annual | `school` |
+| **LINZ NZ Addresses** | LINZ Data Service | Authoritative address layer. Used for geocoding and place disambiguation. | Continuous | `address` |
+| **Metlink GTFS** | Greater Wellington | Transit for Wellington region. | Weekly | `isochrone` |
+| **Environment Canterbury GTFS** | ECan | Transit for Christchurch / Canterbury. | Weekly | `isochrone` |
+| **NIWA flood hazard layers** | NIWA / regional councils | Flood risk extent. | Annual or per-event | `hazard` |
+| **EQC / Toka Tū Ake natural hazard layers** | EQC | Liquefaction, coastal inundation, sea-level rise. | Annual | `hazard` |
 
 ### Tier 3. Stretch
 
 | Source | Publisher | What it gives us | Cadence | Target gold table |
 |---|---|---|---|---|
-| **Council valuation rolls (CV/QV)** | Various councils | Per-property capital values. Auckland Council exposes via GeoMaps; smaller councils vary. | Triennial | `dim_property_valuation` |
-| **Other regional GTFS feeds** | Waikato, BOP, Otago, Tasman | Transit isochrones for remaining metros. | Weekly | `fact_isochrone` |
-| **Stats NZ tertiary education data** | Stats NZ | University and polytech locations and demographics. Useful for the student-renter persona. | Annual | `dim_education_provider` |
-| **Healthpoint / Te Whatu Ora facility list** | Te Whatu Ora | GP and ED locations. | Quarterly | `dim_health_facility` |
-| **Stats NZ employment / industry by area** | Stats NZ | Employment density and sector mix by suburb. Useful for "where can I get to my industry's jobs?" | Quarterly | `fact_employment_by_suburb` |
+| **Council valuation rolls (CV/QV)** | Various councils | Per-property capital values. Auckland Council exposes via GeoMaps; smaller councils vary. | Triennial | `property_valuation` |
+| **Other regional GTFS feeds** | Waikato, BOP, Otago, Tasman | Transit isochrones for remaining metros. | Weekly | `isochrone` |
+| **Stats NZ tertiary education data** | Stats NZ | University and polytech locations and demographics. Useful for the student-renter persona. | Annual | `education_provider` |
+| **Healthpoint / Te Whatu Ora facility list** | Te Whatu Ora | GP and ED locations. | Quarterly | `health_facility` |
+| **Stats NZ employment / industry by area** | Stats NZ | Employment density and sector mix by suburb. Useful for "where can I get to my industry's jobs?" | Quarterly | `employment__quarter__suburb` |
 
 ## Ingestion pattern
 
 Every source follows the same pattern:
 
-1. **Land** raw files into the bronze managed volume for that source (default catalog `workspace`: `workspace.bronze.<volume>`; override with Terraform `uc_catalog_name` if you use a dedicated catalog). Filename convention: `{source}_{YYYYMMDD}.{ext}`.
-2. **Parse** in a Lakeflow pipeline into a typed `bronze.<source>_raw` table. No business logic at this stage. Only typing and basic structure.
+1. **Land** raw files into the `housing.bronze.<source>_files` volume. Filename convention: `{source}_{YYYYMMDD}.{ext}`.
+2. **Parse** in a Lakeflow pipeline into a typed `housing.bronze.<source>` table. No business logic at this stage. Only typing and basic structure.
 3. **Conform** in the silver layer. Normalise place names to the canonical key, geocode where needed, deduplicate, validate.
 4. **Materialise** into the relevant gold table(s).
 
@@ -82,4 +82,4 @@ For each source above, the YAML file holds:
 - `tier` (1, 2, 3)
 - `notes` (any quirks)
 
-The ingestion pipelines parse this YAML to know what to fetch. LINZ WFS pull settings are in `config/sources/linz_nz_addresses.yml`.
+The ingestion pipelines parse this YAML to know what to fetch.

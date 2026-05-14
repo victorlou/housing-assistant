@@ -1,4 +1,16 @@
-# Optional. Copy to terraform.tfvars if you use them; never commit secrets.
+# Copy to terraform.tfvars and fill in the values you actually want to override.
+# terraform.tfvars is gitignored.
+
+# Authentication. Set ONE of:
+#   - databricks_host AND the DATABRICKS_TOKEN env var, OR
+#   - databricks_profile (a profile name in ~/.databrickscfg)
 #
-# uc_catalog_name = "workspace"
-# data_principal_names = ["some-uc-group-or-user"]
+# Easiest path: leave both blank here, run `databricks configure --token` once,
+# and the provider will pick up the DEFAULT profile.
+
+# databricks_host    = "https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
+# databricks_profile = "DEFAULT"
+
+# project_tag  = "housing-assistant"
+# environment  = "dev"
+# catalog_name = "housing"

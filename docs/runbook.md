@@ -177,15 +177,27 @@ PRs should be small enough to review in 10 minutes. Aim for one logical change p
 
 ## Common operations
 
-### Pause Lakebase overnight
+### Enable scale-to-zero on Lakebase (one-time, after first apply)
 
-The biggest single cost lever. Do this from the Databricks UI (Database Instances → your instance → Stop) or via CLI:
+Lakebase Autoscaling supports suspending the compute when idle, but the setting is **not** controlled by the Terraform `databricks_postgres_project` resource. Enable it once after the project is first created.
+
+**Via the UI (fastest):** Lakebase → Autoscaling → `housing-assistant-dev` → production branch → primary endpoint → Settings → toggle scale-to-zero on, set timeout to 5 minutes.
+
+**Via the CLI:** the project, branch, and endpoint names come straight from `terraform output`:
 
 ```bash
-databricks database-instances stop <instance-id>
+ENDPOINT=$(terraform output -raw lakebase_production_endpoint_name)
+
+databricks postgres update-endpoint "$ENDPOINT" \
+  spec.suspend_timeout_seconds \
+  --json '{"spec": {"suspend_timeout_seconds": 300}}'
 ```
 
-Resume in the morning. Lakebase resumes in seconds.
+The exact field name is in flux while the API is in Beta. If the call rejects `suspend_timeout_seconds`, run `databricks postgres get-endpoint "$ENDPOINT"` to see the current schema, then enable scale-to-zero through the UI as a fallback. Once enabled it persists across redeploys.
+
+While you're there, also set the autoscaling range. The default for projects created via the Database instance API is min 4 / max 8 CU; for dev, min 0.5 / max 2 CU is plenty.
+
+### Watch the cost dashboard
 
 ### Watch the cost dashboard
 
@@ -225,9 +237,10 @@ databricks bundle run --target dev <bundle-name> --validate-only
 | `terraform plan` says it wants to delete the catalog | Drift from a manual change | Reconcile by importing the resource: `terraform import ...` |
 | Genie answers questions wrong | Semantic model out of date | Re-sync the semantic model in the Genie Space settings |
 | Pipeline times out | Source file unexpectedly large or missing | Check the bronze volume; rerun with `--full-refresh false` |
-| Lakebase connection refused | Instance is paused | Resume from UI or CLI |
+| Lakebase connection refused | Endpoint suspended (scale-to-zero) | First query reactivates it in a few hundred ms; add retry logic to the app |
 | App shows blank screen | Service principal lost a grant | Reapply Terraform; the grants are declarative |
-| Terraform apply fails on Lakebase resource | Feature not enabled in workspace | Raise a workspace request to enable it |
+| Terraform apply fails on Lakebase resource | Feature not enabled in workspace, or Beta resource schema changed | Raise a workspace request, or pin the provider version in `versions.tf` |
+| `terraform apply` fails on `databricks_catalog` with "Metastore storage root URL does not exist" | Workspace uses Default Storage, which the Terraform provider can't trigger automatically (open issue: databricks/cli#4513) | Create the catalog in the UI with "Default storage" selected, then `terraform import 'module.catalog.databricks_catalog.main' housing` and re-run apply |
 
 ## Escalation
 
