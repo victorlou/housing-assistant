@@ -78,11 +78,9 @@ module "app" {
 module "lakebase_migration" {
   source                          = "../../modules/lakebase_migration"
   production_branch_name          = module.lakebase.production_branch_name
-  production_endpoint_name        = module.lakebase.production_endpoint_name
   postgres_database_name          = module.lakebase.database_name
   database_id                     = "${local.name_prefix}-db"
   app_service_principal_client_id = module.app.app_service_principal_client_id
-  databricks_profile              = var.databricks_profile
 
   depends_on = [module.lakebase, module.app]
 }

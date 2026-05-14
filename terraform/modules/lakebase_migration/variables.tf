@@ -3,26 +3,9 @@ variable "production_branch_name" {
   type        = string
 }
 
-variable "production_endpoint_name" {
-  description = "Postgres API name of the Lakebase read-write production endpoint, e.g. projects/<project>/branches/production/endpoints/primary."
-  type        = string
-}
-
 variable "postgres_database_name" {
   description = "Postgres database name to run migrations against."
   type        = string
-}
-
-variable "databricks_profile" {
-  description = "Databricks CLI profile to use for local schema migrations. Leave empty to use DATABRICKS_HOST + DATABRICKS_TOKEN or the CLI default profile."
-  type        = string
-  default     = ""
-}
-
-variable "database_user" {
-  description = "Optional Postgres username to use for migration. If omitted, the module resolves the current Databricks CLI user and uses the generated Lakebase credential for that identity."
-  type        = string
-  default     = ""
 }
 
 variable "app_service_principal_client_id" {
