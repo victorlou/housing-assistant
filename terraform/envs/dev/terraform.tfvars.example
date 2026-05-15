@@ -1,16 +1,30 @@
 # Copy to terraform.tfvars and fill in the values you actually want to override.
 # terraform.tfvars is gitignored.
 
-# Authentication. Set ONE of:
-#   - databricks_host AND the DATABRICKS_TOKEN env var, OR
-#   - databricks_profile (a profile name in ~/.databrickscfg)
-#
-# Easiest path: leave both blank here, run `databricks configure --token` once,
-# and the provider will pick up the DEFAULT profile.
+# ─── Workspace-level authentication ──────────────────────────────────
+# Set ONE of: databricks_host + DATABRICKS_TOKEN, or databricks_profile.
+# Easiest path: `databricks configure --token` once, then leave both blank
+# (the provider picks up the DEFAULT profile).
 
 # databricks_host    = "https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
-# databricks_profile = "DEFAULT"
+# databricks_profile = "hackathon"
 
+# ─── Account-level authentication (required) ────────────────────────
+# One-time setup:
+#   databricks auth login \
+#     --host https://accounts.cloud.databricks.com \
+#     --account-id <YOUR-ACCOUNT-UUID>
+# Use profile name `hackathon-account` (or override below).
+
+databricks_account_id      = "REPLACE-WITH-ACCOUNT-UUID"
+# databricks_account_profile = "hackathon-account"
+
+# ─── Workspace ID ────────────────────────────────────────────────────
+# Numeric ID, visible in the account console under Workspaces.
+
+workspace_id = "REPLACE-WITH-WORKSPACE-ID"
+
+# ─── Optional overrides ──────────────────────────────────────────────
 # project_tag  = "housing-assistant"
 # environment  = "dev"
 # catalog_name = "housing"

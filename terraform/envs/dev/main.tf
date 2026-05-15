@@ -3,14 +3,20 @@ locals {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Identity. The jobs service principal owns pipelines and ingestion.
-# The Databricks App gets its own auto-created service principal, which is
-# granted Lakebase access through the app resource binding.
+# Identity. Jobs SP at workspace level. Admin group at account level
+# (UC requires account-level principals), plus the assignment that
+# makes the group visible in this workspace.
 # ─────────────────────────────────────────────────────────────────────
 module "identity" {
-  source      = "../../modules/identity"
-  project_tag = var.project_tag
-  environment = var.environment
+  source       = "../../modules/identity"
+  project_tag  = var.project_tag
+  environment  = var.environment
+  workspace_id = var.workspace_id
+
+  providers = {
+    databricks         = databricks
+    databricks.account = databricks.account
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -100,7 +106,8 @@ module "lakebase_migration" {
 # stays a pure resource factory and the wiring is visible at the top level.
 # ─────────────────────────────────────────────────────────────────────
 
-# Warehouse: jobs SP and app SP can both use it.
+# Warehouse: jobs SP, app SP, and the admin group can all use it.
+# Admins get CAN_MANAGE so they can pause it and grant access.
 resource "databricks_permissions" "warehouse" {
   sql_endpoint_id = module.compute.warehouse_id
 
@@ -113,9 +120,14 @@ resource "databricks_permissions" "warehouse" {
     service_principal_name = module.app.app_service_principal_client_id
     permission_level       = "CAN_USE"
   }
+
+  access_control {
+    group_name       = module.identity.admins_group_display_name
+    permission_level = "CAN_MANAGE"
+  }
 }
 
-# Catalog usage: both SPs need to traverse the catalog.
+# Catalog usage: the SPs and the admin group all need to traverse the catalog.
 resource "databricks_grant" "catalog_usage_jobs" {
   catalog    = module.catalog.catalog_name
   principal  = module.identity.jobs_application_id
@@ -125,6 +137,12 @@ resource "databricks_grant" "catalog_usage_jobs" {
 resource "databricks_grant" "catalog_usage_app" {
   catalog    = module.catalog.catalog_name
   principal  = module.app.app_service_principal_client_id
+  privileges = ["USE_CATALOG"]
+}
+
+resource "databricks_grant" "catalog_usage_admins" {
+  catalog    = module.catalog.catalog_name
+  principal  = module.identity.admins_group_display_name
   privileges = ["USE_CATALOG"]
 }
 
@@ -142,4 +160,25 @@ resource "databricks_grant" "app_state_rw" {
   schema     = module.catalog.schema_names["app"]
   principal  = module.app.app_service_principal_client_id
   privileges = ["USE_SCHEMA", "SELECT", "MODIFY", "CREATE_TABLE"]
+}
+
+# Admin group: full data access on every schema. Members get this by being
+# added to the group in the account console (not Terraform).
+locals {
+  admin_schema_privileges = [
+    "USE_SCHEMA",
+    "SELECT",
+    "MODIFY",
+    "CREATE_TABLE",
+    "CREATE_VOLUME",
+    "READ_VOLUME",
+    "WRITE_VOLUME",
+  ]
+}
+
+resource "databricks_grant" "admins_schemas" {
+  for_each   = module.catalog.schema_names
+  schema     = each.value
+  principal  = module.identity.admins_group_display_name
+  privileges = local.admin_schema_privileges
 }
