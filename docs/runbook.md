@@ -12,8 +12,9 @@ You will need:
 - **Local toolchain:**
   - `terraform` ≥ 1.7
   - `databricks` CLI ≥ 0.230
-  - Python 3.11
+  - Python 3.11+ (3.12 is fine for dbt and CI)
   - `uv` for Python env management (recommended) or `venv` + `pip`
+  - **dbt** with the **Databricks** adapter when working on silver/gold SQL (`pip install -r requirements-dbt.txt` from the repo root)
   - `pre-commit` for hooks
   - Node 20 + pnpm (only if you're working on the React frontend)
 - **GitHub access** to `github.com/victorlou/housing-assistant`. Branch protection is enabled on `main`; you'll work on feature branches and merge via PR.
@@ -77,9 +78,37 @@ databricks pipelines get-update <update-id>
 
 Conventions:
 
-- One pipeline per source; one "marts" pipeline that fans in from sources to gold.
+- One pipeline per source for **ingest and bronze** (see `pipelines/README.md`). **Silver and gold** live in `dbt/`.
 - Prefer SQL over Python where possible.
-- Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
+- Ingest and DLT bundles write **bronze** (and may own other pipeline-internal assets). They must not compete with dbt for **silver** or **gold** tables.
+- Never write directly to `housing.app.*` from pipelines or dbt unless explicitly designing app-layer ETL.
+
+## Working on dbt (silver and gold)
+
+The dbt project lives in `dbt/`. It targets Unity Catalog via `dbt-databricks` and reads bronze only through `source()` definitions.
+
+```bash
+pip install -r requirements-dbt.txt
+cp dbt/profiles.yml.example ~/.dbt/profiles.yml   # merge with your existing profiles if needed
+# set DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, optional DBT_UC_CATALOG / DBT_UC_SCHEMA
+
+cd dbt
+dbt debug
+dbt run --select stg_linz__addresses+
+dbt test --select stg_linz__addresses+
+```
+
+Conventions:
+
+- Confirm bronze table names in the workspace match `dbt/models/sources.yml` (DLT naming can differ).
+- Override catalog for non-`housing` dev workspaces: `dbt run --vars '{"uc_catalog": "workspace"}'`.
+- See `dbt/README.md` for project layout and the bronze column contract for the LINZ slice.
+
+### CI and optional `dbt compile`
+
+GitHub Actions runs **`dbt deps`** and **`dbt parse`** on every PR and push to `main` using a stub Databricks profile (no network auth to a real warehouse). **Fork PRs stay green** because no repository secrets are required for that job.
+
+To validate SQL against a live SQL warehouse in CI, add repository secrets **`DATABRICKS_HOST`**, **`DATABRICKS_HTTP_PATH`**, and **`DATABRICKS_TOKEN`**, then either run `dbt compile` in a protected workflow manually or extend `.github/workflows/ci.yml` with a second job (same-repo PRs only) that writes a profile from those secrets and runs `dbt compile`. Use a small warehouse and a dedicated compile schema (for example `housing.dbt_ci_compile`).
 
 ## Working on the agent
 

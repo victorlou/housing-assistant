@@ -62,3 +62,40 @@ jobs:
         with:
           globs: "**/*.md"
         continue-on-error: true # advisory only for now
+
+  dbt:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r requirements-dbt.txt
+      - name: Write stub profiles for parse-only CI
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          housing_assistant:
+            target: ci
+            outputs:
+              ci:
+                type: databricks
+                host: https://dbc-ci-placeholder.cloud.databricks.com
+                http_path: /sql/1.0/warehouses/0000000000000000
+                token: dapi-ci-placeholder-not-used-for-parse-only
+                catalog: housing
+                schema: dbt_ci
+                threads: 1
+          EOF
+      - name: dbt deps
+        working-directory: dbt
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          dbt deps --profiles-dir ~/.dbt --target ci
+      - name: dbt parse
+        working-directory: dbt
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          dbt parse --profiles-dir ~/.dbt --target ci

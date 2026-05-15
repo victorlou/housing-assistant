@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: stg_linz__addresses
+    description: Thin cleanup of LINZ address features from bronze.
+    columns:
+      - name: address_id
+        description: LINZ address identifier (natural key).
+      - name: change_id
+        description: LINZ change sequence for deduplication ordering.
+
+  - name: linz_addresses
+    description: Conformed NZ addresses with dedupe and optional H3 at resolution 8.
+    columns:
+      - name: address_id
+        data_tests:
+          - not_null
+          - unique
+      - name: h3_8
+        description: H3 cell index at resolution 8 when coordinates are valid inside NZ bbox.
+
+  - name: dim_address
+    description: Gold dimension stub for Genie / semantic layer handoff.
+
+exposures:
+  - name: genie_dim_address
+    label: Genie — address dimension
+    type: dashboard
+    maturity: low
+    owner:
+      name: Housing Assistant maintainers
+    url: https://github.com/victorlou/housing-assistant/blob/main/docs/architecture.md
+    description: >
+      Thin gold address dimension derived from LINZ-backed silver.
+      Refine contracts before wiring the Genie semantic model.
+    depends_on:
+      - ref('dim_address')

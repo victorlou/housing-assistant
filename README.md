@@ -15,7 +15,7 @@ The consumer view is the hook; the planner view is the heart of the value propos
 
 The system has four layers.
 
-The **lakehouse** sits over open NZ data, modelled bronze to silver to gold with Lakeflow Declarative Pipelines. Sources include MBIE Tenancy Bond rents, Stats NZ income and census, REINZ House Price Index, Police crime statistics, Education Counts school data, LINZ parcels, regional GTFS transit feeds, and NIWA / EQC hazard layers. Unity Catalog governs everything.
+The **lakehouse** sits over open NZ data, modelled bronze to silver to gold: **bronze** from ingest jobs and Lakeflow Declarative Pipelines (DLT), **silver and gold** from **dbt** in `dbt/`. Sources include MBIE Tenancy Bond rents, Stats NZ income and census, REINZ House Price Index, Police crime statistics, Education Counts school data, LINZ parcels, regional GTFS transit feeds, and NIWA / EQC hazard layers. Unity Catalog governs everything.
 
 A **Genie Space** sits on the gold catalog with a curated semantic model (synonyms, joins, business glossary). Users and the agent alike can ask questions like *"show me suburbs nationally with median rent under $700/week and income deciles in the bottom 40%"* and get a clean answer.
 
@@ -34,7 +34,7 @@ Everything is Databricks-native, deployed via Terraform.
 | Cloud | AWS, `us-west-2` |
 | Workspace | Databricks Premium, serverless-only metastore |
 | Storage / Governance | Unity Catalog, managed volumes |
-| Pipelines | Lakeflow Declarative Pipelines (DLT) |
+| Pipelines | Lakeflow DLT (bronze) + dbt (silver / gold) |
 | Compute | Serverless SQL Warehouse |
 | Semantic / Q&A | Databricks Genie |
 | Agents | AgentBricks / Mosaic AI Agent Framework |
@@ -57,7 +57,8 @@ housing-assistant/
 ├── terraform/                   ← all infra-as-code
 │   ├── envs/dev/
 │   └── modules/
-├── pipelines/                   ← Lakeflow Declarative Pipelines (bronze→silver→gold)
+├── pipelines/                   ← ingest + DLT bundles (bronze)
+├── dbt/                         ← dbt project (silver + gold)
 ├── agents/                      ← agent definitions, tools, evaluation
 ├── app/                         ← Databricks App (frontend + backend)
 ├── dashboards/                  ← AI/BI dashboard exports

@@ -34,10 +34,11 @@ flowchart TB
       Si["silver<br>cleaned + conformed"]
       G["gold<br>semantic marts"]
       Ap["app<br>Lakebase mirror"]
-      B --> Si --> G
     end
 
-    Sources -- "Lakeflow Declarative Pipelines" --> B
+    Sources -- "Ingest jobs + DLT into bronze" --> B
+    B -- "dbt reads bronze as sources" --> Si
+    Si -- "dbt materialises marts" --> G
 
     G --> Genie["Genie Space<br>semantic + glossary"]
     LB[("Lakebase<br>Postgres OLTP")] --> Ap
@@ -63,9 +64,9 @@ flowchart TB
 
 **Bronze.** One volume per source (`housing.bronze.<source>_files`), keyed by a load timestamp. We never edit bronze. Sources land as their native format (CSV, JSON, GTFS zips, GeoTIFF where applicable). A Lakeflow pipeline parses each source into a typed `housing.bronze.<source>` table.
 
-**Silver.** Cleaned, deduplicated, geocoded. Place names normalised to a canonical `(suburb, territorial_authority, region)` key. Geometries stored as H3 cells at resolution 8 for fast spatial joins. We chose H3 over PostGIS-style polygons because it makes nearest-neighbour and isochrone joins SQL-friendly and cheap on Databricks.
+**Silver.** Cleaned, deduplicated, geocoded. **dbt** materialises silver tables in `housing.silver` from bronze `source()` models. Place names are normalised to a canonical `(suburb, territorial_authority, region)` key over time. Geometries use H3 cells at resolution 8 for fast spatial joins. We chose H3 over PostGIS-style polygons because it makes nearest-neighbour and isochrone joins SQL-friendly and cheap on Databricks.
 
-**Gold.** Semantic marts that the Genie semantic layer reads from. Naming follows the project convention: dimension-style tables use the entity name; aggregated tables follow `<entity>__<time_grain>__<breakdowns>`. Initial set:
+**Gold.** Semantic marts that the Genie semantic layer reads from, materialised by **dbt** into `housing.gold`. Naming follows the project convention: dimension-style tables use the entity name; aggregated tables follow `<entity>__<time_grain>__<breakdowns>`. Initial set:
 
 - `suburb`. Canonical suburb dimension with H3 cells, parent TA and region, demographic snapshot.
 - `school`. School dimension with EQI, roll, year levels, location.
@@ -76,7 +77,7 @@ flowchart TB
 - `crime__month__area_unit`. Crime counts per category per area unit.
 - `house_price__month__territorial_authority`. Stats NZ HPI by TA and dwelling type.
 
-**Pipelines.** All transformations are Lakeflow Declarative Pipelines. We prefer SQL over Python where the transformation is expressible in SQL. Each source has a dedicated pipeline. A top-level "marts" pipeline depends on them and refreshes the gold tables.
+**Transformations (hybrid).** **Bronze** is produced by scheduled ingest jobs and Lakeflow Declarative Pipelines (DLT) where defined: raw landings and typed bronze tables stay in pipeline bundles. **Silver and gold** are implemented in-repo with **dbt** (`dbt/`): models declare `source()` references to `housing.bronze.*` and materialise to `housing.silver.*` and `housing.gold.*` only. dbt must not write to bronze. A future Databricks Job (or bundle task) can run `dbt run` on a schedule after bronze refreshes; orchestration is separate from the modelling layer. Optional Lakeflow-only paths remain possible for edge cases, but the default contract is bronze writers in pipelines and silver/gold writers in dbt.
 
 ## Layer 2. Genie and the semantic layer
 

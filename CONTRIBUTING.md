@@ -49,3 +49,4 @@ A change is done when:
 - Tests (if any) pass.
 - At least one teammate has run it locally.
 - Any new infra resource is tagged `project = "housing-assistant"`.
+- New **dbt** models that define keys or business rules include **schema tests** (for example `not_null`, `unique`, or a singular test) in `dbt/models/` or `dbt/tests/`.

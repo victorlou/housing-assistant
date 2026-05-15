@@ -1,0 +1,23 @@
+# Copy to ~/.dbt/profiles.yml or set DBT_PROFILES_DIR to a directory containing this file.
+# Never commit tokens. Use env vars or `databricks auth` token flow.
+#
+# Required env vars for the dev target (example names — align with your secrets store):
+#   export DATABRICKS_HOST="https://dbc-xxxx.cloud.databricks.com"
+#   export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/xxxxxxxxxxxxxxxx"
+#   export DATABRICKS_TOKEN="dapi...."
+#   export DBT_UC_CATALOG="housing"   # use "workspace" or another catalog in some dev setups
+#   export DBT_UC_SCHEMA="dbt_<your_user>"  # unused for silver/gold when +schema is set; kept for target default
+
+housing_assistant:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      catalog: "{{ env_var('DBT_UC_CATALOG', 'housing') }}"
+      schema: "{{ env_var('DBT_UC_SCHEMA', 'dbt_dev') }}"
+      threads: 4
+      connect_timeout: 30
+      connect_retries: 2

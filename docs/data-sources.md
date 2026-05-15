@@ -56,8 +56,8 @@ Every source follows the same pattern:
 
 1. **Land** raw files into the `housing.bronze.<source>_files` volume. Filename convention: `{source}_{YYYYMMDD}.{ext}`.
 2. **Parse** in a Lakeflow pipeline into a typed `housing.bronze.<source>` table. No business logic at this stage. Only typing and basic structure.
-3. **Conform** in the silver layer. Normalise place names to the canonical key, geocode where needed, deduplicate, validate.
-4. **Materialise** into the relevant gold table(s).
+3. **Conform** in the **silver** layer using **dbt** models (staging and intermediate) that read bronze via `source()`.
+4. **Materialise** into the relevant **gold** table(s) in the same dbt project (marts).
 
 For sources updated on a fixed cadence, ingestion is a scheduled job. For census-style snapshots, ingestion is one-shot and we just rerun on schema change.
 

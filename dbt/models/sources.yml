@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Bronze tables and volumes are written only by ingest jobs and DLT.
+      dbt reads these via source(); relation names must match Unity Catalog
+      (confirm in workspace after DLT deploy — pipeline naming can differ).
+    database: "{{ var('uc_catalog', 'housing') }}"
+    schema: bronze
+    tables:
+      - name: linz_nz_addresses_raw
+        description: Raw LINZ NZ Addresses landing from DLT (if present).
+      - name: linz_nz_addresses_features
+        description: >
+          Typed / feature-ready LINZ address rows produced by bronze DLT.
+          Primary input for the first dbt vertical slice.

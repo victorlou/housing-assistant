@@ -1,0 +1,32 @@
+name: housing_assistant
+version: 1.0.0
+config-version: 2
+
+profile: housing_assistant
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets:
+  - target
+  - dbt_packages
+
+vars:
+  uc_catalog: housing
+
+models:
+  housing_assistant:
+    +catalog: "{{ var('uc_catalog', 'housing') }}"
+    staging:
+      +materialized: view
+      +schema: silver
+    marts:
+      silver:
+        +materialized: table
+        +schema: silver
+      gold:
+        +materialized: table
+        +schema: gold
