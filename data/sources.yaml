@@ -2,7 +2,19 @@
 # See docs/data-sources.md for human-readable descriptions and rationale.
 # Ingestion pipelines parse this file to know what to fetch.
 
-sources: []
+sources:
+  - name: linz_nz_addresses
+    publisher: Toitū Te Whenua LINZ
+    licence: CC-BY-4.0
+    url: https://data.linz.govt.nz/
+    auth: api-key
+    cadence: continuous
+    ingestion_pipeline: pipelines/linz_nz_addresses
+    target_tables:
+      - housing.bronze.linz_nz_addresses_features
+    tier: 2
+    notes: |
+      NZ Addresses (layer-105689) via LDS WFS; scheduled fetch to bronze volume + DLT in pipelines/linz_nz_addresses.
 # Sources will be added as they are wired up. Schema:
 #
 #   - name: tenancy_bonds

@@ -59,4 +59,4 @@ LIMIT 10;
 LIST '/Volumes/housing/bronze/addresses_files/linz_nz_addresses/';
 ```
 
-See also [`.devnotes/linz-lds-apis.md`](../../.devnotes/linz-lds-apis.md).
+API reference: [LINZ Data Service](https://data.linz.govt.nz/).

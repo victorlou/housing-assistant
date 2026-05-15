@@ -134,7 +134,7 @@ def iter_wfs_pages(
         for attempt in range(max_retries):
             try:
                 resp = sess.get(url, timeout=timeout)
-                if resp.status_code in (502, 503, 504) and attempt < max_retries - 1:
+                if resp.status_code in (429, 502, 503, 504) and attempt < max_retries - 1:
                     time.sleep(backoff * (attempt + 1))
                     continue
                 resp.raise_for_status()

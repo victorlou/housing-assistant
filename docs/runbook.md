@@ -112,6 +112,12 @@ Conventions:
 - Prefer SQL over Python where possible.
 - Every pipeline writes only under the UC catalog from Terraform (`catalog_name`, default `housing`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
 
+## LINZ NZ Addresses (WFS)
+
+1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (notebook `secret_scope` / `secret_key` widgets) or environment variable `LINZ_API_KEY`.
+2. Deploy and run the bundle in `pipelines/linz_nz_addresses/` (ingest job `linz_nz_addresses_ingest` plus DLT). See `pipelines/linz_nz_addresses/README.md`.
+3. Landings are written under `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (same `housing` catalog convention as GTFS).
+
 ## Working on the agent
 
 The agent lives in `agents/`. Each tool is a single Python function with a typed signature; the agent definition wires them together via the Mosaic AI Agent Framework.

@@ -92,7 +92,10 @@ dist/
 *~
 .DS_Store
 Thumbs.db
-.devnotes
+
+# Local dev notes (directory and all nested files)
+.devnotes/
+.devnotes/**
 
 # ─────────────────────────────────────────────────────────────────────
 #  Secrets, never commit
