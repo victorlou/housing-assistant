@@ -3,9 +3,9 @@ version: 2
 sources:
   - name: bronze
     description: >
-      Bronze tables and volumes are written only by ingest jobs and DLT.
-      dbt reads these via source(); relation names must match Unity Catalog
-      (confirm in workspace after DLT deploy — pipeline naming can differ).
+      Unity Catalog bronze tables written by ingest jobs and DLT only.
+      dbt reads them here; physical bronze is not materialised by dbt models
+      in this project (see bronze/*.sql — ephemeral cleanup over sources).
     database: "{{ var('uc_catalog', 'housing') }}"
     schema: bronze
     tables:
@@ -14,4 +14,4 @@ sources:
       - name: linz_nz_addresses_features
         description: >
           Typed / feature-ready LINZ address rows produced by bronze DLT.
-          Primary input for the first dbt vertical slice.
+          Primary input for the LINZ medallion slice.

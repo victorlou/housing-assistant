@@ -1,6 +1,10 @@
-# dbt — silver and gold
+# dbt — medallion (bronze, silver, gold)
 
-This project materialises **silver** and **gold** models in Unity Catalog. **Bronze** is read-only via `source()`; ingest jobs and DLT own bronze writers.
+This project follows a **three-layer medallion** layout under `models/bronze/`, `models/silver/`, and `models/gold/`.
+
+- **Physical UC bronze** tables are still produced only by **ingest jobs and DLT**. dbt declares them as `source()` in `models/bronze/sources.yml`.
+- **`models/bronze/*.sql`** holds **ephemeral** models: typed cleanup over those sources. They do **not** create relations in `housing.bronze`, so there is no second writer to the bronze schema.
+- **`models/silver/`** and **`models/gold/`** materialise to Unity Catalog schemas **`silver`** and **`gold`** (see `macros/generate_schema_name.sql`).
 
 ## Prerequisites
 
@@ -12,14 +16,14 @@ This project materialises **silver** and **gold** models in Unity Catalog. **Bro
 
 1. Copy [`profiles.yml.example`](profiles.yml.example) to `~/.dbt/profiles.yml` (or merge the `housing_assistant` profile).
 2. Export `DATABRICKS_HOST`, `DATABRICKS_HTTP_PATH`, `DATABRICKS_TOKEN`, and optionally `DBT_UC_CATALOG` (default `housing`).
-3. Confirm bronze relation names in UC match [`models/sources.yml`](models/sources.yml). DLT output names can differ from `linz_nz_addresses_features`; update the YAML if needed.
+3. Confirm bronze relation names in UC match [`models/bronze/sources.yml`](models/bronze/sources.yml). DLT output names can differ from `linz_nz_addresses_features`; update the YAML if needed.
 4. From this directory:
 
 ```bash
 dbt deps    # no packages by default; safe to run
 dbt debug
-dbt run --select stg_linz__addresses+
-dbt test --select stg_linz__addresses+
+dbt run --select linz_nz_addresses+
+dbt test --select linz_nz_addresses+
 ```
 
 ## Catalog override
@@ -30,18 +34,20 @@ dbt run --vars '{"uc_catalog": "workspace"}'
 
 ## Layout
 
-- `models/staging/` — `stg_*` views in schema `silver`
-- `models/marts/silver/` — conformed tables in schema `silver`
-- `models/marts/gold/` — semantic stubs / dims in schema `gold`
-- `macros/generate_schema_name.sql` — keeps UC schema names exactly `silver` / `gold` (not `target_silver`)
+```
+models/
+├── bronze/     # ephemeral: source → cleanup (no UC bronze writes)
+├── silver/     # conformed tables in schema silver
+└── gold/       # marts / dims in schema gold
+```
 
 ## Bronze column contract
 
-Staging expects typed columns on `housing.bronze.linz_nz_addresses_features`, including at least:
+[`bronze/linz_nz_addresses.sql`](bronze/linz_nz_addresses.sql) expects columns on `housing.bronze.linz_nz_addresses_features`, including at least:
 
 `address_id`, `change_id`, `lifecycle_phase`, `full_address_ascii`, `suburb_locality_ascii`, `town_city_ascii`, `territorial_authority_ascii`, `latitude`, `longitude`
 
-If your bronze table uses different names, adjust `models/staging/linz/stg_linz__addresses.sql` accordingly.
+If your bronze table uses different names, adjust that file accordingly.
 
 ## Follow-up work (track as GitHub issues)
 

@@ -1,6 +1,6 @@
-with stg as (
+with brz as (
 
-  select * from {{ ref('stg_linz__addresses') }}
+  select * from {{ ref('linz_nz_addresses') }}
 
 ),
 
@@ -16,7 +16,7 @@ deduped as (
     territorial_authority_ascii,
     latitude,
     longitude
-  from stg
+  from brz
   where address_id is not null
   qualify row_number() over (
     partition by address_id

@@ -94,13 +94,13 @@ cp dbt/profiles.yml.example ~/.dbt/profiles.yml   # merge with your existing pro
 
 cd dbt
 dbt debug
-dbt run --select stg_linz__addresses+
-dbt test --select stg_linz__addresses+
+dbt run --select linz_nz_addresses+
+dbt test --select linz_nz_addresses+
 ```
 
 Conventions:
 
-- Confirm bronze table names in the workspace match `dbt/models/sources.yml` (DLT naming can differ).
+- Confirm bronze table names in the workspace match `dbt/models/bronze/sources.yml` (DLT naming can differ).
 - Override catalog for non-`housing` dev workspaces: `dbt run --vars '{"uc_catalog": "workspace"}'`.
 - See `dbt/README.md` for project layout and the bronze column contract for the LINZ slice.
 

@@ -20,13 +20,11 @@ vars:
 models:
   housing_assistant:
     +catalog: "{{ var('uc_catalog', 'housing') }}"
-    staging:
-      +materialized: view
+    bronze:
+      +materialized: ephemeral
+    silver:
+      +materialized: table
       +schema: silver
-    marts:
-      silver:
-        +materialized: table
-        +schema: silver
-      gold:
-        +materialized: table
-        +schema: gold
+    gold:
+      +materialized: table
+      +schema: gold

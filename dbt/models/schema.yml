@@ -1,8 +1,10 @@
 version: 2
 
 models:
-  - name: stg_linz__addresses
-    description: Thin cleanup of LINZ address features from bronze.
+  - name: linz_nz_addresses
+    description: >
+      Bronze-layer logic in dbt: cleanup and typing over the bronze source.
+      Materialised as ephemeral (no objects in UC bronze; ingest/DLT own those tables).
     columns:
       - name: address_id
         description: LINZ address identifier (natural key).
@@ -10,7 +12,7 @@ models:
         description: LINZ change sequence for deduplication ordering.
 
   - name: linz_addresses
-    description: Conformed NZ addresses with dedupe and optional H3 at resolution 8.
+    description: Conformed NZ addresses in silver with dedupe and optional H3 at resolution 8.
     columns:
       - name: address_id
         data_tests:
