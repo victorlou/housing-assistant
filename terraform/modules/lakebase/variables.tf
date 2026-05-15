@@ -40,3 +40,13 @@ variable "postgres_database_name" {
   }
 }
 
+variable "app_service_principal_client_id" {
+  description = "Application/client ID UUID of the Databricks App's auto-created service principal. Mapped to the Lakebase Postgres role that owns the app database."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.app_service_principal_client_id))
+    error_message = "app_service_principal_client_id must be a UUID application/client ID."
+  }
+}
+

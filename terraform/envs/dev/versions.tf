@@ -7,9 +7,9 @@ terraform {
       version = "~> 1.85"
     }
 
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.2"
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
     }
   }
 }

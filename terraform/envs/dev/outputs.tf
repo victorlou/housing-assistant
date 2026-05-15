@@ -28,9 +28,19 @@ output "lakebase_production_endpoint_name" {
   value       = module.lakebase.production_endpoint_name
 }
 
+output "lakebase_branch_name" {
+  description = "Postgres API name of the Lakebase production branch."
+  value       = module.lakebase.production_branch_name
+}
+
 output "lakebase_database_name" {
   description = "Postgres database name created for application state."
   value       = module.lakebase.database_name
+}
+
+output "lakebase_database_resource_name" {
+  description = "Full Lakebase API resource name for the application database."
+  value       = module.lakebase.database_resource_name
 }
 
 output "app_url" {
@@ -46,6 +56,11 @@ output "app_service_principal_client_id" {
 output "jobs_service_principal_application_id" {
   description = "Application ID of the jobs service principal."
   value       = module.identity.jobs_application_id
+}
+
+output "admins_group_display_name" {
+  description = "Account-level admin group. Add yourself and teammates to it in the account console (User management → Groups) to inherit full data access."
+  value       = module.identity.admins_group_display_name
 }
 
 output "secret_scope_name" {

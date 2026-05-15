@@ -3,14 +3,20 @@ locals {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Identity. The jobs service principal owns pipelines and ingestion.
-# The Databricks App gets its own auto-created service principal, which is
-# granted Lakebase access through the app resource binding.
+# Identity. Jobs SP at workspace level. Admin group at account level
+# (UC requires account-level principals), plus the assignment that
+# makes the group visible in this workspace.
 # ─────────────────────────────────────────────────────────────────────
 module "identity" {
-  source      = "../../modules/identity"
-  project_tag = var.project_tag
-  environment = var.environment
+  source       = "../../modules/identity"
+  project_tag  = var.project_tag
+  environment  = var.environment
+  workspace_id = var.workspace_id
+
+  providers = {
+    databricks         = databricks
+    databricks.account = databricks.account
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -43,15 +49,28 @@ module "compute" {
 # ─────────────────────────────────────────────────────────────────────
 # Lakebase. Managed Postgres for user state, on the Autoscaling platform.
 # Scale-to-zero is enabled as a one-time post-apply step (see runbook).
-# Only creates the Postgres project; role and database are created in
-# lakebase_migration after the app service principal is known.
+# Creates the Postgres project, app service-principal-backed role, and
+# application database. Schema migrations are managed by Drizzle ORM.
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase" {
-  source                 = "../../modules/lakebase"
-  project_id             = local.name_prefix
-  display_name           = "Housing Assistant ${title(var.environment)}"
-  database_id            = "${local.name_prefix}-db"
-  postgres_database_name = "${replace(local.name_prefix, "-", "_")}_db"
+  source                          = "../../modules/lakebase"
+  project_id                      = local.name_prefix
+  display_name                    = "Housing Assistant ${title(var.environment)}"
+  database_id                     = "${local.name_prefix}-db"
+  postgres_database_name          = "${replace(local.name_prefix, "-", "_")}_db"
+  app_service_principal_client_id = module.app.app_service_principal_client_id
+}
+
+# Preserve Terraform state addresses when merging the old lakebase_migration
+# module resources into the lakebase module.
+moved {
+  from = module.lakebase_migration.databricks_postgres_role.app
+  to   = module.lakebase.databricks_postgres_role.app
+}
+
+moved {
+  from = module.lakebase_migration.databricks_postgres_database.main
+  to   = module.lakebase.databricks_postgres_database.main
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -60,29 +79,13 @@ module "lakebase" {
 # CAN_CONNECT_AND_CREATE on the Lakebase Autoscaling database.
 # ─────────────────────────────────────────────────────────────────────
 module "app" {
-  source                 = "../../modules/app"
-  project_tag            = var.project_tag
-  app_name               = local.name_prefix
-  warehouse_id           = module.compute.warehouse_id
-  lakebase_branch_name   = module.lakebase.production_branch_name
-  lakebase_database_name = module.lakebase.database_resource_name
+  source                          = "../../modules/app"
+  project_tag                     = var.project_tag
+  app_name                        = local.name_prefix
+  warehouse_id                    = module.compute.warehouse_id
+  lakebase_branch_name            = module.lakebase.production_branch_name
+  lakebase_database_resource_name = module.lakebase.database_resource_name
 
-  depends_on = [module.compute, module.lakebase]
-}
-
-# ─────────────────────────────────────────────────────────────────────
-# Lakebase migration. Runs after both lakebase and app are ready:
-# creates the Postgres role + database for the app service principal,
-# then applies schema.sql.
-# ─────────────────────────────────────────────────────────────────────
-module "lakebase_migration" {
-  source                          = "../../modules/lakebase_migration"
-  production_branch_name          = module.lakebase.production_branch_name
-  postgres_database_name          = module.lakebase.database_name
-  database_id                     = "${local.name_prefix}-db"
-  app_service_principal_client_id = module.app.app_service_principal_client_id
-
-  depends_on = [module.lakebase, module.app]
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -90,7 +93,8 @@ module "lakebase_migration" {
 # stays a pure resource factory and the wiring is visible at the top level.
 # ─────────────────────────────────────────────────────────────────────
 
-# Warehouse: jobs SP and app SP can both use it.
+# Warehouse: jobs SP, app SP, and the admin group can all use it.
+# Admins get CAN_MANAGE so they can pause it and grant access.
 resource "databricks_permissions" "warehouse" {
   sql_endpoint_id = module.compute.warehouse_id
 
@@ -103,9 +107,14 @@ resource "databricks_permissions" "warehouse" {
     service_principal_name = module.app.app_service_principal_client_id
     permission_level       = "CAN_USE"
   }
+
+  access_control {
+    group_name       = module.identity.admins_group_display_name
+    permission_level = "CAN_MANAGE"
+  }
 }
 
-# Catalog usage: both SPs need to traverse the catalog.
+# Catalog usage: the SPs and the admin group all need to traverse the catalog.
 resource "databricks_grant" "catalog_usage_jobs" {
   catalog    = module.catalog.catalog_name
   principal  = module.identity.jobs_application_id
@@ -115,6 +124,12 @@ resource "databricks_grant" "catalog_usage_jobs" {
 resource "databricks_grant" "catalog_usage_app" {
   catalog    = module.catalog.catalog_name
   principal  = module.app.app_service_principal_client_id
+  privileges = ["USE_CATALOG"]
+}
+
+resource "databricks_grant" "catalog_usage_admins" {
+  catalog    = module.catalog.catalog_name
+  principal  = module.identity.admins_group_display_name
   privileges = ["USE_CATALOG"]
 }
 
@@ -132,4 +147,25 @@ resource "databricks_grant" "app_state_rw" {
   schema     = module.catalog.schema_names["app"]
   principal  = module.app.app_service_principal_client_id
   privileges = ["USE_SCHEMA", "SELECT", "MODIFY", "CREATE_TABLE"]
+}
+
+# Admin group: full data access on every schema. Members get this by being
+# added to the group in the account console (not Terraform).
+locals {
+  admin_schema_privileges = [
+    "USE_SCHEMA",
+    "SELECT",
+    "MODIFY",
+    "CREATE_TABLE",
+    "CREATE_VOLUME",
+    "READ_VOLUME",
+    "WRITE_VOLUME",
+  ]
+}
+
+resource "databricks_grant" "admins_schemas" {
+  for_each   = module.catalog.schema_names
+  schema     = each.value
+  principal  = module.identity.admins_group_display_name
+  privileges = local.admin_schema_privileges
 }

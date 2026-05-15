@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 // Housing domain tables — public schema (NOT ai_chatbot schema)
-// DDL source of truth migrated from terraform/modules/lakebase_migration/sql/schema.sql
+// DDL source of truth is Drizzle ORM; Terraform only provisions Lakebase infrastructure.
 
 export const housingUser = pgTable('users', {
   user_id: text('user_id').primaryKey().notNull(),

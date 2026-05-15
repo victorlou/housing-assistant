@@ -24,7 +24,6 @@ output "database_name" {
 }
 
 output "database_resource_name" {
-  description = "Full Lakebase API resource name for the application database. Computed from the project branch and database ID so the app can bind to it without depending on database creation."
+  description = "Full Lakebase API resource name for the application database, e.g. projects/<project>/branches/production/databases/<database_id>."
   value       = local.database_resource_name
 }
-
