@@ -1,0 +1,17 @@
+[project]
+name = "housing-assistant"
+version = "0"
+requires-python = ">=3.11"
+description = "Workspace meta-package for tooling (ruff); app and pipeline deps live alongside their code."
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Databricks notebooks receive `spark` and `dbutils` from the runtime; they are not imported.
+[tool.ruff.lint.per-file-ignores]
+"pipelines/**/notebooks/**/*.py" = ["F821"]
+
+[tool.ruff.format]
+quote-style = "double"
