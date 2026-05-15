@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Optional, Sequence, TypedDict
 
 import mlflow
-from databricks.sdk import WorkspaceClient
 from databricks_langchain import ChatDatabricks
 from fastapi import HTTPException
 from langchain.agents import create_agent
@@ -21,6 +20,7 @@ from mlflow.types.responses import (
 from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
+from agent_server.tools.compute_isochrone import compute_isochrone
 from agent_server.utils import (
     _get_or_create_thread_id,
     get_user_workspace_client,
@@ -38,7 +38,6 @@ from agent_server.utils_memory import (
 logger = logging.getLogger(__name__)
 mlflow.langchain.autolog()
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
-sp_workspace_client = WorkspaceClient()
 
 LLM_ENDPOINT_NAME = "databricks-gpt-5-2"
 LAKEBASE_CONFIG = init_lakebase_config()
@@ -58,10 +57,9 @@ class StatefulAgentState(TypedDict, total=False):
 
 async def init_agent(
     store: BaseStore,
-    workspace_client: Optional[WorkspaceClient] = None,
     checkpointer: Optional[Any] = None,
 ):
-    tools = [get_current_time] + memory_tools()
+    tools = [get_current_time, compute_isochrone] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     # mcp_client = init_mcp_client(workspace_client or sp_workspace_client)
     # try:
@@ -119,9 +117,7 @@ async def stream_handler(
         async with lakebase_context(LAKEBASE_CONFIG) as (checkpointer, store):
             config["configurable"]["store"] = store
 
-            # By default, uses service principal credentials.
-            # For on-behalf-of user authentication, pass get_user_workspace_client() to init_agent.
-            agent = await init_agent(store=store, checkpointer=checkpointer)
+            agent = await init_agent(store=store, checkpointer=checkpointer)  # SP client used inside tools
 
             # process_agent_astream_events - works on agent.astream - which emits events and then our below function handles emission on their end
             async for event in process_agent_astream_events(
