@@ -1,4 +1,4 @@
-# LINZ LDS WFS — ${LINZ_API_KEY} is expanded from the environment (same pattern as Spine config repos).
+# LINZ LDS WFS — ${LINZ_API_KEY} is expanded from the environment for local CLI runs only.
 source:
   name: linz_nz_addresses
 wfs:

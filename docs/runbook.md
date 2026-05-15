@@ -83,10 +83,10 @@ Conventions:
 
 ## LINZ NZ Addresses (WFS landings)
 
-1. Set `LINZ_API_KEY` in `.env` (see `.env.example`). Edit `config/sources/linz_nz_addresses.yml` only for non-secret fields (for example `wfs.type_names`).
-2. `uv run python -m ingestion.linz_wfs --output ./out` (default config: `config/sources/linz_nz_addresses.yml`).
-3. `databricks fs cp` the JSONL into the path from `terraform output linz_nz_addresses_files_path`.
-4. Deploy the DLT bundle under `pipelines/linz_nz_addresses/` (`databricks bundle deploy --target dev`).
+1. Store the LINZ API key for the scheduled job: Databricks secret scope (recommended) or `LINZ_API_KEY` on the job/cluster. Optional local runs: set `LINZ_API_KEY` in `.env` (see `.env.example`).
+2. Deploy the LINZ bundle (`pipelines/linz_nz_addresses/`): `databricks bundle deploy --target dev`. This deploys the **ingest job** (`linz_nz_addresses_ingest`) and the **DLT** pipeline.
+3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/<catalog>/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (catalog from Terraform `uc_catalog_name`, default `workspace`).
+4. For ad-hoc local fetch only: `uv run python -m ingestion.linz_wfs --output ./out` then `databricks fs cp` into the same volume prefix if you are not using the job.
 
 Details: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [`.devnotes/linz-lds-apis.md`](../.devnotes/linz-lds-apis.md).
 

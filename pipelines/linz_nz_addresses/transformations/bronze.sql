@@ -1,16 +1,17 @@
 -- Bronze: LINZ NZ Addresses from landed JSONL (one GeoJSON Feature per line).
 --
--- Landing stays JSONL on the UC volume (cheap uploads from ingestion.linz_wfs). DLT still
--- materialises every streaming table below as managed Delta under this pipeline catalog.
+-- JSONL is written by the `linz_nz_addresses_ingest` Databricks job (see `notebooks/fetch.py`).
+-- DLT materialises every streaming table below as managed Delta under this pipeline catalog.
 --
--- Default catalog is `workspace` (Terraform default). If uc_catalog_name is different, replace
--- the path segment below to match `terraform output linz_nz_addresses_files_path`.
+-- Landings: `addresses_files` volume (Terraform `bronze_volumes`) under
+-- `linz_nz_addresses/YYYY-MM-DD/linz_nz_addresses.jsonl` from the ingest job.
+-- If uc_catalog_name is not `workspace`, replace the catalog segment below.
 
 CREATE OR REFRESH STREAMING TABLE linz_nz_addresses_raw
-COMMENT "Raw LINZ NZ address features landed as JSONL (WFS via config-driven fetch)."
+COMMENT "Raw LINZ NZ address features landed as JSONL (WFS via scheduled fetch job)."
 AS SELECT *
 FROM read_files(
-  '/Volumes/workspace/bronze/linz_nz_addresses/*.jsonl',
+  '/Volumes/workspace/bronze/addresses_files/linz_nz_addresses/**/*.jsonl',
   format => 'json'
 );
 

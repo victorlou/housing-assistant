@@ -5,15 +5,72 @@ variables:
   catalog:
     description: Unity Catalog name (must match Terraform uc_catalog_name).
     default: workspace
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  notification_email:
+    description: Email to alert on job failure.
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
 
 targets:
   dev:
     default: true
     mode: development
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
     variables:
       catalog: workspace
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      notification_email: victor.lourenco@zuru.com
 
 resources:
+  jobs:
+    linz_nz_addresses_ingest:
+      name: linz_nz_addresses_ingest
+      description: |
+        Scheduled fetch of LINZ NZ Addresses WFS to bronze (JSONL on volume).
+        Owned by the housing-assistant project. See ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: linz_nz_addresses
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      schedule:
+        quartz_cron_expression: "0 0 4 ? * MON"
+        timezone_id: Pacific/Auckland
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: fetch
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              catalog: ${var.catalog}
+              retention_days: "90"
+              secret_scope: ""
+              secret_key: "linz_api_key"
+              wfs_version: "2.0.0"
+              type_names: "layer-105689"
+              output_format: "application/json"
+              srs_name: "EPSG:4326"
+              page_size: "2000"
+              request_timeout_seconds: "120"
+              max_retries: "5"
+              retry_backoff_seconds: "3.0"
+
   pipelines:
     linz_nz_addresses:
       name: housing_assistant_linz_nz_addresses
