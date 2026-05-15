@@ -12,8 +12,6 @@
 
 # COMMAND ----------
 
-from __future__ import annotations
-
 import os
 import shutil
 import sys
@@ -33,25 +31,6 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-import __main__ as _databricks_main
-
-dbutils = getattr(_databricks_main, "dbutils", None)
-spark = getattr(_databricks_main, "spark", None)
-if dbutils is None or spark is None:
-    try:
-        from databricks.sdk.runtime import dbutils as _dbu
-        from databricks.sdk.runtime import spark as _spk
-    except ImportError as exc:
-        raise RuntimeError(
-            "dbutils/spark not on __main__ and databricks-sdk.runtime unavailable; "
-            "run this notebook on Databricks."
-        ) from exc
-    dbutils = _dbu
-    spark = _spk
-
-# COMMAND ----------
-# Resolve sibling module (bundle deploys `pipelines/linz_nz_addresses/` as a folder).
-
 _bundle_root = Path(__file__).resolve().parent.parent
 if str(_bundle_root) not in sys.path:
     sys.path.insert(0, str(_bundle_root))
@@ -65,41 +44,38 @@ from linz_fetch_wfs import fetch_to_jsonl_hashed
 # COMMAND ----------
 
 SOURCE_NAME = "linz_nz_addresses"
-INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
+BRONZE_VOLUME = "/Volumes/housing/bronze/addresses_files"
 SOURCE_SUBDIR = "linz_nz_addresses"
 OUTPUT_FILENAME = "linz_nz_addresses.jsonl"
+INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 
-dbutils.widgets.text("catalog", "housing", "UC catalog (must match Terraform catalog_name)")
-dbutils.widgets.text("retention_days", "90", "Retention (days) for date-stamped landings")
-dbutils.widgets.text("secret_scope", "", "Secret scope for LINZ API key (optional if env set)")
+# WFS defaults (same as `config/sources/linz_nz_addresses.yml`; change in code if LINZ updates the layer).
+WFS_VERSION = "2.0.0"
+WFS_TYPE_NAMES = "layer-105689"
+WFS_OUTPUT_FORMAT = "application/json"
+WFS_SRS_NAME = "EPSG:4326"
+WFS_PAGE_SIZE = 2000
+WFS_REQUEST_TIMEOUT_SECONDS = 120.0
+WFS_MAX_RETRIES = 5
+WFS_RETRY_BACKOFF_SECONDS = 3.0
+
+# Job parameters (overridable via DAB base_parameters or in the workspace UI), same idea as GTFS widgets.
+dbutils.widgets.text("retention_days", "90", "Retention (days)")
+dbutils.widgets.text(
+    "secret_scope", "", "Secret scope for LINZ API key (optional if env LINZ_API_KEY)"
+)
 dbutils.widgets.text("secret_key", "linz_api_key", "Secret key name")
-dbutils.widgets.text("wfs_version", "2.0.0", "WFS VERSION")
-dbutils.widgets.text("type_names", "layer-105689", "WFS TYPENAMES")
-dbutils.widgets.text("output_format", "application/json", "OUTPUTFORMAT")
-dbutils.widgets.text("srs_name", "EPSG:4326", "SRSNAME (empty to omit)")
-dbutils.widgets.text("page_size", "2000", "COUNT / page size")
-dbutils.widgets.text("request_timeout_seconds", "120", "HTTP timeout (s)")
-dbutils.widgets.text("max_retries", "5", "Retries per page")
-dbutils.widgets.text("retry_backoff_seconds", "3.0", "Backoff base (s)")
 
-catalog = dbutils.widgets.get("catalog")
 retention_days = int(dbutils.widgets.get("retention_days"))
 secret_scope = (dbutils.widgets.get("secret_scope") or "").strip()
 secret_key = (dbutils.widgets.get("secret_key") or "linz_api_key").strip()
-wfs_version = dbutils.widgets.get("wfs_version")
-type_names = dbutils.widgets.get("type_names")
-output_format = dbutils.widgets.get("output_format")
-srs_name = (dbutils.widgets.get("srs_name") or "").strip()
-page_size = int(dbutils.widgets.get("page_size"))
-request_timeout_seconds = float(dbutils.widgets.get("request_timeout_seconds"))
-max_retries = int(dbutils.widgets.get("max_retries"))
-retry_backoff_seconds = float(dbutils.widgets.get("retry_backoff_seconds"))
-
-BRONZE_VOLUME = f"/Volumes/{catalog}/bronze/addresses_files"
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Ensure the run-log table exists
+# MAGIC
+# MAGIC Idempotent. The `bronze` schema and write grant for the jobs SP are both
+# MAGIC provisioned by Terraform; we just make sure the table is here.
 
 # COMMAND ----------
 
@@ -143,6 +119,13 @@ INGEST_RUNS_SCHEMA = StructType(
 
 
 def ensure_columns(table_name: str, schema: StructType) -> None:
+    """
+    Add any columns from `schema` that aren't already on `table_name`.
+
+    Idempotent. Lets us evolve the table schema in code without a separate
+    migration step. CREATE TABLE IF NOT EXISTS handles brand-new tables; this
+    handles tables that pre-date the latest schema version.
+    """
     existing = {f.name for f in spark.table(table_name).schema.fields}
     for field in schema.fields:
         if field.name in existing:
@@ -156,6 +139,7 @@ ensure_columns(INGEST_RUNS_TABLE, INGEST_RUNS_SCHEMA)
 
 
 def log_run(run_id: str, status: str, **fields) -> None:
+    """Append a row to the ingest_runs table."""
     row = (
         run_id,
         SOURCE_NAME,
@@ -176,6 +160,7 @@ def log_run(run_id: str, status: str, **fields) -> None:
 
 
 def last_successful_content_hash() -> str | None:
+    """Return the content_hash from the most recent successful run, or None."""
     result = spark.sql(
         f"""
         SELECT content_hash
@@ -212,18 +197,18 @@ def resolve_linz_api_key() -> str:
 def build_cfg(api_key: str) -> dict:
     wfs = {
         "base_url": f"https://data.linz.govt.nz/services;key={api_key}/wfs",
-        "version": wfs_version,
-        "type_names": type_names,
-        "output_format": output_format,
-        "page_size": page_size,
+        "version": WFS_VERSION,
+        "type_names": WFS_TYPE_NAMES,
+        "output_format": WFS_OUTPUT_FORMAT,
+        "page_size": WFS_PAGE_SIZE,
         "max_pages": None,
-        "request_timeout_seconds": request_timeout_seconds,
-        "max_retries": max_retries,
-        "retry_backoff_seconds": retry_backoff_seconds,
+        "request_timeout_seconds": WFS_REQUEST_TIMEOUT_SECONDS,
+        "max_retries": WFS_MAX_RETRIES,
+        "retry_backoff_seconds": WFS_RETRY_BACKOFF_SECONDS,
         "extra_query_params": {},
     }
-    if srs_name:
-        wfs["srs_name"] = srs_name
+    if WFS_SRS_NAME:
+        wfs["srs_name"] = WFS_SRS_NAME
     return {"wfs": wfs, "landing": {"file_stem": "linz_nz_addresses"}}
 
 
@@ -232,6 +217,7 @@ def redacted_source_url(cfg: dict) -> str:
 
 
 def cleanup_old_landings(retention_days: int) -> int:
+    """Delete date-stamped subfolders older than retention_days. Returns count removed."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     base = Path(f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}")
     if not base.exists():
@@ -266,14 +252,14 @@ run_id = str(uuid.uuid4())
 run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 started_at = datetime.now(timezone.utc)
 t0 = time.time()
-source_url_log = f"wfs://{type_names}@{catalog}"
+source_url_log = f"wfs://{WFS_TYPE_NAMES}@housing"
 
 try:
     api_key = resolve_linz_api_key()
     cfg = build_cfg(api_key)
     redacted_url = redacted_source_url(cfg)
 
-    print(f"[{run_id}] Fetching WFS type={type_names} page_size={page_size}")
+    print(f"[{run_id}] Fetching WFS type={WFS_TYPE_NAMES} page_size={WFS_PAGE_SIZE}")
     tmp_path = Path(tempfile.gettempdir()) / f"linz_nz_addresses_{run_id}.jsonl"
     try:
         feature_count, content_hash = fetch_to_jsonl_hashed(cfg, output_path=tmp_path)

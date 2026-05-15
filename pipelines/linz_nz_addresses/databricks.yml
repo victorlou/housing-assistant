@@ -3,7 +3,7 @@ bundle:
 
 variables:
   catalog:
-    description: Unity Catalog name (must match Terraform catalog_name).
+    description: Unity Catalog name for the DLT pipeline (must match Terraform catalog_name).
     default: housing
   jobs_service_principal_id:
     description: Application ID of the sp-housing-jobs service principal.
@@ -14,23 +14,12 @@ permissions:
   - level: CAN_MANAGE
     service_principal_name: ${var.jobs_service_principal_id}
 
-targets:
-  dev:
-    default: true
-    workspace:
-      host: https://dbc-c3095737-46ec.cloud.databricks.com
-      profile: hackathon
-    variables:
-      catalog: housing
-      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
-      notification_email: victor.lourenco@zuru.com
-
 resources:
   jobs:
     linz_nz_addresses_ingest:
       name: linz_nz_addresses_ingest
       description: |
-        Scheduled fetch of LINZ NZ Addresses WFS to bronze (JSONL on volume).
+        Scheduled fetch of LINZ NZ Addresses WFS to bronze.
         Owned by the housing-assistant project. See ./README.md.
 
       tags:
@@ -57,18 +46,9 @@ resources:
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              catalog: ${var.catalog}
               retention_days: "90"
               secret_scope: ""
               secret_key: "linz_api_key"
-              wfs_version: "2.0.0"
-              type_names: "layer-105689"
-              output_format: "application/json"
-              srs_name: "EPSG:4326"
-              page_size: "2000"
-              request_timeout_seconds: "120"
-              max_retries: "5"
-              retry_backoff_seconds: "3.0"
 
   pipelines:
     linz_nz_addresses:
@@ -81,3 +61,14 @@ resources:
       libraries:
         - file:
             path: ./transformations/bronze.sql
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      catalog: housing
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      notification_email: victor.lourenco@zuru.com
