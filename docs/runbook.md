@@ -85,7 +85,7 @@ Conventions:
 
 1. Store the LINZ API key for the scheduled job: Databricks secret scope (recommended) or `LINZ_API_KEY` on the job/cluster. Optional local runs: set `LINZ_API_KEY` in `.env` (see `.env.example`).
 2. Deploy the LINZ bundle (`pipelines/linz_nz_addresses/`): `databricks bundle deploy --target dev`. This deploys the **ingest job** (`linz_nz_addresses_ingest`) and the **DLT** pipeline.
-3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/<catalog>/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (catalog from Terraform `uc_catalog_name`, default `workspace`).
+3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/<catalog>/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (catalog from Terraform `catalog_name`, default `housing`, matching the GTFS ingest job).
 4. For ad-hoc local fetch only: `uv run python -m ingestion.linz_wfs --output ./out` then `databricks fs cp` into the same volume prefix if you are not using the job.
 
 Details: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [`.devnotes/linz-lds-apis.md`](../.devnotes/linz-lds-apis.md).
@@ -110,7 +110,7 @@ Conventions:
 
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
-- Every pipeline writes only under the UC catalog from Terraform (`uc_catalog_name`, default `workspace`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
+- Every pipeline writes only under the UC catalog from Terraform (`catalog_name`, default `housing`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
 
 ## Working on the agent
 

@@ -5,13 +5,13 @@
 --
 -- Landings: `addresses_files` volume (Terraform `bronze_volumes`) under
 -- `linz_nz_addresses/YYYY-MM-DD/linz_nz_addresses.jsonl` from the ingest job.
--- If uc_catalog_name is not `workspace`, replace the catalog segment below.
+-- If catalog_name is not `housing`, replace the catalog segment below (must match the ingest job).
 
 CREATE OR REFRESH STREAMING TABLE linz_nz_addresses_raw
 COMMENT "Raw LINZ NZ address features landed as JSONL (WFS via scheduled fetch job)."
 AS SELECT *
 FROM read_files(
-  '/Volumes/workspace/bronze/addresses_files/linz_nz_addresses/**/*.jsonl',
+  '/Volumes/housing/bronze/addresses_files/linz_nz_addresses/**/*.jsonl',
   format => 'json'
 );
 

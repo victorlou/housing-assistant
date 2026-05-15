@@ -3,8 +3,8 @@ bundle:
 
 variables:
   catalog:
-    description: Unity Catalog name (must match Terraform uc_catalog_name).
-    default: workspace
+    description: Unity Catalog name (must match Terraform catalog_name).
+    default: housing
   jobs_service_principal_id:
     description: Application ID of the sp-housing-jobs service principal.
   notification_email:
@@ -17,12 +17,11 @@ permissions:
 targets:
   dev:
     default: true
-    mode: development
     workspace:
       host: https://dbc-c3095737-46ec.cloud.databricks.com
       profile: hackathon
     variables:
-      catalog: workspace
+      catalog: housing
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
       notification_email: victor.lourenco@zuru.com
 

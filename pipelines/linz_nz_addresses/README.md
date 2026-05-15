@@ -18,7 +18,7 @@ WFS parameters (`type_names`, `page_size`, etc.) are job `base_parameters` in `d
 
 The bundle still defines the DLT pipeline: Auto Loader reads `**/*.jsonl` under `addresses_files/linz_nz_addresses/` and materialises `linz_nz_addresses_raw` and `linz_nz_addresses_features` in the pipeline catalog.
 
-If your Terraform catalog is not `workspace`, update the volume path in `transformations/bronze.sql` to match `/Volumes/<your_catalog>/bronze/addresses_files/...`.
+If your Terraform `catalog_name` is not `housing`, set the ingest job `catalog` parameter and update the volume path in `transformations/bronze.sql` to match `/Volumes/<your_catalog>/bronze/addresses_files/...`.
 
 ## Local fetch (optional)
 
@@ -56,7 +56,7 @@ LIMIT 10;
 ```
 
 ```sql
-LIST '/Volumes/workspace/bronze/addresses_files/linz_nz_addresses/';
+LIST '/Volumes/housing/bronze/addresses_files/linz_nz_addresses/';
 ```
 
 See also [`.devnotes/linz-lds-apis.md`](../../.devnotes/linz-lds-apis.md).

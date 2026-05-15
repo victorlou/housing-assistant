@@ -69,7 +69,7 @@ INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 SOURCE_SUBDIR = "linz_nz_addresses"
 OUTPUT_FILENAME = "linz_nz_addresses.jsonl"
 
-dbutils.widgets.text("catalog", "workspace", "UC catalog (must match Terraform uc_catalog_name)")
+dbutils.widgets.text("catalog", "housing", "UC catalog (must match Terraform catalog_name)")
 dbutils.widgets.text("retention_days", "90", "Retention (days) for date-stamped landings")
 dbutils.widgets.text("secret_scope", "", "Secret scope for LINZ API key (optional if env set)")
 dbutils.widgets.text("secret_key", "linz_api_key", "Secret key name")
