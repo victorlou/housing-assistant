@@ -58,9 +58,7 @@ htmlcov/
 .tox/
 .nox/
 
-# uv
-uv.lock
-!uv.lock
+# uv (optional local cache)
 .uv/
 
 # ─────────────────────────────────────────────────────────────────────

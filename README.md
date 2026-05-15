@@ -65,8 +65,6 @@ housing-assistant/
 ├── data/                        ← canonical source registry (sources.yaml)
 ├── config/                      ← sources/*.yml (operator YAML; LINZ WFS)
 ├── ingestion/                   ← small fetch helpers (e.g. LINZ WFS → JSONL)
-├── docker/                      ← Dockerfile (dev + runtime targets)
-├── docker-compose.yml           ← local dev shell (bind-mounts repo)
 └── .github/                     ← CI workflows, PR template, CODEOWNERS
 ```
 
@@ -89,7 +87,7 @@ terraform plan
 terraform apply
 ```
 
-You will need Databricks credentials in the environment (for example `databricks auth login --profile <name>` plus `DATABRICKS_CONFIG_PROFILE=<name>` for Terraform) and AWS credentials with read access to the workspace when your task needs S3 or other AWS access. Optional Docker usage is in [`docs/runbook.md`](docs/runbook.md) and [`docker/README.md`](docker/README.md).
+You will need Databricks credentials in the environment (for example `databricks auth login --profile <name>` plus `DATABRICKS_CONFIG_PROFILE=<name>` for Terraform) and AWS credentials with read access to the workspace when your task needs S3 or other AWS access. Local Python setup is in [`docs/runbook.md`](docs/runbook.md).
 
 ## Further reading
 
