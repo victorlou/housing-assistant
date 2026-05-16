@@ -2,15 +2,16 @@ locals {
   schemas = ["bronze", "silver", "gold", "app"]
 
   # Volumes per source. The pipelines append more over time; this is the seed.
+  # Domain-organized, not provider-organized. Each volume holds raw landings
+  # for one functional area; pipelines distinguish sources within via folder
+  # structure + a `_source` column. Add a new volume here only when the new
+  # ingestion actually exists — we don't pre-provision speculative volumes.
   bronze_volumes = [
-    "tenancy_bonds_files",
-    "census_files",
-    "house_price_index_files",
-    "gtfs_files",
-    "crime_files",
-    "schools_files",
-    "addresses_files",
-    "hazards_files",
+    "gtfs_files",               # NZ transit feeds (AT, Metlink, BUSIT, Metroinfo)
+    "osm_files",                # OpenStreetMap PBF for the isochrone routing engine
+    "places_files",             # Stats NZ SA2 polygons (+ future census, LINZ addresses, school zones)
+    "prices_files",             # RBNZ HPI (NZ-aggregate price index time series)
+    "housing_indicators_files", # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
   ]
 }
 
@@ -56,20 +57,26 @@ resource "databricks_volume" "bronze" {
 
 # Jobs SP grants on the lakehouse layers. The app SP grants are wired at the env
 # level so this module stays a pure resource factory.
+#
+# DLT in Unity Catalog distinguishes two flavours of `dlt.table`:
+#   - streaming reads        → STREAMING TABLE   (needs CREATE_TABLE)
+#   - batch reads (read.table) → MATERIALIZED VIEW (needs CREATE_MATERIALIZED_VIEW)
+# Silver/gold are MV-heavy. Bronze is streaming-only today but we grant the MV
+# privilege there too for futureproofing — costs nothing.
 resource "databricks_grant" "jobs_bronze" {
   schema     = databricks_schema.schemas["bronze"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "READ_VOLUME", "WRITE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "READ_VOLUME", "WRITE_VOLUME", "SELECT"]
 }
 
 resource "databricks_grant" "jobs_silver" {
   schema     = databricks_schema.schemas["silver"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "SELECT"]
 }
 
 resource "databricks_grant" "jobs_gold" {
   schema     = databricks_schema.schemas["gold"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "SELECT"]
 }
