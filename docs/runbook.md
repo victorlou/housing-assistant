@@ -70,6 +70,23 @@ Conventions:
 
 Further reading: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [LINZ LDS API notes](linz-lds-apis.md).
 
+## NZ Police recorded crime (manual CSV)
+
+No scheduled fetch yet. Land a Tableau **Full Data** export, then run DLT.
+
+1. Upload CSV to the bronze volume (date-stamped folder):
+
+   ```powershell
+   $date = Get-Date -Format "yyyy-MM-dd"
+   databricks fs cp "$env:USERPROFILE\Downloads\ANZSOC_Full Data_data.csv" `
+     "dbfs:/Volumes/housing/bronze/crime_files/police_recorded_crime/$date/anzsoc_victimisations.csv" `
+     --overwrite -p hackathon
+   ```
+
+2. Deploy and run: `cd pipelines/police_recorded_crime`, `databricks bundle deploy --target dev -p hackathon`, then `databricks bundle run police_recorded_crime_ingest --target dev -p hackathon` (bronze → silver → gold).
+
+Further reading: [`.devnotes/police/databricks-plan.md`](../.devnotes/police/databricks-plan.md) and [`pipelines/police_recorded_crime/README.md`](../pipelines/police_recorded_crime/README.md).
+
 ## Working on pipelines
 
 Pipelines are Lakeflow Declarative Pipelines defined in `pipelines/`. Each source has its own subfolder.

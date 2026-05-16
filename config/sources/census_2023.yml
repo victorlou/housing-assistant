@@ -1,0 +1,21 @@
+# Stats NZ 2023 Census — ArcGIS FeatureServer (no API key).
+source:
+  name: census_2023
+arcgis:
+  host: https://services2.arcgis.com/vKb0s8tBIA3bdocZ/arcgis/rest/services
+  page_size: 2000
+  request_timeout_seconds: 180
+  max_retries: 5
+  retry_backoff_seconds: 3.0
+  layers:
+    households_sa2:
+      service: 2023_Census_totals_by_topic_for_households_by_SA2
+      layer_id: 1
+      file_stem: census_2023_households_sa2
+    dwellings_sa2:
+      service: 2023_Census_totals_by_topic_for_dwellings_by_SA2
+      layer_id: 1
+      file_stem: census_2023_dwellings_sa2
+landing:
+  bronze_volume: /Volumes/housing/bronze/census_files
+  retention_days: 365

@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-exclude = [".git", ".terraform", ".ruff_cache", ".venv", ".uv"]
+exclude = [".git", ".terraform", ".ruff_cache", ".venv", ".uv", ".databricks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

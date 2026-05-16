@@ -3,6 +3,21 @@
 # Ingestion pipelines parse this file to know what to fetch.
 
 sources:
+  - name: census_2023
+    publisher: Stats NZ
+    licence: CC-BY-4.0
+    url: https://2023census-statsnz.hub.arcgis.com/
+    auth: none
+    cadence: per_census
+    ingestion_pipeline: pipelines/census_2023
+    target_tables:
+      - housing.gold.income__year__suburb
+      - housing.gold.suburb
+    tier: 1
+    notes: |
+      2023 Census totals by topic for households and dwellings by SA2 via ArcGIS
+      FeatureServer; bronze JSONL → DLT bronze/silver/gold. NZDep is a separate ingest.
+
   - name: linz_nz_addresses
     publisher: Toitū Te Whenua LINZ
     licence: CC-BY-4.0
@@ -15,6 +30,22 @@ sources:
     tier: 2
     notes: |
       NZ Addresses (layer-105689) via LDS WFS; scheduled fetch to bronze volume + DLT in pipelines/linz_nz_addresses.
+
+  - name: police_recorded_crime
+    publisher: New Zealand Police
+    licence: CC-BY-4.0
+    url: https://www.police.govt.nz/about-us/publications-statistics/data-and-statistics/policedatanz
+    auth: none
+    cadence: monthly
+    ingestion_pipeline: pipelines/police_recorded_crime
+    target_tables:
+      - housing.bronze.police_anzsoc_victimisations
+      - housing.silver.crime_victimisation_monthly
+      - housing.gold.crime__month__anzsoc_subdivision
+    tier: 1
+    notes: |
+      Manual Tableau CSV to crime_files; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
+      Current export is ANZSOC-by-month (no geography). crime__month__area_unit needs Time and Place export.
 # Sources will be added as they are wired up. Schema:
 #
 #   - name: tenancy_bonds

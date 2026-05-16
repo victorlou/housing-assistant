@@ -7,15 +7,16 @@
 -- `linz_nz_addresses/YYYY-MM-DD/linz_nz_addresses.jsonl` from the ingest job.
 -- If catalog_name is not `housing`, replace the catalog segment below (must match the ingest job).
 
-CREATE OR REFRESH STREAMING TABLE linz_nz_addresses_raw
+CREATE STREAMING TABLE linz_nz_addresses_raw
 COMMENT "Raw LINZ NZ address features landed as JSONL (WFS via scheduled fetch job)."
 AS SELECT *
-FROM read_files(
-  '/Volumes/housing/bronze/addresses_files/linz_nz_addresses/**/*.jsonl',
-  format => 'json'
+FROM cloud_files(
+  '/Volumes/housing/bronze/addresses_files/linz_nz_addresses',
+  'json',
+  map('cloudFiles.inferColumnTypes', 'true')
 );
 
--- Explicit downstream Delta table: flattened GeoJSON for stable typed reads (still bronze / no business rules).
+-- Flattened bronze streaming table from raw (requires cloud_files upstream for STREAM()).
 -- Uses TBLPROPERTIES (not TABLE PROPERTIES) per streaming-table DDL; alias + backticks avoid `properties` token clashes.
 CREATE STREAMING TABLE linz_nz_addresses_features
 COMMENT 'LINZ NZ addresses as typed bronze Delta (flattened GeoJSON Feature properties).'

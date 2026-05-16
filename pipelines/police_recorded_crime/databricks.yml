@@ -1,0 +1,127 @@
+bundle:
+  name: police_recorded_crime
+
+variables:
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
+  notification_email:
+    description: Email to alert on job failure.
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
+
+resources:
+  pipelines:
+    police_bronze:
+      name: police_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: police_recorded_crime
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    police_silver:
+      name: police_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: police_recorded_crime
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    police_gold:
+      name: police_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: police_recorded_crime
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
+  jobs:
+    police_recorded_crime_ingest:
+      name: police_recorded_crime_ingest
+      description: |
+        Bronze → silver → gold for NZ Police ANZSOC victimisation CSV landings.
+        Upload CSV to crime_files volume before running (no automated fetch yet).
+        See ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: police_recorded_crime
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      # Monthly cadence when Tableau export is uploaded manually; paused by default.
+      schedule:
+        quartz_cron_expression: "0 0 6 1 * ?"
+        timezone_id: Pacific/Auckland
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.police_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.police_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.police_gold.id}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
+      notification_email: isabelbody@zuru.com
