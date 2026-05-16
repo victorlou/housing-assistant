@@ -29,9 +29,18 @@ SILVER = "housing.silver"
     name="transit_stop",
     comment=(
         "Public-transit stops with H3 cell at resolution 8. "
-        "One row per (feed_source, stop_id)."
+        "One row per (feed_source, stop_id). Genie-ready."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
+    schema="""
+        feed_source STRING COMMENT 'Source GTFS feed identifier, e.g. "auckland_transport".',
+        stop_id STRING COMMENT 'Stop identifier as published by the operator. Unique within (feed_source).',
+        stop_name STRING COMMENT 'Public-facing stop name, e.g. "Britomart Train Station".',
+        stop_code STRING COMMENT 'Short code shown to riders on signage and apps.',
+        stop_lat DOUBLE COMMENT 'Latitude in WGS84 decimal degrees.',
+        stop_lon DOUBLE COMMENT 'Longitude in WGS84 decimal degrees.',
+        h3_cell BIGINT COMMENT 'H3 spatial index cell at resolution 8 (~0.7 km² hexagons). Join key for spatial queries against suburbs and isochrones.'
+    """,
 )
 def transit_stop():
     return spark.read.table(f"{SILVER}.transit_stop").select(
@@ -52,9 +61,19 @@ def transit_stop():
     name="transit_route",
     comment=(
         "Transit routes with agency and route-type labels. "
-        "One row per (feed_source, route_id)."
+        "One row per (feed_source, route_id). Genie-ready."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
+    schema="""
+        feed_source STRING COMMENT 'Source GTFS feed identifier, e.g. "auckland_transport".',
+        route_id STRING COMMENT 'Route identifier as published. Unique within (feed_source).',
+        agency_id STRING COMMENT 'Operator agency identifier.',
+        agency_name STRING COMMENT 'Human-readable operator name, e.g. "AT Metro Bus", "Fullers360".',
+        route_short_name STRING COMMENT 'Short route name shown to riders, e.g. "74", "WEST".',
+        route_long_name STRING COMMENT 'Long route description, e.g. "Britomart - Glen Innes".',
+        route_type INT COMMENT 'GTFS route type code (0=tram, 1=subway, 2=rail, 3=bus, 4=ferry, 5=cable_tram, 6=aerial_lift, 7=funicular, 11=trolleybus, 12=monorail).',
+        route_type_label STRING COMMENT 'Human-readable route type derived from route_type ("bus", "rail", "ferry", ...).'
+    """,
 )
 def transit_route():
     return spark.read.table(f"{SILVER}.transit_route").select(
