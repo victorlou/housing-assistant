@@ -87,19 +87,42 @@ def transit_stop():
 # COMMAND ----------
 
 
+# GTFS route_type codes plus the Hierarchical Vehicle Type (HVT) extended
+# codes used by some agencies — notably Metlink, which derives from a
+# European (VDV) source. Without the HVT codes, ~half of Metlink's routes
+# fall through to 'unknown'.
+#
+# Standard codes: https://gtfs.org/schedule/reference/#routestxt
+# Extended HVT codes: https://developers.google.com/transit/gtfs/reference/extended-route-types
 _ROUTE_TYPE_LABEL = F.expr(
     """
-    CASE CAST(route_type AS INT)
-      WHEN 0 THEN 'tram'
-      WHEN 1 THEN 'subway'
-      WHEN 2 THEN 'rail'
-      WHEN 3 THEN 'bus'
-      WHEN 4 THEN 'ferry'
-      WHEN 5 THEN 'cable_tram'
-      WHEN 6 THEN 'aerial_lift'
-      WHEN 7 THEN 'funicular'
-      WHEN 11 THEN 'trolleybus'
-      WHEN 12 THEN 'monorail'
+    CASE
+      WHEN route_type IS NULL THEN 'unknown'
+      -- Standard GTFS codes
+      WHEN CAST(route_type AS INT) = 0 THEN 'tram'
+      WHEN CAST(route_type AS INT) = 1 THEN 'subway'
+      WHEN CAST(route_type AS INT) = 2 THEN 'rail'
+      WHEN CAST(route_type AS INT) = 3 THEN 'bus'
+      WHEN CAST(route_type AS INT) = 4 THEN 'ferry'
+      WHEN CAST(route_type AS INT) = 5 THEN 'cable_tram'
+      WHEN CAST(route_type AS INT) = 6 THEN 'aerial_lift'
+      WHEN CAST(route_type AS INT) = 7 THEN 'funicular'
+      WHEN CAST(route_type AS INT) = 11 THEN 'trolleybus'
+      WHEN CAST(route_type AS INT) = 12 THEN 'monorail'
+      -- Extended HVT codes
+      WHEN CAST(route_type AS INT) BETWEEN 100 AND 199 THEN 'rail'
+      WHEN CAST(route_type AS INT) BETWEEN 200 AND 299 THEN 'coach'
+      WHEN CAST(route_type AS INT) BETWEEN 400 AND 405 THEN 'subway'
+      WHEN CAST(route_type AS INT) BETWEEN 700 AND 799 THEN 'bus'
+      WHEN CAST(route_type AS INT) = 800 THEN 'trolleybus'
+      WHEN CAST(route_type AS INT) BETWEEN 900 AND 999 THEN 'tram'
+      WHEN CAST(route_type AS INT) BETWEEN 1000 AND 1099 THEN 'water_transport'
+      WHEN CAST(route_type AS INT) BETWEEN 1100 AND 1199 THEN 'air'
+      WHEN CAST(route_type AS INT) = 1200 THEN 'ferry'
+      WHEN CAST(route_type AS INT) BETWEEN 1300 AND 1399 THEN 'aerial_lift'
+      WHEN CAST(route_type AS INT) = 1400 THEN 'funicular'
+      WHEN CAST(route_type AS INT) BETWEEN 1500 AND 1599 THEN 'taxi'
+      WHEN CAST(route_type AS INT) BETWEEN 1700 AND 1799 THEN 'miscellaneous'
       ELSE 'unknown'
     END
     """

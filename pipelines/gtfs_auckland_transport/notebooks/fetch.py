@@ -195,20 +195,27 @@ if auth_secret_scope and auth_secret_key:
             f"`{auth_secret_scope}/{auth_secret_key}`"
         )
     except Exception as exc:
+        # Distinguish the common "secret not configured yet" case from
+        # actual errors so the run log stays readable.
+        err_str = str(exc)
+        if "Secret does not exist" in err_str:
+            short_notes = (
+                f"auth secret `{auth_secret_scope}/{auth_secret_key}` "
+                "not configured yet"
+            )
+        else:
+            short_notes = (
+                f"failed to read auth secret "
+                f"`{auth_secret_scope}/{auth_secret_key}`: {err_str[:200]}"
+            )
         log_run(
             run_id,
             "skipped",
             fetched_at=started_at,
             duration_seconds=time.time() - t0,
-            notes=(
-                f"auth secret `{auth_secret_scope}/{auth_secret_key}` not configured: "
-                f"{exc}"
-            ),
+            notes=short_notes,
         )
-        print(
-            f"[{run_id}] Skipped: auth secret "
-            f"`{auth_secret_scope}/{auth_secret_key}` not configured"
-        )
+        print(f"[{run_id}] Skipped: {short_notes}")
         dbutils.notebook.exit("auth secret not configured")
 
 # COMMAND ----------
@@ -260,8 +267,15 @@ def write_to_volume(zip_bytes: bytes, run_date: str) -> tuple[str, int, int]:
             target_dir = f"{BRONZE_VOLUME}/{file_name_stem}/{feed_source}"
             os.makedirs(target_dir, exist_ok=True)
             target_path = f"{target_dir}/{run_date}.txt"
-            with zf.open(info.filename) as src, open(target_path, "wb") as dst:
-                dst.write(src.read())
+            with zf.open(info.filename) as src:
+                content = src.read()
+            # Strip a leading UTF-8 BOM if present. Some feeds (e.g. BUSIT)
+            # publish stops.txt with one; without this, the first column ends
+            # up named "﻿stop_id" instead of "stop_id" and breaks downstream.
+            if content.startswith(b"\xef\xbb\xbf"):
+                content = content[3:]
+            with open(target_path, "wb") as dst:
+                dst.write(content)
             file_count += 1
             bytes_written += info.file_size
 

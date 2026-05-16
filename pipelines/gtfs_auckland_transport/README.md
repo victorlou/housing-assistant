@@ -1,8 +1,17 @@
-# gtfs_auckland_transport
+# gtfs
 
-Weekly fetch of New Zealand GTFS feeds — Auckland Transport, Metlink (Wellington), Metroinfo (Christchurch) — followed by bronze → silver → gold transformations.
+Weekly fetch of New Zealand GTFS feeds (Auckland Transport, Metlink/Wellington, BUSIT/Waikato, Metroinfo/Christchurch) followed by bronze → silver → gold transformations.
 
-> Folder name is historical: this started as Auckland-only and now covers multiple feeds. The bronze/silver/gold tables are feed-agnostic and distinguish rows via the `_feed_source` column.
+> The folder name (`pipelines/gtfs_auckland_transport/`) is historical: this started as Auckland-only and now covers four feeds. The bundle name (`gtfs_auckland_transport`) is kept so the deployed bundle root path stays stable. Workspace resources (job, pipelines) are renamed to drop the misleading suffix — see "Migration" below.
+
+## Migration from the Auckland-only setup
+
+Previous deploys created workspace resources with names like `gtfs_auckland_transport_ingest` and `gtfs_auckland_transport_bronze`. The current bundle renames them to `gtfs_ingest`, `gtfs_bronze`, `gtfs_silver`, `gtfs_gold`. On the next `databricks bundle deploy`, DAB will:
+
+1. Delete the old workspace resources (the four with `_auckland_transport_` in their names).
+2. Create the renamed resources.
+
+Old job run history and pipeline event history are lost in the rename. Existing data in `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` is unaffected because the table names are unchanged.
 
 ## What it does
 
@@ -22,11 +31,12 @@ The bundle defines one **job** with four sequential tasks, plus three **pipeline
 
 Currently configured feeds:
 
-| Feed | URL | Auth | Status |
-|---|---|---|---|
-| `auckland_transport` | `https://gtfs.at.govt.nz/gtfs.zip` | none | enabled |
-| `metlink` | `https://static.opendata.metlink.org.nz/v1/gtfs/full.zip` | none | enabled |
-| `metroinfo` | `https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip` | API key required | wired, gracefully skips until secret is set |
+| Feed | Region | URL | Auth | Status |
+|---|---|---|---|---|
+| `auckland_transport` | Auckland | `https://gtfs.at.govt.nz/gtfs.zip` | none | enabled |
+| `metlink` | Wellington | `https://static.opendata.metlink.org.nz/v1/gtfs/full.zip` | none | enabled |
+| `busit` | Waikato | `https://wrcscheduledata.blob.core.windows.net/wrcgtfs/busit-nz-public.zip` | none | enabled |
+| `metroinfo` | Christchurch | `https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip` | API key required | wired, gracefully skips until secret is set |
 
 ### Adding a Metroinfo (Christchurch) API key
 

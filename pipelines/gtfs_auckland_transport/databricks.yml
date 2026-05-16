@@ -30,12 +30,11 @@ permissions:
 
 resources:
   pipelines:
-    # ─── Bronze ────────────────────────────────────────────────────────
     # Pipelines are feed-agnostic. The bronze layer reads from per-file-type
     # directories that contain landings from every configured feed; the
     # `_feed_source` column distinguishes them downstream.
-    gtfs_auckland_transport_bronze:
-      name: gtfs_auckland_transport_bronze
+    gtfs_bronze:
+      name: gtfs_bronze
       catalog: housing
       schema: bronze
       serverless: true
@@ -49,9 +48,8 @@ resources:
         - notebook:
             path: ./notebooks/bronze.py
 
-    # ─── Silver ────────────────────────────────────────────────────────
-    gtfs_auckland_transport_silver:
-      name: gtfs_auckland_transport_silver
+    gtfs_silver:
+      name: gtfs_silver
       catalog: housing
       schema: silver
       serverless: true
@@ -65,9 +63,8 @@ resources:
         - notebook:
             path: ./notebooks/silver.py
 
-    # ─── Gold ──────────────────────────────────────────────────────────
-    gtfs_auckland_transport_gold:
-      name: gtfs_auckland_transport_gold
+    gtfs_gold:
+      name: gtfs_gold
       catalog: housing
       schema: gold
       serverless: true
@@ -82,12 +79,13 @@ resources:
             path: ./notebooks/gold.py
 
   jobs:
-    gtfs_auckland_transport_ingest:
-      name: gtfs_auckland_transport_ingest
+    gtfs_ingest:
+      name: gtfs_ingest
       description: |
         Weekly fetch of New Zealand GTFS feeds (Auckland Transport, Metlink,
-        Metroinfo), then run the bronze → silver → gold pipelines.
-        Owned by the housing-assistant project. See ./README.md.
+        BUSIT/Waikato, Metroinfo/Christchurch) followed by bronze → silver →
+        gold transformations. Owned by the housing-assistant project.
+        See ./README.md.
 
       tags:
         project: housing-assistant
@@ -128,6 +126,14 @@ resources:
               source_url: "https://static.opendata.metlink.org.nz/v1/gtfs/full.zip"
               retention_days: "90"
 
+        - task_key: fetch_busit
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: busit
+              source_url: "https://wrcscheduledata.blob.core.windows.net/wrcgtfs/busit-nz-public.zip"
+              retention_days: "90"
+
         # Metroinfo (Christchurch) needs an API key. Until the secret is
         # configured in `${var.metroinfo_secret_scope}/${var.metroinfo_secret_key}`,
         # this task logs `status='skipped'` in ingest_runs and exits cleanly.
@@ -149,22 +155,23 @@ resources:
           depends_on:
             - task_key: fetch_auckland_transport
             - task_key: fetch_metlink
+            - task_key: fetch_busit
             - task_key: fetch_metroinfo
           run_if: ALL_DONE
           pipeline_task:
-            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_bronze.id}
+            pipeline_id: ${resources.pipelines.gtfs_bronze.id}
 
         - task_key: transform_silver
           depends_on:
             - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_silver.id}
+            pipeline_id: ${resources.pipelines.gtfs_silver.id}
 
         - task_key: transform_gold
           depends_on:
             - task_key: transform_silver
           pipeline_task:
-            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_gold.id}
+            pipeline_id: ${resources.pipelines.gtfs_gold.id}
 
 targets:
   dev:
