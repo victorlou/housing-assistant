@@ -1,14 +1,17 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Auckland Transport GTFS fetch
+# MAGIC # GTFS fetch (multi-feed)
 # MAGIC
-# MAGIC Weekly job: downloads the AT GTFS zip, writes both the raw zip and the
-# MAGIC extracted `.txt` files to `housing.bronze.gtfs_files`, skips when the
-# MAGIC `feed_version` hasn't changed, cleans up landings older than the retention
-# MAGIC window, and logs every run to `housing.bronze.ingest_runs`.
+# MAGIC Weekly job task that downloads one GTFS zip per feed and lands it on the
+# MAGIC bronze volume in a file-type-first layout. One run of this notebook
+# MAGIC handles a single feed (auckland_transport, metlink, metroinfo, ...);
+# MAGIC the bundle invokes it once per feed in parallel.
 # MAGIC
-# MAGIC Runs as the `sp-housing-jobs` service principal. Triggered by the
-# MAGIC Databricks Asset Bundle in `../databricks.yml`.
+# MAGIC Optional auth: if `auth_secret_scope` and `auth_secret_key` are set,
+# MAGIC the notebook reads the secret and passes it as an HTTP header named
+# MAGIC `auth_header_name` (default `Ocp-Apim-Subscription-Key`). If the secret
+# MAGIC isn't configured yet, the run is logged as `skipped` and the task
+# MAGIC exits cleanly so downstream pipelines aren't blocked.
 
 # COMMAND ----------
 
@@ -38,28 +41,44 @@ from pyspark.sql.types import (
 
 # COMMAND ----------
 
-SOURCE_NAME = "gtfs_auckland_transport"
 BRONZE_VOLUME = "/Volumes/housing/bronze/gtfs_files"
-SOURCE_SUBDIR = "auckland_transport"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
+# Files are laid out as:
+#   /Volumes/housing/bronze/gtfs_files/_zip/<feed>/<date>.zip   (audit)
+#   /Volumes/housing/bronze/gtfs_files/<file_name>/<feed>/<date>.txt
+ZIP_SUBDIR = "_zip"
 
-# Job parameters (overridable via DAB base_parameters or in the workspace UI).
+# Job parameters. Defaults pointed at Auckland Transport so the notebook is
+# runnable interactively; the bundle's `base_parameters` override these per
+# feed task.
+dbutils.widgets.text("feed_source", "auckland_transport", "Feed source name")
 dbutils.widgets.text(
     "source_url",
     "https://gtfs.at.govt.nz/gtfs.zip",
     "GTFS source URL",
 )
 dbutils.widgets.text("retention_days", "90", "Retention (days)")
+dbutils.widgets.text("auth_secret_scope", "", "Auth secret scope (optional)")
+dbutils.widgets.text("auth_secret_key", "", "Auth secret key (optional)")
+dbutils.widgets.text(
+    "auth_header_name",
+    "Ocp-Apim-Subscription-Key",
+    "Auth HTTP header name",
+)
 
-source_url = dbutils.widgets.get("source_url")
+feed_source = dbutils.widgets.get("feed_source").strip()
+source_url = dbutils.widgets.get("source_url").strip()
 retention_days = int(dbutils.widgets.get("retention_days"))
+auth_secret_scope = dbutils.widgets.get("auth_secret_scope").strip()
+auth_secret_key = dbutils.widgets.get("auth_secret_key").strip()
+auth_header_name = dbutils.widgets.get("auth_header_name").strip()
+
+# `source` column in ingest_runs — namespaces the run log per feed family.
+SOURCE_NAME = f"gtfs_{feed_source}"
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Ensure the run-log table exists
-# MAGIC
-# MAGIC Idempotent. The `bronze` schema and write grant for the jobs SP are both
-# MAGIC provisioned by Terraform; we just make sure the table is here.
 
 # COMMAND ----------
 
@@ -83,10 +102,6 @@ spark.sql(
     """
 )
 
-# `content_hash` is the universal "did this change?" signal. Works for any
-# source (CSV, JSON, zip) because every source has bytes. `feed_version` is
-# kept for human inspection but isn't used for dedup, so non-GTFS sources can
-# leave it null without affecting the pattern.
 INGEST_RUNS_SCHEMA = StructType(
     [
         StructField("run_id", StringType(), True),
@@ -107,13 +122,6 @@ INGEST_RUNS_SCHEMA = StructType(
 
 
 def ensure_columns(table_name: str, schema: StructType) -> None:
-    """
-    Add any columns from `schema` that aren't already on `table_name`.
-
-    Idempotent. Lets us evolve the table schema in code without a separate
-    migration step. CREATE TABLE IF NOT EXISTS handles brand-new tables; this
-    handles tables that pre-date the latest schema version.
-    """
     existing = {f.name for f in spark.table(table_name).schema.fields}
     for field in schema.fields:
         if field.name in existing:
@@ -127,7 +135,6 @@ ensure_columns(INGEST_RUNS_TABLE, INGEST_RUNS_SCHEMA)
 
 
 def log_run(run_id: str, status: str, **fields) -> None:
-    """Append a row to the ingest_runs table."""
     row = (
         run_id,
         SOURCE_NAME,
@@ -144,15 +151,12 @@ def log_run(run_id: str, status: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    # mergeSchema lets the table pick up the new content_hash column on
-    # first write even if the table was created before this code shipped.
     df.write.mode("append").option("mergeSchema", "true").saveAsTable(
         INGEST_RUNS_TABLE
     )
 
 
 def last_successful_content_hash() -> str | None:
-    """Return the content_hash from the most recent successful run, or None."""
     result = spark.sql(
         f"""
         SELECT content_hash
@@ -169,20 +173,65 @@ def last_successful_content_hash() -> str | None:
 
 # COMMAND ----------
 # MAGIC %md
+# MAGIC ## Resolve auth (if required)
+# MAGIC
+# MAGIC If `auth_secret_scope` and `auth_secret_key` are set, read the secret
+# MAGIC and prepare an HTTP header. If the secret isn't configured (typical for
+# MAGIC feeds we don't have access to yet), log a `skipped` run and exit.
+
+# COMMAND ----------
+
+run_id = str(uuid.uuid4())
+started_at = datetime.now(timezone.utc)
+t0 = time.time()
+
+auth_headers: dict[str, str] | None = None
+if auth_secret_scope and auth_secret_key:
+    try:
+        token = dbutils.secrets.get(scope=auth_secret_scope, key=auth_secret_key)
+        auth_headers = {auth_header_name: token}
+        print(
+            f"[{run_id}] Using auth header `{auth_header_name}` from "
+            f"`{auth_secret_scope}/{auth_secret_key}`"
+        )
+    except Exception as exc:
+        # Distinguish the common "secret not configured yet" case from
+        # actual errors so the run log stays readable.
+        err_str = str(exc)
+        if "Secret does not exist" in err_str:
+            short_notes = (
+                f"auth secret `{auth_secret_scope}/{auth_secret_key}` "
+                "not configured yet"
+            )
+        else:
+            short_notes = (
+                f"failed to read auth secret "
+                f"`{auth_secret_scope}/{auth_secret_key}`: {err_str[:200]}"
+            )
+        log_run(
+            run_id,
+            "skipped",
+            fetched_at=started_at,
+            duration_seconds=time.time() - t0,
+            notes=short_notes,
+        )
+        print(f"[{run_id}] Skipped: {short_notes}")
+        dbutils.notebook.exit("auth secret not configured")
+
+# COMMAND ----------
+# MAGIC %md
 # MAGIC ## Helpers
 
 # COMMAND ----------
 
 
-def download(url: str) -> bytes:
-    """Download the file at `url` with a 5-minute timeout."""
-    response = requests.get(url, timeout=300)
+def download(url: str, headers: dict | None = None) -> bytes:
+    response = requests.get(url, timeout=300, headers=headers)
     response.raise_for_status()
     return response.content
 
 
 def read_feed_version(zip_bytes: bytes) -> str | None:
-    """Read `feed_version` from feed_info.txt inside the zip. None if absent."""
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         if "feed_info.txt" not in zf.namelist():
             return None
@@ -195,11 +244,15 @@ def read_feed_version(zip_bytes: bytes) -> str | None:
 
 
 def write_to_volume(zip_bytes: bytes, run_date: str) -> tuple[str, int, int]:
-    """Write the raw zip and extracted .txt files. Returns (target_dir, file_count, bytes_written)."""
-    target_dir = f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}/{run_date}"
-    os.makedirs(target_dir, exist_ok=True)
+    """
+    Write the raw zip and each extracted .txt under a file-type-first layout:
 
-    zip_path = f"{target_dir}/gtfs.zip"
+      /Volumes/housing/bronze/gtfs_files/_zip/<feed>/<date>.zip
+      /Volumes/housing/bronze/gtfs_files/<file_name>/<feed>/<date>.txt
+    """
+    zip_dir = f"{BRONZE_VOLUME}/{ZIP_SUBDIR}/{feed_source}"
+    os.makedirs(zip_dir, exist_ok=True)
+    zip_path = f"{zip_dir}/{run_date}.zip"
     with open(zip_path, "wb") as f:
         f.write(zip_bytes)
 
@@ -208,39 +261,55 @@ def write_to_volume(zip_bytes: bytes, run_date: str) -> tuple[str, int, int]:
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for info in zf.infolist():
-            zf.extract(info, target_dir)
+            if not info.filename.endswith(".txt"):
+                continue
+            file_name_stem = info.filename[: -len(".txt")]
+            target_dir = f"{BRONZE_VOLUME}/{file_name_stem}/{feed_source}"
+            os.makedirs(target_dir, exist_ok=True)
+            target_path = f"{target_dir}/{run_date}.txt"
+            with zf.open(info.filename) as src:
+                content = src.read()
+            # Strip a leading UTF-8 BOM if present. Some feeds (e.g. BUSIT)
+            # publish stops.txt with one; without this, the first column ends
+            # up named "﻿stop_id" instead of "stop_id" and breaks downstream.
+            if content.startswith(b"\xef\xbb\xbf"):
+                content = content[3:]
+            with open(target_path, "wb") as dst:
+                dst.write(content)
             file_count += 1
             bytes_written += info.file_size
 
-    return target_dir, file_count, bytes_written
+    return zip_path, file_count, bytes_written
 
 
 def cleanup_old_landings(retention_days: int) -> int:
-    """Delete date-stamped subfolders older than retention_days. Returns count removed."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    base = Path(f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}")
+    base = Path(BRONZE_VOLUME)
     if not base.exists():
         return 0
 
     removed = 0
-    for child in base.iterdir():
-        if not child.is_dir():
+    for type_dir in base.iterdir():
+        if not type_dir.is_dir():
             continue
-        try:
-            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
-            )
-        except ValueError:
-            # not a date-named folder, leave it alone
-            continue
-        if run_date < cutoff:
-            for path in sorted(child.rglob("*"), reverse=True):
-                if path.is_file():
-                    path.unlink()
-                elif path.is_dir():
-                    path.rmdir()
-            child.rmdir()
-            removed += 1
+        for feed_dir in type_dir.iterdir():
+            if not feed_dir.is_dir():
+                continue
+            if feed_dir.name != feed_source:
+                # Only clean this run's feed_source; other feeds clean themselves.
+                continue
+            for landing in feed_dir.iterdir():
+                if not landing.is_file():
+                    continue
+                try:
+                    run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
+                        tzinfo=timezone.utc
+                    )
+                except ValueError:
+                    continue
+                if run_date < cutoff:
+                    landing.unlink()
+                    removed += 1
     return removed
 
 
@@ -250,19 +319,16 @@ def cleanup_old_landings(retention_days: int) -> int:
 
 # COMMAND ----------
 
-run_id = str(uuid.uuid4())
 run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-started_at = datetime.now(timezone.utc)
-t0 = time.time()
 
 try:
-    print(f"[{run_id}] Downloading from {source_url}")
-    zip_bytes = download(source_url)
+    print(f"[{run_id}] Downloading {feed_source} from {source_url}")
+    zip_bytes = download(source_url, headers=auth_headers)
     content_hash = hashlib.sha256(zip_bytes).hexdigest()
     feed_version = read_feed_version(zip_bytes)
     print(
-        f"[{run_id}] bytes={len(zip_bytes):,} "
-        f"content_hash={content_hash[:12]}… feed_version={feed_version}"
+        f"[{run_id}] feed={feed_source} bytes={len(zip_bytes):,} "
+        f"hash={content_hash[:12]}… feed_version={feed_version}"
     )
 
     last_hash = last_successful_content_hash()
@@ -274,7 +340,7 @@ try:
             feed_version=feed_version,
             fetched_at=started_at,
             duration_seconds=time.time() - t0,
-            notes=f"content unchanged (hash matches last successful run)",
+            notes="content unchanged (hash matches last successful run)",
         )
         print(f"[{run_id}] Skipped: content_hash matches last run")
     else:
