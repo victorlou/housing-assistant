@@ -18,7 +18,7 @@ import os
 import time
 import uuid
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import requests
@@ -146,7 +146,9 @@ def log_run(run_id: str, status: str, **fields) -> None:
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
     # mergeSchema lets the table pick up the new content_hash column on
     # first write even if the table was created before this code shipped.
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
+        INGEST_RUNS_TABLE
+    )
 
 
 def last_successful_content_hash() -> str | None:
@@ -225,7 +227,9 @@ def cleanup_old_landings(retention_days: int) -> int:
         if not child.is_dir():
             continue
         try:
-            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
             # not a date-named folder, leave it alone
             continue
@@ -270,7 +274,7 @@ try:
             feed_version=feed_version,
             fetched_at=started_at,
             duration_seconds=time.time() - t0,
-            notes="content unchanged (hash matches last successful run)",
+            notes=f"content unchanged (hash matches last successful run)",
         )
         print(f"[{run_id}] Skipped: content_hash matches last run")
     else:

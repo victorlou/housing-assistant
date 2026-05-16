@@ -81,14 +81,14 @@ Conventions:
 - Never commit `terraform.tfvars` or `.terraform/` directories. Both are in `.gitignore`.
 - Remote state lives in an S3 bucket configured in `backend.tf`.
 
-## LINZ NZ Addresses (WFS landings)
+## LINZ NZ Addresses (WFS)
 
-1. Store the LINZ API key for the scheduled job: Databricks secret scope (recommended) or `LINZ_API_KEY` on the job/cluster. Optional local runs: set `LINZ_API_KEY` in `.env` (see `.env.example`).
+1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (`secret_scope` / `secret_key` notebook widgets, recommended) or `LINZ_API_KEY` on the job/cluster. For optional local CLI runs, set `LINZ_API_KEY` in `.env` (see `.env.example`).
 2. Deploy the LINZ bundle (`pipelines/linz_nz_addresses/`): `databricks bundle deploy --target dev`. This deploys the **ingest job** (`linz_nz_addresses_ingest`) and the **DLT** pipeline.
 3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (same `housing` catalog convention as the GTFS ingest job).
-4. For ad-hoc local fetch only: `uv run python -m ingestion.linz_wfs --output ./out` then `databricks fs cp` into the same volume prefix if you are not using the job.
+4. For ad-hoc local fetch only: `uv run python -m ingestion.linz_wfs --output ./out`, then `databricks fs cp` into the same volume prefix if you are not using the job.
 
-Details: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [`.devnotes/linz-lds-apis.md`](../.devnotes/linz-lds-apis.md).
+Further reading: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [LINZ LDS API notes](linz-lds-apis.md).
 
 ## Working on pipelines
 
@@ -111,12 +111,6 @@ Conventions:
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
 - Every pipeline writes only under the UC catalog from Terraform (`catalog_name`, default `housing`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
-
-## LINZ NZ Addresses (WFS)
-
-1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (notebook `secret_scope` / `secret_key` widgets) or environment variable `LINZ_API_KEY`.
-2. Deploy and run the bundle in `pipelines/linz_nz_addresses/` (ingest job `linz_nz_addresses_ingest` plus DLT). See `pipelines/linz_nz_addresses/README.md`.
-3. Landings are written under `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (same `housing` catalog convention as GTFS).
 
 ## Working on the agent
 
@@ -231,8 +225,6 @@ databricks postgres update-endpoint "$ENDPOINT" \
 The exact field name is in flux while the API is in Beta. If the call rejects `suspend_timeout_seconds`, run `databricks postgres get-endpoint "$ENDPOINT"` to see the current schema, then enable scale-to-zero through the UI as a fallback. Once enabled it persists across redeploys.
 
 While you're there, also set the autoscaling range. The default for projects created via the Database instance API is min 4 / max 8 CU; for dev, min 0.5 / max 2 CU is plenty.
-
-### Watch the cost dashboard
 
 ### Watch the cost dashboard
 
