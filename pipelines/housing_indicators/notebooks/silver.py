@@ -17,6 +17,29 @@ from pyspark.sql import functions as F
 
 BRONZE = "housing.bronze"
 
+# HUD ships TA names in a simplified ASCII form that differs from Stats NZ's
+# canonical NZGB spellings in eight places: hyphens dropped, macrons
+# stripped, an apostrophe stripped, a case quirk (MacKenzie), and a
+# suffix difference (Chatham Islands → Chatham Islands Territory). Normalise
+# HUD → Stats NZ here so housing.gold.suburb.territorial_authority joins
+# cleanly across the full 67-TA grid. Stats NZ is treated as canonical
+# because its names match the NZGB official register.
+#
+# Single quote inside "Hawke's" is escaped Spark-SQL-style ('').
+TA_NAME_FIXES_SQL = """
+    CASE area_name
+      WHEN 'Queenstown Lakes District'    THEN 'Queenstown-Lakes District'
+      WHEN 'Thames Coromandel District'   THEN 'Thames-Coromandel District'
+      WHEN 'Matamata Piako District'      THEN 'Matamata-Piako District'
+      WHEN 'Otorohanga District'          THEN 'Ōtorohanga District'
+      WHEN 'Opotiki District'             THEN 'Ōpōtiki District'
+      WHEN 'MacKenzie District'           THEN 'Mackenzie District'
+      WHEN 'Central Hawkes Bay District'  THEN 'Central Hawke''s Bay District'
+      WHEN 'Chatham Islands'              THEN 'Chatham Islands Territory'
+      ELSE area_name
+    END
+"""
+
 
 # COMMAND ----------
 
@@ -57,7 +80,7 @@ def housing_indicator():
         "to_date(cast(date AS STRING), 'yyyy-MM-dd') AS date",
         "cast(area_type AS STRING) AS area_type",
         "cast(area_id AS STRING) AS area_id",
-        "cast(area_name AS STRING) AS area_name",
+        f"({TA_NAME_FIXES_SQL}) AS area_name",
         "cast(theme AS STRING) AS theme",
         "cast(series AS STRING) AS series",
         "cast(ethnicity AS STRING) AS ethnicity",

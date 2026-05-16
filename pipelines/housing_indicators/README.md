@@ -201,9 +201,18 @@ WHERE u.region = 'Auckland Region'
 
 ## What's worth verifying on first run
 
-- **TA name alignment** with `gold.suburb.territorial_authority`. HUD uses "Auckland", "Christchurch City", "Carterton District" — Stats NZ should match exactly for the 67 TAs. If joins return zero rows for any TA, normalize names in `silver.py`.
+- **TA name alignment** with `gold.suburb.territorial_authority`. HUD ships TA names in a simplified ASCII form (no macrons, no hyphens, "Hawkes" not "Hawke's"). Silver normalises 8 known mismatches to Stats NZ's canonical NZGB names via the `TA_NAME_FIXES_SQL` CASE statement at the top of `silver.py` — Queenstown-Lakes, Thames-Coromandel, Matamata-Piako, Ōtorohanga, Ōpōtiki, Mackenzie (HUD ships "MacKenzie" with a capital K!), Central Hawke's Bay, Chatham Islands Territory. If HUD adds a new TA in a future release with another stylistic difference, add it to the CASE.
 - **Series names in pivot maps.** `gold.py`'s pivots reference series like `"Current Annual Median Sales Price"` and `"Deposit affordability index"` verbatim. If HUD renames a series in a future release, the pivot column lands null until updated.
 - **`value_type` consistency.** Silver casts `value` to DOUBLE assuming all values are numeric. HUD has been consistent so far; if a series ever ships as a string label, the cast fails — fix in silver.
+
+## Known coverage gaps in HUD source
+
+Even with TA-name normalisation applied, two areas have no HUD data and will return NULL on joins:
+
+- **Area Outside Territorial Authority** — a Stats NZ placeholder for SA2s outside any administrative TA (offshore EEZ, etc.). 27 SA2s; HUD doesn't publish for them by design.
+- **Wairoa District** — HUD ships affordability data but not Sales data (low transaction volume). Affordability join works; house_price join returns NULL.
+
+Both are real data gaps, not bugs.
 
 ## Coming next
 
