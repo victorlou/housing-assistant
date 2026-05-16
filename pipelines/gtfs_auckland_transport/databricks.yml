@@ -8,18 +8,18 @@ variables:
     description: Account-level admin group whose members can deploy and manage this bundle.
   notification_email:
     description: Email to alert on job failure.
+  metroinfo_url:
+    description: Metroinfo (Christchurch) static GTFS URL. Subject to access approval.
+    default: https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip
+  metroinfo_secret_scope:
+    description: Databricks secret scope holding the Metroinfo API key.
+    default: housing-assistant
+  metroinfo_secret_key:
+    description: Databricks secret key (within the scope) holding the Metroinfo API key.
+    default: metroinfo_api_key
 
 # Permissions applied to every bundle resource AND the workspace folder where
-# files are deployed.
-#
-# - The jobs SP needs CAN_MANAGE so it can run the job and read the notebooks.
-# - The admin group is the authoritative governance entry — any member can
-#   deploy and manage. Add or remove teammates by changing group membership in
-#   the account console; no bundle change required.
-# - The current deployer is captured dynamically. Databricks auto-grants
-#   CAN_MANAGE on the deploy folder to whoever runs `bundle deploy`; declaring
-#   it here keeps the bundle's view of permissions in sync with reality and
-#   silences the "workspace folder has permissions not configured" warning.
+# files are deployed. See ./README.md for the deploy model.
 permissions:
   - level: CAN_MANAGE
     service_principal_name: ${var.jobs_service_principal_id}
@@ -31,10 +31,9 @@ permissions:
 resources:
   pipelines:
     # ─── Bronze ────────────────────────────────────────────────────────
-    # Note on tags: serverless Lakeflow Pipelines don't accept the `tags:`
-    # block we use on jobs/warehouses. For cost attribution use the pipeline
-    # ID via `system.billing.usage.usage_metadata.dlt_pipeline_id`, or attach
-    # a Databricks budget policy. `configuration` is searchable in the UI.
+    # Pipelines are feed-agnostic. The bronze layer reads from per-file-type
+    # directories that contain landings from every configured feed; the
+    # `_feed_source` column distinguishes them downstream.
     gtfs_auckland_transport_bronze:
       name: gtfs_auckland_transport_bronze
       catalog: housing
@@ -44,7 +43,7 @@ resources:
       edition: ADVANCED
       configuration:
         project: housing-assistant
-        source: gtfs_auckland_transport
+        source: gtfs
         layer: bronze
       libraries:
         - notebook:
@@ -60,7 +59,7 @@ resources:
       edition: ADVANCED
       configuration:
         project: housing-assistant
-        source: gtfs_auckland_transport
+        source: gtfs
         layer: silver
       libraries:
         - notebook:
@@ -76,7 +75,7 @@ resources:
       edition: ADVANCED
       configuration:
         project: housing-assistant
-        source: gtfs_auckland_transport
+        source: gtfs
         layer: gold
       libraries:
         - notebook:
@@ -86,44 +85,72 @@ resources:
     gtfs_auckland_transport_ingest:
       name: gtfs_auckland_transport_ingest
       description: |
-        Weekly fetch of the Auckland Transport GTFS feed, then run the
-        bronze → silver → gold pipelines. Owned by the housing-assistant
-        project. See ./README.md.
+        Weekly fetch of New Zealand GTFS feeds (Auckland Transport, Metlink,
+        Metroinfo), then run the bronze → silver → gold pipelines.
+        Owned by the housing-assistant project. See ./README.md.
 
       tags:
         project: housing-assistant
-        source: gtfs_auckland_transport
+        source: gtfs
 
       run_as:
         service_principal_name: ${var.jobs_service_principal_id}
 
       schedule:
         # Sunday 03:00 Pacific/Auckland — well after weekend service changes
-        # are published.
+        # are published across NZ regions.
         quartz_cron_expression: "0 0 3 ? * SUN"
         timezone_id: Pacific/Auckland
         pause_status: UNPAUSED
 
       max_concurrent_runs: 1
-      timeout_seconds: 5400
+      timeout_seconds: 7200
 
       email_notifications:
         on_failure:
           - ${var.notification_email}
 
       tasks:
-        - task_key: fetch
+        # ─── Fetches (parallel, one per feed) ────────────────────────
+        - task_key: fetch_auckland_transport
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              # Auckland Transport's canonical static GTFS endpoint.
-              # Documented at https://at.govt.nz/about-us/at-data-sources/general-transit-feed-specification
+              feed_source: auckland_transport
               source_url: "https://gtfs.at.govt.nz/gtfs.zip"
               retention_days: "90"
 
+        - task_key: fetch_metlink
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: metlink
+              source_url: "https://static.opendata.metlink.org.nz/v1/gtfs/full.zip"
+              retention_days: "90"
+
+        # Metroinfo (Christchurch) needs an API key. Until the secret is
+        # configured in `${var.metroinfo_secret_scope}/${var.metroinfo_secret_key}`,
+        # this task logs `status='skipped'` in ingest_runs and exits cleanly.
+        - task_key: fetch_metroinfo
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: metroinfo
+              source_url: ${var.metroinfo_url}
+              retention_days: "90"
+              auth_secret_scope: ${var.metroinfo_secret_scope}
+              auth_secret_key: ${var.metroinfo_secret_key}
+              auth_header_name: Ocp-Apim-Subscription-Key
+
+        # ─── Transforms (sequential, run after every fetch finishes) ──
+        # ALL_DONE: run after every fetch is done regardless of pass/fail/skip,
+        # so a single failing feed doesn't block the rest of the lakehouse.
         - task_key: transform_bronze
           depends_on:
-            - task_key: fetch
+            - task_key: fetch_auckland_transport
+            - task_key: fetch_metlink
+            - task_key: fetch_metroinfo
+          run_if: ALL_DONE
           pipeline_task:
             pipeline_id: ${resources.pipelines.gtfs_auckland_transport_bronze.id}
 
@@ -144,9 +171,6 @@ targets:
     default: true
     workspace:
       host: https://dbc-c3095737-46ec.cloud.databricks.com
-      # Pin the CLI profile so deploys don't pick up the wrong DEFAULT.
-      # Teammates: run `databricks configure --profile hackathon` against the
-      # same host and you'll get the same behaviour without env vars.
       profile: hackathon
     variables:
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3

@@ -1,28 +1,59 @@
 # gtfs_auckland_transport
 
-Weekly fetch of the Auckland Transport GTFS feed to the lakehouse, followed by bronze → silver → gold transformations.
+Weekly fetch of New Zealand GTFS feeds — Auckland Transport, Metlink (Wellington), Metroinfo (Christchurch) — followed by bronze → silver → gold transformations.
+
+> Folder name is historical: this started as Auckland-only and now covers multiple feeds. The bronze/silver/gold tables are feed-agnostic and distinguish rows via the `_feed_source` column.
 
 ## What it does
 
 The bundle defines one **job** with four sequential tasks, plus three **pipelines** the tasks trigger.
 
-### Task 1: `fetch` (notebook)
+### Tasks 1–3: parallel fetches per feed
 
-`notebooks/fetch.py` runs the download:
+`notebooks/fetch.py` runs once per feed, in parallel. Each task receives `feed_source` and `source_url` (plus optional auth parameters) and:
 
-1. Downloads the GTFS zip from Auckland Transport's published URL.
-2. Hashes the bytes and compares against the last successful run. If unchanged, logs `status='skipped'` and exits.
-3. Otherwise, writes the raw zip and the extracted `.txt` files to `/Volumes/housing/bronze/gtfs_files/auckland_transport/YYYY-MM-DD/`.
-4. Deletes any date-stamped landing folders older than `retention_days` (default 90).
-5. Logs the run to `housing.bronze.ingest_runs` either way.
+1. Downloads the feed's GTFS zip.
+2. Hashes the bytes and compares against the last successful run **for that feed**. If unchanged, logs `status='skipped'` and exits.
+3. Otherwise, writes the raw zip and extracted `.txt` files to the bronze volume in a file-type-first layout:
+   - `/Volumes/housing/bronze/gtfs_files/_zip/<feed>/<date>.zip` (audit)
+   - `/Volumes/housing/bronze/gtfs_files/<file_name>/<feed>/<date>.txt`
+4. Deletes landings for **this feed** older than `retention_days` (default 90). Other feeds' files are untouched.
+5. Logs the run to `housing.bronze.ingest_runs` either way, namespaced as `source = 'gtfs_<feed_source>'`.
 
-### Task 2: `transform_bronze` (pipeline)
+Currently configured feeds:
 
-`notebooks/bronze.py` defines 13 streaming DLT tables, one per GTFS file (`gtfs_agency`, `gtfs_calendar`, `gtfs_calendar_dates`, `gtfs_fare_attributes`, `gtfs_fare_rules`, `gtfs_feed_info`, `gtfs_frequencies`, `gtfs_routes`, `gtfs_shapes`, `gtfs_stop_times`, `gtfs_stops`, `gtfs_transfers`, `gtfs_trips`). Each table is fed by Auto Loader with a `pathGlobFilter` that matches its file type across all feed sources, so future feeds (Metlink, ECan) drop into the same tables with a different `_feed_source` value.
+| Feed | URL | Auth | Status |
+|---|---|---|---|
+| `auckland_transport` | `https://gtfs.at.govt.nz/gtfs.zip` | none | enabled |
+| `metlink` | `https://static.opendata.metlink.org.nz/v1/gtfs/full.zip` | none | enabled |
+| `metroinfo` | `https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip` | API key required | wired, gracefully skips until secret is set |
+
+### Adding a Metroinfo (Christchurch) API key
+
+When access is granted, store the key as a Databricks secret in the `housing-assistant` scope:
+
+```bash
+databricks secrets put-secret \
+  --scope housing-assistant \
+  --key metroinfo_api_key
+# CLI prompts for the value; paste, hit Enter
+```
+
+The next scheduled run picks it up automatically. No code change. The `fetch_metroinfo` task reads the secret, sets the `Ocp-Apim-Subscription-Key` HTTP header, and proceeds. Until then the task logs `status='skipped'` with a clear message in `ingest_runs.notes`.
+
+### Why partial-success is OK
+
+The three fetch tasks run in parallel and are independent — one feed failing or being skipped doesn't break the others. `transform_bronze` has `run_if: ALL_DONE`, so it runs once every fetch finishes regardless of outcome. The bronze pipeline only sees whatever files actually landed; silver/gold cascade from there.
+
+### Task 4: `transform_bronze` (pipeline)
+
+`notebooks/bronze.py` defines 13 streaming DLT tables, one per GTFS file (`gtfs_agency`, `gtfs_calendar`, `gtfs_calendar_dates`, `gtfs_fare_attributes`, `gtfs_fare_rules`, `gtfs_feed_info`, `gtfs_frequencies`, `gtfs_routes`, `gtfs_shapes`, `gtfs_stop_times`, `gtfs_stops`, `gtfs_transfers`, `gtfs_trips`). Each loads from `/Volumes/housing/bronze/gtfs_files/<file_name>/`, picking up `<feed>/<date>.txt` files from every configured feed.
 
 Provenance columns added on every row: `_feed_source`, `_run_date`, `_ingested_at`, `_source_file`.
 
-### Task 3: `transform_silver` (pipeline)
+Schema evolution is `addNewColumns`, so feeds with feed-specific optional columns (e.g. Auckland's `contract_id`, Metlink's `etm_id`) all land cleanly with NULL where a column doesn't exist in a particular feed.
+
+### Task 5: `transform_silver` (pipeline)
 
 `notebooks/silver.py` produces conformed entities in `housing.silver`:
 
@@ -32,7 +63,7 @@ Provenance columns added on every row: `_feed_source`, `_run_date`, `_ingested_a
 
 `stop_times` is deliberately not in silver yet. It's the heaviest file and the right shape depends on what gold/isochrone needs.
 
-### Task 4: `transform_gold` (pipeline)
+### Task 6: `transform_gold` (pipeline)
 
 `notebooks/gold.py` produces Genie-ready dimension tables in `housing.gold`:
 
