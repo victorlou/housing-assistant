@@ -239,7 +239,7 @@ For sources with a single key, simpler: regenerate, then `put-secret` with the n
 
 #### Where the secret name is referenced in code
 
-`pipelines/gtfs_auckland_transport/databricks.yml` declares for the Metroinfo fetch task:
+`pipelines/gtfs/databricks.yml` declares for the Metroinfo fetch task:
 
 ```yaml
 auth_secret_scope: housing-assistant

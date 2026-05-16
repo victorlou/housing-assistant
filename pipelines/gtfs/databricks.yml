@@ -1,5 +1,5 @@
 bundle:
-  name: gtfs_auckland_transport
+  name: gtfs
 
 variables:
   jobs_service_principal_id:
