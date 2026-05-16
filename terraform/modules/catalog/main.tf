@@ -11,6 +11,7 @@ locals {
     "schools_files",
     "addresses_files",
     "hazards_files",
+    "osm_files", # OpenStreetMap PBF for the isochrone routing engine
   ]
 }
 
