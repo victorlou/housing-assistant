@@ -18,7 +18,7 @@ import sys
 import tempfile
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pyspark.sql.types import (
@@ -31,17 +31,12 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
+
 def _bundle_files_root() -> Path:
     try:
         return Path(__file__).resolve().parent.parent
     except NameError:
-        nb = (
-            dbutils.notebook.entry_point.getDbutils()
-            .notebook()
-            .getContext()
-            .notebookPath()
-            .get()
-        )
+        nb = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
         return Path("/Workspace" + nb).resolve().parent.parent
 
 
@@ -232,7 +227,7 @@ def redacted_source_url(cfg: dict) -> str:
 
 def cleanup_old_landings(retention_days: int) -> int:
     """Delete date-stamped subfolders older than retention_days. Returns count removed."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     base = Path(f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}")
     if not base.exists():
         return 0
@@ -242,7 +237,7 @@ def cleanup_old_landings(retention_days: int) -> int:
         if not child.is_dir():
             continue
         try:
-            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
         if run_date < cutoff:
@@ -263,8 +258,8 @@ def cleanup_old_landings(retention_days: int) -> int:
 # COMMAND ----------
 
 run_id = str(uuid.uuid4())
-run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-started_at = datetime.now(timezone.utc)
+run_date = datetime.now(UTC).strftime("%Y-%m-%d")
+started_at = datetime.now(UTC)
 t0 = time.time()
 source_url_log = f"wfs://{WFS_TYPE_NAMES}@housing"
 

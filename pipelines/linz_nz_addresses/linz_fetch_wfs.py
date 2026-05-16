@@ -9,9 +9,10 @@ import json
 import os
 import re
 import time
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlencode
 
 import requests
@@ -214,7 +215,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Fetch LINZ WFS into JSONL (default config: config/sources/linz_nz_addresses.yml)"
+        description=("Fetch LINZ WFS into JSONL (default: config/sources/linz_nz_addresses.yml)")
     )
     parser.add_argument(
         "--config",

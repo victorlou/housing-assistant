@@ -21,7 +21,7 @@ import os
 import time
 import uuid
 import zipfile
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -151,9 +151,7 @@ def log_run(run_id: str, status: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
-        INGEST_RUNS_TABLE
-    )
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
 
 
 def last_successful_content_hash() -> str | None:
@@ -182,7 +180,7 @@ def last_successful_content_hash() -> str | None:
 # COMMAND ----------
 
 run_id = str(uuid.uuid4())
-started_at = datetime.now(timezone.utc)
+started_at = datetime.now(UTC)
 t0 = time.time()
 
 auth_headers: dict[str, str] | None = None
@@ -199,10 +197,7 @@ if auth_secret_scope and auth_secret_key:
         # actual errors so the run log stays readable.
         err_str = str(exc)
         if "Secret does not exist" in err_str:
-            short_notes = (
-                f"auth secret `{auth_secret_scope}/{auth_secret_key}` "
-                "not configured yet"
-            )
+            short_notes = f"auth secret `{auth_secret_scope}/{auth_secret_key}` not configured yet"
         else:
             short_notes = (
                 f"failed to read auth secret "
@@ -283,7 +278,7 @@ def write_to_volume(zip_bytes: bytes, run_date: str) -> tuple[str, int, int]:
 
 
 def cleanup_old_landings(retention_days: int) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     base = Path(BRONZE_VOLUME)
     if not base.exists():
         return 0
@@ -302,9 +297,7 @@ def cleanup_old_landings(retention_days: int) -> int:
                 if not landing.is_file():
                     continue
                 try:
-                    run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
-                        tzinfo=timezone.utc
-                    )
+                    run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(tzinfo=UTC)
                 except ValueError:
                     continue
                 if run_date < cutoff:
@@ -319,7 +312,7 @@ def cleanup_old_landings(retention_days: int) -> int:
 
 # COMMAND ----------
 
-run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+run_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
 try:
     print(f"[{run_id}] Downloading {feed_source} from {source_url}")
