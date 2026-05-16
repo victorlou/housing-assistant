@@ -76,6 +76,7 @@ SHARED_SEQUENCE_SCHEMAS = ["drizzle"]
 SHARED_SCHEMAS: dict[str, list[str]] = {
     "ai_chatbot": ["Chat", "Message", "User", "Vote"],
     "drizzle": ["__drizzle_migrations"],
+    "housing": ["users", "user_constraints", "saved_searches", "alerts", "conversation_turns"],
 }
 
 
@@ -86,6 +87,15 @@ def _grant_permissions(client, grantee: str, memory_type: str):
         SequencePrivilege,
         TablePrivilege,
     )
+
+    # Grant CONNECT on the database — required before any schema/table access works.
+    # The library always connects to 'databricks_postgres' regardless of instance type.
+    print(f"Granting CONNECT on database 'databricks_postgres' to '{grantee}'...")
+    try:
+        client.execute(f'GRANT CONNECT ON DATABASE databricks_postgres TO "{grantee}";')
+        print("  CONNECT granted.")
+    except Exception as e:
+        print(f"  Warning: database CONNECT grant failed: {e}")
 
     # Build schema -> tables map
     schema_tables: dict[str, list[str]] = dict(SHARED_SCHEMAS)

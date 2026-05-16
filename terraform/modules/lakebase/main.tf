@@ -20,6 +20,7 @@ locals {
   production_endpoint_name = "${local.production_branch_name}/endpoints/primary"
   postgres_database_name   = coalesce(var.postgres_database_name, replace(var.database_id, "-", "_"))
   database_resource_name   = "${local.production_branch_name}/databases/${var.database_id}"
+  default_database_resource_name = "${local.production_branch_name}/databases/databricks_postgres"
 }
 
 resource "databricks_postgres_project" "main" {

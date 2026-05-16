@@ -17,8 +17,10 @@ interface SuggestedActionsProps {
 function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
   const { chatHistoryEnabled } = useAppConfig();
   const suggestedActions = [
-    'How can you help me?',
-    'Tell me something I might not know',
+    'I work in Britomart, $750/week budget, don\'t drive — what suburbs work for me?',
+    'Is Onehunga affordable for a household earning $85k/year?',
+    'What\'s the flood risk in Henderson and nearby suburbs?',
+    'Which Auckland suburbs have the highest rent-to-income pressure?',
   ];
 
   return (

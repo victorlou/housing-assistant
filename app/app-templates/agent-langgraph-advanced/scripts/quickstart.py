@@ -991,8 +991,8 @@ def setup_lakebase(
         update_env_file("PGUSER", username)
         print_success(f"PGUSER set to '{username}'")
 
-        update_env_file("PGDATABASE", "housing_assistant_dev_db")
-        print_success("PGDATABASE set to 'housing_assistant_dev_db'")
+        update_env_file("PGDATABASE", "databricks_postgres")
+        print_success("PGDATABASE set to 'databricks_postgres'")
 
         return {"type": "provisioned", "instance_name": provisioned_name}
 
@@ -1772,7 +1772,17 @@ Examples:
                 else:
                     summary += f"\n\n✓ Lakebase for {lakebase_purpose}: autoscaling"
 
-        summary += "\nNext step: Run 'uv run start-app' to start the agent locally\n"
+        if lakebase_config:
+            deploy_app = app_name or "housing-assistant-dev"
+            summary += (
+                f"\n\nNext steps:"
+                f"\n  1. Run 'uv run start-app' to test the agent locally"
+                f"\n  2. Deploy:  databricks bundle deploy && databricks bundle run agent_langgraph_advanced"
+                f"\n  3. Grant Lakebase permissions to the app's service principal:"
+                f"\n       uv run grant-app-permissions --app-name {deploy_app}\n"
+            )
+        else:
+            summary += "\nNext step: Run 'uv run start-app' to start the agent locally\n"
         print(summary)
 
     except KeyboardInterrupt:

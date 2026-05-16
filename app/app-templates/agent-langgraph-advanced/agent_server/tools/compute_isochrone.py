@@ -1,63 +1,43 @@
 import json
 import logging
-import os
 
-from databricks.sdk.service.sql import StatementParameterListItem, StatementState
 from langchain_core.tools import tool
 
-from agent_server.databricks_clients import sp_workspace_client
+from agent_server.tools.utils import CATALOG as _CATALOG
+from agent_server.tools.utils import SCHEMA as _SCHEMA
+from agent_server.tools.utils import execute_statement as _execute
 
 logger = logging.getLogger(__name__)
-
-WAREHOUSE_ID = os.getenv("DATABRICKS_WAREHOUSE_ID")
-_CATALOG = os.getenv("HOUSING_CATALOG", "housing")
-_SCHEMA = os.getenv("HOUSING_SCHEMA", "gold")
-
-
-def _execute(statement: str, params: list[dict]) -> list[list]:
-    """Run a SQL statement via Statement Execution API and return rows."""
-    if not WAREHOUSE_ID:
-        raise RuntimeError(
-            "DATABRICKS_WAREHOUSE_ID is not set. "
-            "Add it to .env — find it in Databricks UI → SQL Warehouses → Connection Details."
-        )
-    sdk_params = [
-        StatementParameterListItem(name=p["name"], value=p["value"], type=p.get("type"))
-        for p in params
-    ]
-    response = sp_workspace_client.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID,
-        statement=statement,
-        parameters=sdk_params,
-        wait_timeout="30s",
-    )
-    if response.status.state != StatementState.SUCCEEDED:
-        raise RuntimeError(
-            f"Statement execution failed: {response.status.state} — {response.status.error}"
-        )
-    return [list(row) for row in (response.result.data_array or [])]
 
 
 @tool
 def compute_isochrone(suburb_name: str, mode: str, minutes: int) -> dict:
     """
-    Return suburbs reachable from a given suburb within a travel time limit.
+    Return the list of suburbs reachable from an origin suburb within a travel-time limit.
 
-    Use when the user asks about commute time, travel distance to work, or wants
-    to know what areas are accessible within N minutes from a suburb.
+    Call this first whenever the user mentions a workplace, commute, or travel time.
+    The returned `reachable_suburbs` list is the candidate set — pass each suburb in that
+    list to score_affordability and/or lookup_hazards to filter down to a shortlist.
+
+    Trigger phrases: "commute from X", "30 minutes from Y", "what suburbs can I reach",
+    "how far is X from work", "accessible by transit".
 
     Args:
-        suburb_name: Origin suburb name (e.g. "Onehunga", "Mt Albert")
-        mode: Travel mode — "transit", "drive", or "walk"
-        minutes: Maximum travel time in minutes (e.g. 30)
+        suburb_name: Origin suburb (e.g. "Britomart", "Onehunga"). This is where the
+                     user travels *from* — typically their workplace or CBD.
+        mode: Travel mode — "transit" (default), "drive", or "walk".
+              Default to "transit" unless the user explicitly says they drive or walk.
+        minutes: Maximum travel time in minutes. Default 30 unless stated otherwise.
 
     Returns:
         Dict with:
-          - origin: suburb name used as origin
-          - mode: travel mode
+          - origin: resolved origin suburb name
+          - mode: travel mode used
           - minutes: time limit applied
-          - reachable_suburbs: list of suburb names reachable within the time limit
-          - reachable_cell_count: number of H3 cells reachable (proxy for area coverage)
+          - reachable_suburbs: list of suburb names reachable within the time limit.
+                               Pass each of these to score_affordability / lookup_hazards.
+          - reachable_cell_count: number of H3 cells covered (proxy for geographic area)
+          - error: present only if the origin suburb was not found in the data
     """
     # Step 1: resolve suburb name → h3_centroid
     centroid_rows = _execute(

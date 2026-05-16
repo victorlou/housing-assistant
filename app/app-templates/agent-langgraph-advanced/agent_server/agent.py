@@ -21,6 +21,8 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
+from agent_server.tools.lookup_hazards import lookup_hazards
+from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
     _get_or_create_thread_id,
     get_user_workspace_client,
@@ -59,7 +61,7 @@ async def init_agent(
     store: BaseStore,
     checkpointer: Optional[Any] = None,
 ):
-    tools = [get_current_time, compute_isochrone] + memory_tools()
+    tools = [get_current_time, compute_isochrone, score_affordability, lookup_hazards] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     # mcp_client = init_mcp_client(workspace_client or sp_workspace_client)
     # try:

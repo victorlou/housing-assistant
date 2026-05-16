@@ -5,7 +5,7 @@ resources:
   apps:
     agent_langgraph_advanced:
       name: "housing-assistant-dev"
-      description: "LangGraph agent application with short-term and long-term memory"
+      description: "Housing Assistant consumer surface"
       source_code_path: ./
       config:
         command: ["uv", "run", "start-app"]
@@ -30,6 +30,12 @@ resources:
             value: "INFO"
           - name: DATABRICKS_EMBEDDING_ENDPOINT
             value: "databricks-gte-large-en"
+          - name: HOUSING_CATALOG
+            value: "workspace"
+          - name: HOUSING_SCHEMA
+            value: "test"
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: "warehouse_secret"
 
       # Resources which this app has access to
       resources:
@@ -42,6 +48,11 @@ resources:
             branch: "projects/housing-assistant-dev/branches/production"
             database: "projects/housing-assistant-dev/branches/production/databases/housing-assistant-dev-db"
             permission: 'CAN_CONNECT_AND_CREATE'
+        - name: 'warehouse_secret'
+          secret:
+            scope: "housing-assistant"
+            key: "WAREHOUSE_ID"
+            permission: 'READ'
 
 targets:
   dev:
