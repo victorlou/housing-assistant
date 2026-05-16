@@ -31,7 +31,21 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-_bundle_root = Path(__file__).resolve().parent.parent
+def _bundle_files_root() -> Path:
+    try:
+        return Path(__file__).resolve().parent.parent
+    except NameError:
+        nb = (
+            dbutils.notebook.entry_point.getDbutils()
+            .notebook()
+            .getContext()
+            .notebookPath()
+            .get()
+        )
+        return Path("/Workspace" + nb).resolve().parent.parent
+
+
+_bundle_root = _bundle_files_root()
 if str(_bundle_root) not in sys.path:
     sys.path.insert(0, str(_bundle_root))
 
@@ -184,10 +198,10 @@ def last_successful_content_hash() -> str | None:
 
 def resolve_linz_api_key() -> str:
     if secret_scope:
-        return dbutils.secrets.get(secret_scope, secret_key)
+        return dbutils.secrets.get(secret_scope, secret_key).strip()
     got = os.environ.get("LINZ_API_KEY")
     if got:
-        return got
+        return got.strip()
     raise RuntimeError(
         "LINZ API key not configured: set widgets secret_scope + secret_key, "
         "or set LINZ_API_KEY on the cluster/job."

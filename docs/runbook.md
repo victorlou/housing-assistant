@@ -54,12 +54,6 @@ terraform plan
 terraform apply
 ```
 
-Ensure `DATABRICKS_CONFIG_PROFILE` (or `DATABRICKS_HOST` / `DATABRICKS_TOKEN`) is set in your shell before `plan` / `apply`, as described in First-time setup.
-
-By default Terraform creates `bronze` / `silver` / `gold` / `app` and the `tenancy_bonds` volume under the existing **`workspace`** catalog (required on accounts where new catalogs must use Default Storage from the UI). To use a dedicated **`housing`** catalog instead, create it in the Catalog UI first, then set `uc_catalog_name = "housing"` in `terraform.tfvars` and re-apply.
-
-After `terraform apply`, copy the output `tenancy_bonds_files_path` (if shown). That is the Unity Catalog volume path where raw tenancy bond files should land. Upload with the Catalog explorer or `databricks fs cp --profile <name> local.csv <tenancy_bonds_files_path>/tenancy_bonds_YYYYMMDD.csv`, using the `{source}_{YYYYMMDD}.csv` naming convention described in `docs/data-sources.md`.
-
 Conventions:
 
 - All shared infrastructure lives in `terraform/modules/*` and is composed in `terraform/envs/dev/main.tf`.
