@@ -28,6 +28,6 @@ module.exports = defineConfig({
     url: process.env.POSTGRES_URL,
     ssl: process.env.PGSSLMODE !== 'disable',
   },
-  schemaFilter: [schemaName, 'public'],
+  schemaFilter: [schemaName],
   verbose: true,
 });

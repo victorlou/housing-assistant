@@ -46,6 +46,11 @@ resources:
         - name: 'postgres'
           postgres:
             branch: "projects/housing-assistant-dev/branches/production"
+            database: "projects/housing-assistant-dev/branches/production/databases/db-e4ns-8mz53om54c" # had to debug datbricks ui -> network requests to get this id😭
+            permission: 'CAN_CONNECT_AND_CREATE'
+        - name: 'app_db'
+          postgres:
+            branch: "projects/housing-assistant-dev/branches/production"
             database: "projects/housing-assistant-dev/branches/production/databases/housing-assistant-dev-db"
             permission: 'CAN_CONNECT_AND_CREATE'
         - name: 'warehouse_secret'
@@ -53,6 +58,11 @@ resources:
             scope: "housing-assistant"
             key: "WAREHOUSE_ID"
             permission: 'READ'
+        - name: 'sql_warehouse'
+          sql_warehouse:
+              id: "f21913d784edd9ad"
+              permission: "CAN_MANAGE"
+# Shadow resource: App Service Principal to be granted permissions to catalogs using UI or Terraform
 
 targets:
   dev:

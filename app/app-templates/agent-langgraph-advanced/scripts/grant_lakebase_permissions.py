@@ -74,7 +74,7 @@ SHARED_SEQUENCE_SCHEMAS = ["drizzle"]
 
 # Shared schemas granted for all memory types (chat UI persistence)
 SHARED_SCHEMAS: dict[str, list[str]] = {
-    "ai_chatbot": ["Chat", "Message", "User", "Vote"],
+    "ai_chatbot": ["Chat", "Message", "User", "Vote", "saved_searches", "alerts"],
     "drizzle": ["__drizzle_migrations"],
     "housing": ["users", "user_constraints", "saved_searches", "alerts", "conversation_turns"],
 }

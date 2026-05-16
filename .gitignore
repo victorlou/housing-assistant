@@ -30,8 +30,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+
+# Below lib - interferes with our chatbot lib
+# lib/ 
+# lib64/
 parts/
 sdist/
 var/
