@@ -11,7 +11,8 @@ locals {
     "schools_files",
     "addresses_files",
     "hazards_files",
-    "osm_files", # OpenStreetMap PBF for the isochrone routing engine
+    "osm_files",     # OpenStreetMap PBF for the isochrone routing engine
+    "places_files",  # Stats NZ SA2 polygons + census aggregates (suburb dim)
   ]
 }
 
@@ -57,20 +58,26 @@ resource "databricks_volume" "bronze" {
 
 # Jobs SP grants on the lakehouse layers. The app SP grants are wired at the env
 # level so this module stays a pure resource factory.
+#
+# DLT in Unity Catalog distinguishes two flavours of `dlt.table`:
+#   - streaming reads        → STREAMING TABLE   (needs CREATE_TABLE)
+#   - batch reads (read.table) → MATERIALIZED VIEW (needs CREATE_MATERIALIZED_VIEW)
+# Silver/gold are MV-heavy. Bronze is streaming-only today but we grant the MV
+# privilege there too for futureproofing — costs nothing.
 resource "databricks_grant" "jobs_bronze" {
   schema     = databricks_schema.schemas["bronze"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "READ_VOLUME", "WRITE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "READ_VOLUME", "WRITE_VOLUME", "SELECT"]
 }
 
 resource "databricks_grant" "jobs_silver" {
   schema     = databricks_schema.schemas["silver"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "SELECT"]
 }
 
 resource "databricks_grant" "jobs_gold" {
   schema     = databricks_schema.schemas["gold"].id
   principal  = var.jobs_principal_name
-  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_VOLUME", "SELECT"]
+  privileges = ["USE_SCHEMA", "MODIFY", "CREATE_TABLE", "CREATE_MATERIALIZED_VIEW", "CREATE_VOLUME", "SELECT"]
 }

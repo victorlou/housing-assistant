@@ -1,0 +1,166 @@
+bundle:
+  name: places
+
+variables:
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
+  notification_email:
+    description: Email to alert on job failure.
+
+  # Stats NZ DataFinder is Koordinates-powered (same platform as LINZ), so
+  # WFS access needs an API key. Get a free one at
+  # https://datafinder.stats.govt.nz/my/api-keys/ and store it in the
+  # housing-assistant secret scope (see ../docs/runbook.md).
+  sa2_polygons_url:
+    description: |
+      Stats NZ DataFinder WFS endpoint for "Statistical Area 2 Higher
+      Geographies 2023 (generalised)" — layer 111218. Same SA2 polygons as
+      the bare 111227 layer, plus TA + region + urban/rural attributes joined
+      in. Returned as GeoJSON in WGS84. The `{api_key}` placeholder is
+      filled in by fetch.py at runtime from the secret scope.
+    default: "https://datafinder.stats.govt.nz/services;key={api_key}/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=layer-111218&srsName=EPSG:4326&outputFormat=application/json"
+  stats_nz_secret_scope:
+    description: Databricks secret scope holding the Stats NZ DataFinder API key.
+    default: housing-assistant
+  stats_nz_secret_key:
+    description: Databricks secret key (within the scope) for the Stats NZ DataFinder API key.
+    default: stats_nz_api_key
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
+
+resources:
+  pipelines:
+    # Pipelines are source-agnostic. The bronze layer reads from per-dataset
+    # directories under `places_files/`; a `_source` column distinguishes rows
+    # downstream when we add more datasets.
+    places_bronze:
+      name: places_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: places
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    places_silver:
+      name: places_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: places
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    places_gold:
+      name: places_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: places
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
+  jobs:
+    places_ingest:
+      name: places_ingest
+      description: |
+        Quarterly refresh of NZ place dimensions, sourced from Stats NZ
+        DataFinder (SA2 2023 polygons). Produces housing.gold.suburb and
+        housing.gold.h3_cell. Census demographics are a follow-up — see
+        ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: places
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      schedule:
+        # First Sunday of each quarter, 04:00 Pacific/Auckland.
+        # SA2 polygons refresh annually at most; daily would just hash-skip.
+        quartz_cron_expression: "0 0 4 ? JAN,APR,JUL,OCT SUN#1"
+        timezone_id: Pacific/Auckland
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: fetch_sa2_polygons
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              dataset: sa2_polygons
+              source_url: ${var.sa2_polygons_url}
+              retention_days: "180"
+              auth_secret_scope: ${var.stats_nz_secret_scope}
+              auth_secret_key: ${var.stats_nz_secret_key}
+              auth_inject_mode: "url_placeholder"
+              auth_url_placeholder: "{api_key}"
+
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch_sa2_polygons
+          run_if: ALL_DONE
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.places_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.places_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.places_gold.id}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
+      notification_email: victor.lourenco@zuru.com
