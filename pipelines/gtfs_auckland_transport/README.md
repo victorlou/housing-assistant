@@ -1,24 +1,51 @@
 # gtfs_auckland_transport
 
-Weekly fetch of the Auckland Transport GTFS feed to the lakehouse.
+Weekly fetch of the Auckland Transport GTFS feed to the lakehouse, followed by bronze → silver → gold transformations.
 
 ## What it does
 
-`notebooks/fetch.py` runs once a week and:
+The bundle defines one **job** with four sequential tasks, plus three **pipelines** the tasks trigger.
+
+### Task 1: `fetch` (notebook)
+
+`notebooks/fetch.py` runs the download:
 
 1. Downloads the GTFS zip from Auckland Transport's published URL.
-2. Reads `feed_info.txt` from the zip and checks the `feed_version` against the last successful run. If unchanged, the run is logged as `skipped` and nothing else happens.
+2. Hashes the bytes and compares against the last successful run. If unchanged, logs `status='skipped'` and exits.
 3. Otherwise, writes the raw zip and the extracted `.txt` files to `/Volumes/housing/bronze/gtfs_files/auckland_transport/YYYY-MM-DD/`.
-4. Deletes any date-stamped landing folders older than the retention window (default 90 days). Audit-trail kept; storage stays bounded.
+4. Deletes any date-stamped landing folders older than `retention_days` (default 90).
 5. Logs the run to `housing.bronze.ingest_runs` either way.
 
-The downstream Lakeflow pipeline (separate PR) picks up new files via Auto Loader and lands them as Delta tables.
+### Task 2: `transform_bronze` (pipeline)
+
+`notebooks/bronze.py` defines 13 streaming DLT tables, one per GTFS file (`gtfs_agency`, `gtfs_calendar`, `gtfs_calendar_dates`, `gtfs_fare_attributes`, `gtfs_fare_rules`, `gtfs_feed_info`, `gtfs_frequencies`, `gtfs_routes`, `gtfs_shapes`, `gtfs_stop_times`, `gtfs_stops`, `gtfs_transfers`, `gtfs_trips`). Each table is fed by Auto Loader with a `pathGlobFilter` that matches its file type across all feed sources, so future feeds (Metlink, ECan) drop into the same tables with a different `_feed_source` value.
+
+Provenance columns added on every row: `_feed_source`, `_run_date`, `_ingested_at`, `_source_file`.
+
+### Task 3: `transform_silver` (pipeline)
+
+`notebooks/silver.py` produces conformed entities in `housing.silver`:
+
+- `transit_stop` — typed coordinates, H3 cell at resolution 8. DLT expectations drop rows missing coordinates and warn on out-of-range NZ latitudes/longitudes.
+- `transit_route` — routes joined with agency name, plus a readable `route_type_label` ("bus", "ferry", "rail", etc.).
+- `transit_service_day` — `calendar.txt` weekday rules expanded into one row per (service_id, date), with `calendar_dates.txt` overrides applied.
+
+`stop_times` is deliberately not in silver yet. It's the heaviest file and the right shape depends on what gold/isochrone needs.
+
+### Task 4: `transform_gold` (pipeline)
+
+`notebooks/gold.py` produces Genie-ready dimension tables in `housing.gold`:
+
+- `transit_stop` — stops keyed by H3 cell.
+- `transit_route` — routes with agency and type label.
+
+The high-value gold table — `isochrone` (origin H3 → reachable H3s by mode and minute bucket) — needs a routing engine like `r5py` and is a separate workstream.
 
 ## Schedule and identity
 
 - **Cron:** Sunday 03:00 Pacific/Auckland.
 - **Runs as:** `sp-housing-jobs` (the jobs service principal provisioned by Terraform).
-- **Compute:** serverless. The notebook only needs `requests` and `pyspark`, both present in the default runtime.
+- **Compute:** serverless for both the fetch notebook task and all three DLT pipelines.
 - **Failure alerts:** email to the address configured in `databricks.yml`.
 
 ## Deploy
@@ -53,6 +80,14 @@ FROM housing.bronze.ingest_runs
 WHERE source = 'gtfs_auckland_transport'
 ORDER BY fetched_at DESC
 LIMIT 10;
+```
+
+And the bronze tables:
+
+```sql
+SELECT _feed_source, COUNT(*) AS rows
+FROM housing.bronze.gtfs_stops
+GROUP BY _feed_source;
 ```
 
 And the volume:
