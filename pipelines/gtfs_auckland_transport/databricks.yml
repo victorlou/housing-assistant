@@ -40,6 +40,10 @@ resources:
       serverless: true
       development: false
       edition: ADVANCED
+      # Pipelines run as the jobs SP — same identity as the job. Tables they
+      # create are owned by this SP, not by whoever deployed the bundle.
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
         source: gtfs
@@ -55,6 +59,8 @@ resources:
       serverless: true
       development: false
       edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
         source: gtfs
@@ -70,6 +76,8 @@ resources:
       serverless: true
       development: false
       edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
         source: gtfs

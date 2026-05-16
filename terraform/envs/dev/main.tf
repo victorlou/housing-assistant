@@ -147,3 +147,9 @@ resource "databricks_grant" "admins_schemas" {
   principal  = module.identity.admins_group_display_name
   privileges = local.admin_schema_privileges
 }
+
+# Note on secrets: the secret scope `housing-assistant` is provisioned by the
+# `secrets` module above, but individual secret VALUES are managed out of
+# band via the Databricks CLI. See docs/runbook.md ("Managing per-source API
+# keys") for the commands. Keeping the values out of Terraform state means
+# they live only in the Databricks secret vault, not on developer laptops.
