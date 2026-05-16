@@ -6,6 +6,15 @@ Bronze → silver → gold for manually uploaded Police Tableau CSV exports (sam
 
 Tableau **Full Data** export: ANZSOC offence codes, `Year Month`, `Victimisations`. **No geography** in the current file — see [`.devnotes/police/schema.md`](../../.devnotes/police/schema.md).
 
+## Prerequisites
+
+Unity Catalog volume `housing.bronze.crime_files` must exist (Terraform seeds it in `terraform/modules/catalog`). If missing:
+
+```sql
+CREATE VOLUME IF NOT EXISTS housing.bronze.crime_files
+  COMMENT 'NZ Police crime statistics CSV landings';
+```
+
 ## Upload landing file (before running the job)
 
 ```powershell

@@ -16,9 +16,13 @@ WFS layer and paging defaults live in `notebooks/fetch.py` (aligned with `config
 
 ## Lakeflow pipeline (DLT)
 
-The bundle still defines the DLT pipeline: Auto Loader reads `**/*.jsonl` under `addresses_files/linz_nz_addresses/` and materialises `linz_nz_addresses_raw` and `linz_nz_addresses_features` in the pipeline catalog.
+The bundle defines three DLT pipelines (bronze → silver → gold), matching `pipelines/gtfs/notebooks`:
 
-If your Terraform `catalog_name` is not `housing`, update `BRONZE_VOLUME` in `notebooks/fetch.py`, the path in `transformations/bronze.sql`, and `resources.pipelines.linz_nz_addresses.catalog` in `databricks.yml` together.
+- **Bronze** (`notebooks/bronze.py`): Auto Loader over `**/*.jsonl` → `linz_nz_addresses_raw`, `linz_nz_addresses`.
+- **Silver** (`notebooks/silver.py`): `housing.silver.nz_address` (typed coords + H3).
+- **Gold** (`notebooks/gold.py`): `housing.gold.nz_address` (current lifecycle only, Genie-ready).
+
+If your Terraform `catalog_name` is not `housing`, update `BRONZE_VOLUME` in `notebooks/fetch.py` and the volume path in `notebooks/bronze.py` together.
 
 ## Local fetch (optional)
 

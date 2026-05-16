@@ -26,7 +26,9 @@ sources:
     cadence: continuous
     ingestion_pipeline: pipelines/linz_nz_addresses
     target_tables:
-      - housing.bronze.linz_nz_addresses_features
+      - housing.bronze.linz_nz_addresses
+      - housing.silver.nz_address
+      - housing.gold.nz_address
     tier: 2
     notes: |
       NZ Addresses (layer-105689) via LDS WFS; scheduled fetch to bronze volume + DLT in pipelines/linz_nz_addresses.

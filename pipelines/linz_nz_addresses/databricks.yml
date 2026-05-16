@@ -2,24 +2,79 @@ bundle:
   name: linz_nz_addresses
 
 variables:
-  catalog:
-    description: Unity Catalog name for the DLT pipeline (must match Terraform catalog_name).
-    default: housing
   jobs_service_principal_id:
     description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
   notification_email:
     description: Email to alert on job failure.
 
 permissions:
   - level: CAN_MANAGE
     service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
 
 resources:
+  pipelines:
+    linz_bronze:
+      name: linz_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: linz_nz_addresses
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    linz_silver:
+      name: linz_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: linz_nz_addresses
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    linz_gold:
+      name: linz_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: linz_nz_addresses
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
   jobs:
     linz_nz_addresses_ingest:
       name: linz_nz_addresses_ingest
       description: |
-        Scheduled fetch of LINZ NZ Addresses WFS to bronze.
+        Scheduled fetch of LINZ NZ Addresses WFS, then bronze → silver → gold.
         Owned by the housing-assistant project. See ./README.md.
 
       tags:
@@ -50,17 +105,23 @@ resources:
               secret_scope: "housing-assistant"
               secret_key: "linz_api_key"
 
-  pipelines:
-    linz_nz_addresses:
-      name: housing_assistant_linz_nz_addresses
-      catalog: ${var.catalog}
-      target: bronze
-      development: true
-      channel: CURRENT
-      serverless: true
-      libraries:
-        - file:
-            path: ./transformations/bronze.sql
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.linz_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.linz_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.linz_gold.id}
 
 targets:
   dev:
@@ -69,6 +130,6 @@ targets:
       host: https://dbc-c3095737-46ec.cloud.databricks.com
       profile: hackathon
     variables:
-      catalog: housing
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
       notification_email: isabelbody@zuru.com
