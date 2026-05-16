@@ -40,8 +40,14 @@ from pyspark.sql.types import (
 
 SOURCE_NAME = "gtfs_auckland_transport"
 BRONZE_VOLUME = "/Volumes/housing/bronze/gtfs_files"
-SOURCE_SUBDIR = "auckland_transport"
+FEED_SOURCE = "auckland_transport"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
+# Files are laid out as:
+#   /Volumes/housing/bronze/gtfs_files/_zip/<feed>/<date>.zip   (audit)
+#   /Volumes/housing/bronze/gtfs_files/<file_name>/<feed>/<date>.txt
+# This puts files of the same type in a single directory tree so Auto Loader
+# schema inference can find samples without traversing deeper levels.
+ZIP_SUBDIR = "_zip"
 
 # Job parameters (overridable via DAB base_parameters or in the workspace UI).
 dbutils.widgets.text(
@@ -195,52 +201,72 @@ def read_feed_version(zip_bytes: bytes) -> str | None:
 
 
 def write_to_volume(zip_bytes: bytes, run_date: str) -> tuple[str, int, int]:
-    """Write the raw zip and extracted .txt files. Returns (target_dir, file_count, bytes_written)."""
-    target_dir = f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}/{run_date}"
-    os.makedirs(target_dir, exist_ok=True)
+    """
+    Write the raw zip and each extracted .txt under a file-type-first layout:
 
-    zip_path = f"{target_dir}/gtfs.zip"
+      /Volumes/housing/bronze/gtfs_files/_zip/<feed>/<date>.zip
+      /Volumes/housing/bronze/gtfs_files/<file_name>/<feed>/<date>.txt
+
+    Returns (zip_path, file_count, bytes_written).
+    """
+    # ── Zip (audit only) ─────────────────────────────────────────────
+    zip_dir = f"{BRONZE_VOLUME}/{ZIP_SUBDIR}/{FEED_SOURCE}"
+    os.makedirs(zip_dir, exist_ok=True)
+    zip_path = f"{zip_dir}/{run_date}.zip"
     with open(zip_path, "wb") as f:
         f.write(zip_bytes)
 
     file_count = 1
     bytes_written = len(zip_bytes)
 
+    # ── Extracted .txt files, one per GTFS entity ────────────────────
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for info in zf.infolist():
-            zf.extract(info, target_dir)
+            if not info.filename.endswith(".txt"):
+                continue
+            file_name_stem = info.filename[:-len(".txt")]
+            target_dir = f"{BRONZE_VOLUME}/{file_name_stem}/{FEED_SOURCE}"
+            os.makedirs(target_dir, exist_ok=True)
+            target_path = f"{target_dir}/{run_date}.txt"
+            with zf.open(info.filename) as src, open(target_path, "wb") as dst:
+                dst.write(src.read())
             file_count += 1
             bytes_written += info.file_size
 
-    return target_dir, file_count, bytes_written
+    return zip_path, file_count, bytes_written
 
 
 def cleanup_old_landings(retention_days: int) -> int:
-    """Delete date-stamped subfolders older than retention_days. Returns count removed."""
+    """
+    Delete date-stamped landing files older than retention_days. Walks every
+    `<file_name>/<feed>/<date>.txt` and `_zip/<feed>/<date>.zip` under the
+    bronze volume; removes anything past retention.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    base = Path(f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}")
+    base = Path(BRONZE_VOLUME)
     if not base.exists():
         return 0
 
     removed = 0
-    for child in base.iterdir():
-        if not child.is_dir():
+    for type_dir in base.iterdir():
+        if not type_dir.is_dir():
             continue
-        try:
-            run_date = datetime.strptime(child.name, "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
-            )
-        except ValueError:
-            # not a date-named folder, leave it alone
-            continue
-        if run_date < cutoff:
-            for path in sorted(child.rglob("*"), reverse=True):
-                if path.is_file():
-                    path.unlink()
-                elif path.is_dir():
-                    path.rmdir()
-            child.rmdir()
-            removed += 1
+        for feed_dir in type_dir.iterdir():
+            if not feed_dir.is_dir():
+                continue
+            for landing in feed_dir.iterdir():
+                if not landing.is_file():
+                    continue
+                # Files are named "<date>.txt" or "<date>.zip"
+                try:
+                    run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
+                        tzinfo=timezone.utc
+                    )
+                except ValueError:
+                    continue
+                if run_date < cutoff:
+                    landing.unlink()
+                    removed += 1
     return removed
 
 

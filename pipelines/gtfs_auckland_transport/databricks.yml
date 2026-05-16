@@ -4,24 +4,91 @@ bundle:
 variables:
   jobs_service_principal_id:
     description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
   notification_email:
     description: Email to alert on job failure.
 
-# Grant the run-as SP permissions on every bundle resource AND on the workspace
-# folder where the notebook is deployed. Without this, the SP can read neither
-# the job definition nor the notebook file, even though the job is configured
-# to run as the SP.
+# Permissions applied to every bundle resource AND the workspace folder where
+# files are deployed.
+#
+# - The jobs SP needs CAN_MANAGE so it can run the job and read the notebooks.
+# - The admin group is the authoritative governance entry — any member can
+#   deploy and manage. Add or remove teammates by changing group membership in
+#   the account console; no bundle change required.
+# - The current deployer is captured dynamically. Databricks auto-grants
+#   CAN_MANAGE on the deploy folder to whoever runs `bundle deploy`; declaring
+#   it here keeps the bundle's view of permissions in sync with reality and
+#   silences the "workspace folder has permissions not configured" warning.
 permissions:
   - level: CAN_MANAGE
     service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
 
 resources:
+  pipelines:
+    # ─── Bronze ────────────────────────────────────────────────────────
+    # Note on tags: serverless Lakeflow Pipelines don't accept the `tags:`
+    # block we use on jobs/warehouses. For cost attribution use the pipeline
+    # ID via `system.billing.usage.usage_metadata.dlt_pipeline_id`, or attach
+    # a Databricks budget policy. `configuration` is searchable in the UI.
+    gtfs_auckland_transport_bronze:
+      name: gtfs_auckland_transport_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      configuration:
+        project: housing-assistant
+        source: gtfs_auckland_transport
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    # ─── Silver ────────────────────────────────────────────────────────
+    gtfs_auckland_transport_silver:
+      name: gtfs_auckland_transport_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      configuration:
+        project: housing-assistant
+        source: gtfs_auckland_transport
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    # ─── Gold ──────────────────────────────────────────────────────────
+    gtfs_auckland_transport_gold:
+      name: gtfs_auckland_transport_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      configuration:
+        project: housing-assistant
+        source: gtfs_auckland_transport
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
   jobs:
     gtfs_auckland_transport_ingest:
       name: gtfs_auckland_transport_ingest
       description: |
-        Weekly fetch of the Auckland Transport GTFS feed to bronze.
-        Owned by the housing-assistant project. See ./README.md.
+        Weekly fetch of the Auckland Transport GTFS feed, then run the
+        bronze → silver → gold pipelines. Owned by the housing-assistant
+        project. See ./README.md.
 
       tags:
         project: housing-assistant
@@ -38,7 +105,7 @@ resources:
         pause_status: UNPAUSED
 
       max_concurrent_runs: 1
-      timeout_seconds: 1800
+      timeout_seconds: 5400
 
       email_notifications:
         on_failure:
@@ -54,6 +121,24 @@ resources:
               source_url: "https://gtfs.at.govt.nz/gtfs.zip"
               retention_days: "90"
 
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gtfs_auckland_transport_gold.id}
+
 targets:
   dev:
     default: true
@@ -65,4 +150,5 @@ targets:
       profile: hackathon
     variables:
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
       notification_email: victor.lourenco@zuru.com
