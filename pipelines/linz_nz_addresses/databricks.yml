@@ -47,7 +47,7 @@ resources:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
               retention_days: "90"
-              secret_scope: ""
+              secret_scope: "housing-assistant"
               secret_key: "linz_api_key"
 
   pipelines:

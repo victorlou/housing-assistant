@@ -26,7 +26,7 @@ For ad-hoc runs from your laptop:
 
 ```bash
 set LINZ_API_KEY=...
-uv run python -m ingestion.linz_wfs --output ./out
+python -m ingestion.linz_wfs --output ./out
 ```
 
 Config defaults live in `config/sources/linz_nz_addresses.yml` (`${LINZ_API_KEY}` expansion for that path only).

@@ -18,20 +18,6 @@ You will need:
   - Node 20 + pnpm (only if you're working on the React frontend)
 - **GitHub access** to `github.com/victorlou/housing-assistant`. Branch protection is enabled on `main`; you'll work on feature branches and merge via PR.
 
-## Docker (local Python)
-
-Use this when you want the same Python 3.11 and locked dev tools as CI without touching the host Python install. It does **not** replace the Databricks CLI or Terraform on your machine unless you extend the image.
-
-```bash
-# from repository root
-docker compose build dev
-docker compose run --rm dev
-```
-
-Inside the container the repo is at `/workspace` (bind-mounted). Run `ruff check .`, `pytest`, and future app commands there.
-
-For the slim image used when you deploy a long-running service (only application folders, not the full monorepo), see [`docker/README.md`](../docker/README.md).
-
 ## First-time setup
 
 ```bash
@@ -83,10 +69,10 @@ Conventions:
 
 ## LINZ NZ Addresses (WFS)
 
-1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (`secret_scope` / `secret_key` notebook widgets, recommended) or `LINZ_API_KEY` on the job/cluster. For optional local CLI runs, set `LINZ_API_KEY` in `.env` (see `.env.example`).
+1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (`secret_scope` / `secret_key` notebook widgets, recommended) or `LINZ_API_KEY` on the job/cluster. For optional local CLI runs, export `LINZ_API_KEY` in your shell.
 2. Deploy the LINZ bundle (`pipelines/linz_nz_addresses/`): `databricks bundle deploy --target dev`. This deploys the **ingest job** (`linz_nz_addresses_ingest`) and the **DLT** pipeline.
 3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (same `housing` catalog convention as the GTFS ingest job).
-4. For ad-hoc local fetch only: `uv run python -m ingestion.linz_wfs --output ./out`, then `databricks fs cp` into the same volume prefix if you are not using the job.
+4. For ad-hoc local fetch only: `python -m ingestion.linz_wfs --output ./out` (install `requests` and `PyYAML` first), then `databricks fs cp` into the same volume prefix if you are not using the job.
 
 Further reading: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [LINZ LDS API notes](linz-lds-apis.md).
 
