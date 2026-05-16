@@ -71,4 +71,4 @@ targets:
     variables:
       catalog: housing
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
-      notification_email: victor.lourenco@zuru.com
+      notification_email: isabelbody@zuru.com
