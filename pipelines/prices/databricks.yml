@@ -1,0 +1,144 @@
+bundle:
+  name: prices
+
+variables:
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
+  notification_email:
+    description: Email to alert on job failure.
+
+  # The RBNZ M10 XLSX sits behind Cloudflare bot management — automated
+  # download from any Python HTTP client gets 403'd. We manually upload the
+  # file to the bronze volume; fetch.py reads from there. See README.
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
+
+resources:
+  pipelines:
+    prices_bronze:
+      name: prices_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: prices
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    prices_silver:
+      name: prices_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: prices
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    prices_gold:
+      name: prices_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: prices
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
+  jobs:
+    prices_ingest:
+      name: prices_ingest
+      description: |
+        Monthly fetch of NZ house price data, currently sourced from the RBNZ
+        M10 Housing statistical series (regional HPI + median price, quarterly).
+        Produces housing.gold.house_price__quarter__region.
+        See ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: prices
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      schedule:
+        # 10th of every month, 04:00 Pacific/Auckland. RBNZ publishes
+        # quarterly HPI ~4 months after the reference quarter — monthly polling
+        # mostly hash-skips and catches publication promptly when it happens.
+        quartz_cron_expression: "0 0 4 10 * ?"
+        timezone_id: Pacific/Auckland
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: fetch_rbnz_hpi
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              dataset: rbnz_hpi
+              retention_days: "365"
+
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch_rbnz_hpi
+          run_if: ALL_DONE
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.prices_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.prices_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.prices_gold.id}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
+      notification_email: victor.lourenco@zuru.com
