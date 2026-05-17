@@ -83,10 +83,10 @@ Expected timing on a recent MacBook (all four regions):
 
 - OSM clipping: ~30 s per region (first run only, cached after).
 - Graph build: 2–4 min per region (first run; cached via `.mapdb` files next to each PBF).
-- Matrix compute: 30–90 s per region for ~5 origins × thousands of destinations.
+- Matrix compute: this is the heavy step now. The matrix is fully symmetric — every transit-stop cell + 1-ring is *both* an origin and a destination — so per-region work is roughly `cells × cells` rather than `22 hubs × cells`. Expect tens of minutes per region rather than tens of seconds; budget a coffee/lunch break for a fresh full run.
 - Upload + gold refresh: a few seconds total.
 
-Sanity-check the printed per-feed summary: reachable pair counts should be in the thousands per region, min should be near zero (origin reaches its own cell), max should be close to 90.
+Sanity-check the printed per-feed summary: reachable pair counts should be in the hundreds of thousands to low millions per region, min should be 0 (origin reaches its own cell), max should be close to 90.
 
 ## What the script does
 
@@ -94,19 +94,28 @@ For each region in `REGIONS`:
 
 1. **OSM clip**: ensures a regional PBF exists at `data/<region_key>-*.osm.pbf` — if not, runs `osmium extract -b <clip_bbox> ...` against the NZ-wide source.
 2. **GTFS fetch + clean**: pulls the latest GTFS zip for that feed from the bronze volume and strips header-only tables (e.g. AT's empty `fare_attributes.txt`) that R5 refuses to parse.
-3. **Destinations**: queries every distinct H3 cell hosting a stop in `housing.gold.transit_stop` for that feed, then expands the set with a ring of H3 neighbours (`DESTINATION_RING = 1`, ~3–5× more cells after dedup) so residential cells next to transit are routable too.
-4. **Routing**: builds a `TransportNetwork` (OSM walking + GTFS transit), then computes door-to-door travel time from each origin centre to every destination cell, with a 90-minute cap and a Wednesday 08:30 NZT departure.
+3. **Cell set**: queries every distinct H3 cell hosting a stop in `housing.gold.transit_stop` for that feed, then expands the set with a ring of H3 neighbours (`DESTINATION_RING = 1`, ~3–5× more cells after dedup) so residential cells next to transit are routable too. This set is used as **both** origins and destinations — the matrix is symmetric.
+4. **Routing**: builds a `TransportNetwork` (OSM walking + GTFS transit), then computes door-to-door travel time from every cell in the set to every other cell in the set, with a 90-minute cap and a Wednesday 08:30 NZT departure.
 5. **Bucket + tag**: rounds travel times to nearest 5 minutes (compresses well, matches the granularity Genie cares about) and tags rows with `mode`, `feed_source`, `departure_time`, `service_date`, `computed_at`, `computation_version`.
 6. **Write**: `isochrone_<feed>.parquet` per region.
 
 After the loop: concatenate, upload to the bronze volume, and `CREATE OR REPLACE TABLE housing.gold.isochrone` from that Parquet.
 
-## Adding origins later
+## Querying with arbitrary origins
 
-Edit the `origins` list inside the relevant region in `REGIONS` (in `compute_isochrones.py`). Each entry is `(id, display_name, lat, lon)`. Re-run the script.
+You don't need to add anything to the script — the matrix is symmetric, so any H3 res-8 cell that hosts (or sits next to) a transit stop is already a valid `origin_h3`. From SQL:
+
+```sql
+SELECT travel_minutes, destination_h3
+FROM housing.gold.isochrone
+WHERE origin_h3 = h3_longlatash3(<lon>, <lat>, 8)
+  AND travel_minutes <= 30;
+```
+
+If the lat/lon falls outside the cell set (e.g. far from any transit stop), the query returns no rows — that workplace isn't reachable by transit under our model. Consider snapping to the nearest transit cell first.
 
 ## Adding regions later (Tauranga, Dunedin, etc.)
 
-1. Add a new entry to `REGIONS` with `feed_source`, `display_name`, `region_key`, `clip_bbox`, `gtfs_volume`, and `origins`.
+1. Add a new entry to `REGIONS` with `feed_source`, `display_name`, `region_key`, `clip_bbox`, and `gtfs_volume`.
 2. Make sure the corresponding GTFS feed is already landing in `dbfs:/Volumes/housing/bronze/gtfs_files/_zip/<feed>/`.
-3. Re-run. The script clips the OSM, builds the graph, and the gold table picks up the new feed automatically (it's partitioned by `feed_source`).
+3. Re-run. The script clips the OSM, builds the graph, and the gold table picks up the new feed automatically (it's partitioned by `feed_source`). Origins and destinations are derived from `housing.gold.transit_stop` for that feed — no hand-maintained list to update.
