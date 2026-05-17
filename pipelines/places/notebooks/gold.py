@@ -72,8 +72,8 @@ H3_RESOLUTION = 8
         region STRING COMMENT 'Containing region, e.g. "Auckland Region".',
         centroid_h3 BIGINT COMMENT 'H3 cell at the SA2 polygon centroid (resolution 8). Use as a single-point handle for spatial queries.',
         land_area_km2 DOUBLE COMMENT 'Land area in square kilometres (Stats NZ LAND_AREA_SQ_KM, excludes water surfaces).',
-        population_2023 INT COMMENT 'Total usual residents from Stats NZ 2023 census. Null until the census follow-up PR.',
-        median_age_2023 DOUBLE COMMENT 'Median age of usual residents from Stats NZ 2023 census. Null until the census follow-up PR.',
+        population_2023 INT COMMENT 'Total usual residents from Stats NZ 2023 census, joined on sa2_code.',
+        median_age_2023 DOUBLE COMMENT 'Median age of usual residents (years) from Stats NZ 2023 census.',
         geometry BINARY COMMENT 'SA2 polygon as WKB. Carried through from silver for downstream spatial work.',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
@@ -81,11 +81,16 @@ H3_RESOLUTION = 8
 @dlt.expect_or_drop("has_centroid", "centroid_h3 IS NOT NULL")
 def suburb():
     polygons = spark.read.table(f"{SILVER}.sa2_polygon")
+    census = spark.read.table(f"{SILVER}.sa2_census")
 
     # Centroid: GEOMETRY → WKB roundtrip because h3_pointash3 needs BINARY.
     # The path is: WKB (silver) → GEOMETRY (st_geomfromwkb) → centroid
     # (st_centroid, still GEOMETRY) → WKB (st_asbinary) → H3 cell.
-    return polygons.select(
+    #
+    # LEFT JOIN census: if a census row doesn't exist for a given SA2 (e.g.
+    # population was suppressed for privacy, or the census CSV missed an SA2),
+    # the demographic columns land null. Spatial attributes are always set.
+    return polygons.join(census, on="sa2_code", how="left").select(
         F.col("sa2_code").alias("suburb_id"),
         F.col("sa2_name").alias("suburb_name"),
         F.col("territorial_authority"),
@@ -94,8 +99,8 @@ def suburb():
             f"h3_pointash3(st_asbinary(st_centroid(st_geomfromwkb(geometry))), {H3_RESOLUTION})"
         ).alias("centroid_h3"),
         F.col("land_area_km2"),
-        F.lit(None).cast("int").alias("population_2023"),
-        F.lit(None).cast("double").alias("median_age_2023"),
+        F.col("population_2023"),
+        F.col("median_age_2023"),
         F.col("geometry"),
         F.current_timestamp().alias("_updated_at"),
     )
