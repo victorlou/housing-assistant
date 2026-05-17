@@ -2,18 +2,19 @@
 # MAGIC %md
 # MAGIC # places silver layer
 # MAGIC
-# MAGIC Conformed table produced from the bronze raw layer:
+# MAGIC Two conformed tables produced from the bronze raw layer:
 # MAGIC
 # MAGIC - `sa2_polygon` — one row per Stats NZ Statistical Area 2 (2023). The
 # MAGIC   geometry is converted from raw GeoJSON to WKB binary so every
 # MAGIC   Databricks spatial function downstream can ingest it directly.
+# MAGIC - `sa2_census` — one row per SA2 with demographic columns gold uses
+# MAGIC   (population, median age). Stats NZ ships the census as a wide CSV
+# MAGIC   with hundreds of columns; this silver table projects just what we
+# MAGIC   need today and leaves the rest in bronze for future expansion.
 # MAGIC
-# MAGIC Property names follow the Stats NZ convention as documented on
-# MAGIC DataFinder for layer 111218. Verify against the real payload on first
-# MAGIC run; if names differ, this is the only place to update.
-# MAGIC
-# MAGIC When the census follow-up lands, this notebook gets a sibling
-# MAGIC `sa2_census` table and gold joins them on `sa2_code`.
+# MAGIC Property/column names follow Stats NZ DataFinder conventions. Verify
+# MAGIC against the real payload on first run — the most likely break point is
+# MAGIC the census CSV column names, which Stats NZ revises occasionally.
 # MAGIC
 # MAGIC Deployed as its own pipeline (target = `silver`). Reads from the bronze
 # MAGIC pipeline's tables via plain `spark.read.table` because they live in a
@@ -25,6 +26,21 @@ import dlt
 from pyspark.sql import functions as F
 
 BRONZE = "housing.bronze"
+
+
+def _latest_snapshot(table_name: str):
+    """
+    Filter a streaming-bronze table to its most recent `_run_date` snapshot.
+
+    Why: each `fetch_*` run lands a new date-stamped file under the volume
+    and Auto Loader streams every file into bronze, so bronze accumulates
+    one full snapshot per run. Without this filter, silver would join on
+    duplicated rows and gold counts multiply by the number of accumulated
+    snapshots.
+    """
+    raw = spark.read.table(table_name)
+    max_run_date = raw.agg(F.max("_run_date")).collect()[0][0]
+    return raw.filter(F.col("_run_date") == max_run_date)
 
 
 # COMMAND ----------
@@ -54,7 +70,7 @@ BRONZE = "housing.bronze"
 @dlt.expect_or_drop("has_geometry", "geometry IS NOT NULL")
 @dlt.expect_or_drop("has_sa2_code", "sa2_code IS NOT NULL")
 def sa2_polygon():
-    raw = spark.read.table(f"{BRONZE}.places_sa2_polygon_raw")
+    raw = _latest_snapshot(f"{BRONZE}.places_sa2_polygon_raw")
 
     # SA2 2023 Higher Geographies property names per Stats NZ DataFinder
     # layer 111218. Verify on first live run by inspecting one row of bronze —
@@ -78,4 +94,59 @@ def sa2_polygon():
         F.col("properties.LAND_AREA_SQ_KM").cast("double").alias("land_area_km2"),
         F.expr("st_asbinary(st_geomfromgeojson(to_json(geometry)))").alias("geometry"),
         F.col("_ingested_at"),
+    )
+
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## sa2_census
+# MAGIC
+# MAGIC Stats NZ 2023 Census aggregates per SA2. Projects just the two
+# MAGIC columns gold needs today (population, median age) from the very wide
+# MAGIC source table (~530 columns named `VAR_1_N`). The lookup CSV in the
+# MAGIC source zip maps codes to descriptions; here are the ones we use:
+# MAGIC
+# MAGIC | Column     | Meaning                                                       |
+# MAGIC |------------|---------------------------------------------------------------|
+# MAGIC | `VAR_1_3`  | 2023 Census usually resident population count (Total)         |
+# MAGIC | `VAR_1_69` | 2023 Median age (Median measure, Variable1 = Age, Total)      |
+# MAGIC
+# MAGIC Stats NZ uses `-999` as the suppression / not-applicable sentinel
+# MAGIC (e.g. for the "Inland water" SA2s that contain only lake surface —
+# MAGIC population is 0, median age can't be calculated). `nullif(...)`
+# MAGIC turns those into proper SQL NULLs before they reach gold.
+# MAGIC
+# MAGIC To add more demographic columns later, look up the right VAR_N code
+# MAGIC in the lookup table and add it to this projection.
+
+# COMMAND ----------
+
+
+@dlt.table(
+    name="sa2_census",
+    comment=(
+        "Stats NZ 2023 Census aggregates by SA2 — narrow projection with just "
+        "the demographic columns gold.suburb uses today (population, median "
+        "age). Bronze keeps the wide raw form (~530 columns) for future "
+        "expansion. -999 sentinel values are replaced with NULL."
+    ),
+    table_properties={"quality": "silver", "project": "housing-assistant"},
+    schema="""
+        _source STRING COMMENT 'Upstream dataset family ("stats_nz").',
+        sa2_code STRING COMMENT 'Stats NZ SA2 2023 code, 6 digits. Joins to sa2_polygon.sa2_code.',
+        population_2023 INT COMMENT '2023 census usually resident population count for this SA2 (source: VAR_1_3). NULL where Stats NZ suppressed the value (-999 sentinel).',
+        median_age_2023 DOUBLE COMMENT '2023 census median age (years) of usually-resident population (source: VAR_1_69). NULL where Stats NZ suppressed the value (-999 sentinel).',
+        _ingested_at TIMESTAMP COMMENT 'When this row was written to silver.'
+    """,
+)
+@dlt.expect_or_drop("has_sa2_code", "sa2_code IS NOT NULL")
+def sa2_census():
+    raw = _latest_snapshot(f"{BRONZE}.places_sa2_census_raw")
+
+    return raw.selectExpr(
+        "_source",
+        "cast(SA22023_V1_00 AS STRING) AS sa2_code",
+        "cast(nullif(VAR_1_3, -999) AS INT) AS population_2023",
+        "cast(nullif(VAR_1_69, -999) AS DOUBLE) AS median_age_2023",
+        "_ingested_at",
     )

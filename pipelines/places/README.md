@@ -5,6 +5,7 @@ Canonical place dimension for the housing lakehouse — Stats NZ Statistical Are
 Source: **Stats NZ DataFinder** (Koordinates platform, same family as LINZ Data Service). Currently one dataset:
 
 - `sa2_polygons` — "Statistical Area 2 Higher Geographies 2023 (generalised)", [layer 111218](https://datafinder.stats.govt.nz/layer/111218-statistical-area-2-higher-geographies-2023-generalised/), via WFS as GeoJSON in WGS84. Same SA2 polygons as the bare 111227 layer but pre-joined with parent territorial authority + region attributes, so silver doesn't need a separate spatial join.
+- `sa2_census` — Stats NZ 2023 Census aggregates per SA2 (downloaded manually as CSV from DataFinder, e.g. [layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/)). Wide source format with hundreds of columns; silver projects just `population_2023` and `median_age_2023`. Refreshes 5-yearly so manual upload is fine.
 
 2023 Census demographics are joined from `housing.silver.census_sa2_features` (produced by [`pipelines/census_2023`](../census_2023/)). Run `census_2023_ingest` before refreshing places gold.
 
@@ -139,8 +140,16 @@ SELECT COUNT(*) FROM housing.gold.h3_cell WHERE suburb_id IS NULL;
 -- Census enrichment on suburb (after census_2023_ingest + places gold refresh)
 SELECT COUNT(*) AS suburbs,
        COUNT(population_2023) AS with_pop,
+       COUNT(median_age_2023) AS with_age,
        COUNT(median_household_income_2023) AS with_income
 FROM housing.gold.suburb;
+
+-- Top 10 most populous suburbs nationally
+SELECT suburb_name, territorial_authority, population_2023, median_age_2023
+FROM housing.gold.suburb
+WHERE population_2023 IS NOT NULL
+ORDER BY population_2023 DESC
+LIMIT 10;
 ```
 
 ## Setup before first run
@@ -159,6 +168,27 @@ databricks --profile hackathon secrets put-secret housing-assistant stats_nz_api
 ```
 
 The bundle picks it up via the `auth_secret_key = "stats_nz_api_key"` parameter in `databricks.yml`. Until this is configured, `fetch_sa2_polygons` logs `status='skipped'` and exits cleanly.
+
+### Upload the SA2 census CSV (one-time, refresh every 5 years)
+
+Census data isn't on the Koordinates WFS API like the polygons — it sits behind a per-table CSV export on DataFinder. Since the data refreshes every 5 years anyway, manual upload is the simpler path:
+
+1. Open [DataFinder layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/) (2023 Census totals by topic for individuals by SA2 — part 1) in a browser. Use the **Download** button to grab the table as CSV. Part 2 ([layer 120898](https://datafinder.stats.govt.nz/layer/120898-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-2/)) has additional columns; for the population + median age we use today, part 1 alone is enough.
+2. Upload it to the bronze volume with today's date as the filename:
+
+   ```bash
+   # First-time only: create the directory.
+   databricks --profile hackathon fs mkdirs \
+     dbfs:/Volumes/housing/bronze/places_files/sa2_census
+
+   # Every refresh:
+   today=$(date +%Y-%m-%d)
+   databricks --profile hackathon fs cp \
+     ~/Downloads/<the-census-csv>.csv \
+     "dbfs:/Volumes/housing/bronze/places_files/sa2_census/${today}.csv"
+   ```
+
+3. On the next pipeline run, `fetch_sa2_census` validates + hashes the CSV, bronze streams it via Auto Loader, and silver/gold join it into `housing.gold.suburb`.
 
 ## What's still TODO
 

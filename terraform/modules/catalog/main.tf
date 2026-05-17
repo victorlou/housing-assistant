@@ -16,6 +16,7 @@ locals {
     "prices_files",                  # RBNZ HPI (NZ-aggregate price index time series)
     "housing_indicators_files",      # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
     "flood_files",                   # Regional flood hazard ArcGIS JSONL landings
+    "amenities_files",               # Amenity POIs (supermarkets, schools, hospitals, parks) extracted from OSM
   ]
 }
 

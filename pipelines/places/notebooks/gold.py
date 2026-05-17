@@ -51,7 +51,14 @@ def _census_features_df():
     name="suburb",
     comment=(
         "Canonical NZ suburb dimension, keyed by Stats NZ SA2 2023 code. "
-        "2023 Census columns from housing.silver.census_sa2_features when available."
+        "One row per Statistical Area 2 — the smallest official geography "
+        "Stats NZ publishes. SA2 names roughly correspond to colloquial NZ "
+        "suburbs but are sometimes finer than common usage. Non-residential "
+        "polygons (harbour, inland water, EEZ) have population_2023 near zero; "
+        "filter population_2023 > 500 for residential queries. "
+        "2023 Census columns from housing.silver.census_sa2_features when "
+        "available. Joins: gold.h3_cell via suburb_id; TA-level facts via "
+        "territorial_authority; region-level facts via region."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     partition_cols=["region"],
@@ -60,16 +67,16 @@ def _census_features_df():
         suburb_name STRING NOT NULL COMMENT 'SA2 2023 name as published by Stats NZ.',
         territorial_authority STRING COMMENT 'Containing TA, e.g. "Auckland".',
         region STRING COMMENT 'Containing region, e.g. "Auckland Region".',
-        centroid_h3 BIGINT COMMENT 'H3 cell at the SA2 polygon centroid (resolution 8).',
-        land_area_km2 DOUBLE COMMENT 'Land area in square kilometres (Stats NZ LAND_AREA_SQ_KM).',
-        population_2023 INT COMMENT 'Total usual residents (2023 Census).',
+        centroid_h3 BIGINT COMMENT 'H3 cell at the SA2 polygon centroid (resolution 8). Use as a single-point handle for spatial queries.',
+        land_area_km2 DOUBLE COMMENT 'Land area in square kilometres (Stats NZ LAND_AREA_SQ_KM, excludes water surfaces).',
+        population_2023 INT COMMENT 'Total usual residents (2023 Census). Filter > 500 for residential queries.',
         median_age_2023 DOUBLE COMMENT 'Median age of usual residents (2023 Census).',
         median_household_income_2023 DOUBLE COMMENT 'Median total household income ($, 2023 Census).',
         household_count_2023 INT COMMENT 'Households in occupied private dwellings (2023).',
         owner_occupier_pct_2023 DOUBLE COMMENT 'Share of households that own or partly own their dwelling.',
         median_weekly_rent_2023 DOUBLE COMMENT 'Median weekly rent for renting households ($, 2023).',
         percent_crowded_2023 DOUBLE COMMENT 'Share of households that are crowded (2023).',
-        geometry BINARY COMMENT 'SA2 polygon as WKB.',
+        geometry BINARY COMMENT 'SA2 polygon as WKB. Carried through from silver for downstream spatial work.',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
 )
@@ -137,8 +144,18 @@ def suburb():
 @dlt.table(
     name="h3_cell",
     comment=(
-        "Every H3 cell (resolution 8) whose centre falls inside an NZ SA2, "
-        "mapped to that SA2's suburb_id."
+        "Every H3 cell (resolution 8, ~0.7 km² hexagon) whose centre falls "
+        "inside an NZ SA2, mapped to that SA2's suburb_id. This is the "
+        "spine for spatial joins across the lakehouse: any fact keyed by "
+        "H3 cell (gold.transit_stop.h3_cell, gold.isochrone.destination_h3 "
+        "/.origin_h3, gold.amenity__h3.h3_cell, future listings) "
+        "reaches its suburb name through this bridge. Standard pattern: "
+        "`JOIN gold.h3_cell USING (h3_cell)` then `JOIN gold.suburb ON "
+        "suburb_id`. Built via Databricks' centre-based h3_polyfillash3, "
+        "so each cell maps to at most one SA2 (cells whose centres fall "
+        "in water/EEZ get assigned to harbour-style SA2s — filter on "
+        "gold.suburb.population_2023 > 0 to exclude those if querying "
+        "for residential context)."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     schema="""
