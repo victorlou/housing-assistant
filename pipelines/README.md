@@ -27,12 +27,11 @@ pipelines/
 
 ## Adding a new source
 
-1. Add an entry to `data/sources.yaml`.
-2. Create `pipelines/<source>/` with the bundle config.
-3. Land raw files into the `housing.bronze.<source>_files` volume.
-4. Add bronze parsing → silver conforming → gold materialisation.
-5. Update `docs/data-sources.md` with the new source.
-6. Update the marts pipeline if a new gold table was created.
+1. Create `pipelines/<source>/` with the bundle config.
+2. Land raw files into the `housing.bronze.<source>_files` volume.
+3. Add bronze parsing → silver conforming → gold materialisation.
+4. Update `docs/data-sources.md` with the new source.
+5. Update the marts pipeline if a new gold table was created.
 
 ## Local development
 

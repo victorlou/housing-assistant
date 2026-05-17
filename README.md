@@ -62,7 +62,7 @@ housing-assistant/
 ├── app/                         ← Databricks App (frontend + backend)
 ├── dashboards/                  ← AI/BI dashboard exports
 ├── notebooks/                   ← exploration, prototypes
-├── data/                        ← canonical source registry (sources.yaml)
+├── data/                        ← see docs/data-sources.md (not raw data)
 └── .github/                     ← CI workflows, PR template, CODEOWNERS
 ```
 

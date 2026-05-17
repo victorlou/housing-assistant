@@ -1,6 +1,6 @@
 # Open data sources
 
-This is the canonical catalogue of open data sources Housing Assistant uses. Every source listed here should also appear in `data/sources.yaml` in machine-readable form, used by ingestion pipelines.
+This is the canonical catalogue of open data sources Housing Assistant uses. Each source has a corresponding pipeline under `pipelines/`.
 
 ## Selection criteria
 
@@ -68,18 +68,3 @@ A canonical lookup table `silver.place_lookup` maps every variant of a place nam
 ## Licensing
 
 All Tier 1 and 2 sources are CC-BY, CC-BY-SA, or in the public domain by virtue of being NZ government data. Attribution is rolled up into a single `docs/attributions.md` file (TODO). We do not redistribute raw third-party data; we only publish derived aggregates and explanations.
-
-## What lives in `data/sources.yaml`
-
-For each source above, the YAML file holds:
-
-- `name`, `publisher`, `licence`
-- `url` (download endpoint or API base)
-- `auth` (none / api-key / etc.)
-- `cadence`
-- `ingestion_pipeline` (path to the pipeline that ingests it)
-- `target_tables` (list)
-- `tier` (1, 2, 3)
-- `notes` (any quirks)
-
-The ingestion pipelines parse this YAML to know what to fetch.

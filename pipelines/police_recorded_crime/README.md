@@ -79,5 +79,3 @@ GROUP BY 1, 2, 3, 4
 ORDER BY 1 DESC, 5 DESC
 LIMIT 20;
 ```
-
-Registry: [`data/sources.yaml`](../../data/sources.yaml).
