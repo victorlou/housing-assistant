@@ -56,11 +56,15 @@ def _stream_gtfs_file(file_name: str):
         .load(f"{VOLUME_ROOT}/{file_name}")
         .withColumn(
             "_feed_source",
-            F.regexp_extract(F.col("_metadata.file_path"), rf"/{file_name}/([^/]+)/", 1),
+            F.regexp_extract(
+                F.col("_metadata.file_path"), rf"/{file_name}/([^/]+)/", 1
+            ),
         )
         .withColumn(
             "_run_date",
-            F.regexp_extract(F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})\.txt$", 1),
+            F.regexp_extract(
+                F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})\.txt$", 1
+            ),
         )
         .withColumn("_ingested_at", F.current_timestamp())
         .withColumn("_source_file", F.col("_metadata.file_path"))

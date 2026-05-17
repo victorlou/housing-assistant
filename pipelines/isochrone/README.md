@@ -41,17 +41,19 @@ pipelines/isochrone/
 
 | Column | Type | Notes |
 |---|---|---|
-| `origin_h3` | BIGINT | H3 cell (resolution 8) of an origin centre (e.g. Britomart). |
-| `destination_h3` | BIGINT | H3 cell of a reachable destination. |
+| `origin_h3` | BIGINT | H3 cell (resolution 8) of an origin. Drawn from the same cell set as `destination_h3` — any cell hosting a transit stop or adjacent to one. |
+| `destination_h3` | BIGINT | H3 cell of a reachable destination. Same set as `origin_h3`. |
 | `mode` | STRING | `transit`, `drive`, `walk`. Currently only `transit`. |
-| `travel_minutes` | INT | Total trip time, bucketed to nearest 5. |
+| `travel_minutes` | INT | Total trip time, bucketed to nearest 5. Self-reach rows report 0. |
 | `feed_source` | STRING | Which GTFS feed produced this row (`auckland_transport`, ...). |
 | `departure_time` | STRING | Assumed departure clock time (e.g. `08:30`). |
 | `service_date` | DATE | Service date used. |
 | `computed_at` | TIMESTAMP | When this row was produced. |
-| `computation_version` | STRING | `r5py-v1`, etc. Lets us version the algorithm. |
+| `computation_version` | STRING | `r5py-v2` (symmetric matrix); `r5py-v1` was the older 22-hub run. Lets us version the algorithm + origin/destination set. |
 
 Partitioned by `(mode, feed_source)`. Created on the first compute run via `CREATE OR REPLACE TABLE ... AS SELECT * FROM parquet.\`/Volumes/.../isochrone_all.parquet\``.
+
+**Semantic.** The matrix is symmetric: `origin_h3` and `destination_h3` are drawn from the same set per region — every H3 res-8 cell hosting a transit stop in `housing.gold.transit_stop` plus a 1-ring expansion. That means the agent can answer "from this workplace lat/lon to anywhere in the region" for any workplace near transit (not only from a handful of named CBD hubs), via `WHERE origin_h3 = h3_longlatash3(<lon>, <lat>, 8)`.
 
 ## Refresh process
 
@@ -61,12 +63,14 @@ Partitioned by `(mode, feed_source)`. Created on the first compute run via `CREA
 
 ## Currently covered
 
-- **Auckland** (`auckland_transport`): 7 origin centres.
-- **Wellington** (`metlink`): 6 origin centres.
-- **Waikato / Hamilton** (`busit`): 4 origin centres.
-- **Christchurch** (`metroinfo`): 5 origin centres.
+Four metro regions, each with a fully symmetric cell-to-cell matrix: every H3 res-8 cell hosting a transit stop in that region (plus a 1-ring of neighbours) is an origin *and* a destination.
 
-All regions: H3 resolution 8 destinations (stop cells + 1-ring neighbours), Wednesday 08:30 NZT departure, 90-min cap, 5-min travel-time buckets.
+- **Auckland** (`auckland_transport`)
+- **Wellington** (`metlink`)
+- **Waikato / Hamilton** (`busit`)
+- **Christchurch** (`metroinfo`)
+
+All regions: H3 resolution 8, Wednesday 08:30 NZT departure, 90-min cap, 5-min travel-time buckets.
 
 ## Coming next
 

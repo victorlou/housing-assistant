@@ -149,7 +149,8 @@ resources:
           depends_on:
             - task_key: fetch_sa2_polygons
             - task_key: fetch_sa2_census
-          run_if: ALL_DONE
+          # ALL_DONE so a failed/skipped fetch doesn't block the rest of the
+          # pipeline. Either fetch hash-skips cleanly when nothing's changed.
           run_if: ALL_DONE
           pipeline_task:
             pipeline_id: ${resources.pipelines.places_bronze.id}

@@ -142,9 +142,7 @@ def log_run(run_id: str, status: str, source_url_repr: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
-        INGEST_RUNS_TABLE
-    )
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
 
 
 def last_successful_content_hash() -> str | None:

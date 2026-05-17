@@ -93,3 +93,5 @@ You will need Databricks credentials in the environment (for example `databricks
 - [Open data source catalogue](docs/data-sources.md)
 - [Personas](docs/personas.md)
 - [Developer runbook](docs/runbook.md)
+- [Gold-table naming conventions](docs/conventions.md)
+- [Pipeline schedules](docs/schedules.md)

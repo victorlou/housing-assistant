@@ -232,17 +232,19 @@ def transit_service_day():
         F.col("sunday"),
     )
 
-    runs = days.withColumn(
-        "weekday", F.date_format("service_date", "E")
-    ).filter(
-        (F.col("weekday") == "Mon") & (F.col("monday") == 1)
-        | (F.col("weekday") == "Tue") & (F.col("tuesday") == 1)
-        | (F.col("weekday") == "Wed") & (F.col("wednesday") == 1)
-        | (F.col("weekday") == "Thu") & (F.col("thursday") == 1)
-        | (F.col("weekday") == "Fri") & (F.col("friday") == 1)
-        | (F.col("weekday") == "Sat") & (F.col("saturday") == 1)
-        | (F.col("weekday") == "Sun") & (F.col("sunday") == 1)
-    ).select("_feed_source", "service_id", "service_date")
+    runs = (
+        days.withColumn("weekday", F.date_format("service_date", "E"))
+        .filter(
+            (F.col("weekday") == "Mon") & (F.col("monday") == 1)
+            | (F.col("weekday") == "Tue") & (F.col("tuesday") == 1)
+            | (F.col("weekday") == "Wed") & (F.col("wednesday") == 1)
+            | (F.col("weekday") == "Thu") & (F.col("thursday") == 1)
+            | (F.col("weekday") == "Fri") & (F.col("friday") == 1)
+            | (F.col("weekday") == "Sat") & (F.col("saturday") == 1)
+            | (F.col("weekday") == "Sun") & (F.col("sunday") == 1)
+        )
+        .select("_feed_source", "service_id", "service_date")
+    )
 
     exceptions = spark.read.table(f"{BRONZE}.gtfs_calendar_dates").select(
         F.col("_feed_source"),

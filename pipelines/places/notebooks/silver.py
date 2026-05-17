@@ -88,7 +88,9 @@ def sa2_polygon():
         F.col("properties.SA22023_V1_00").cast("string").alias("sa2_code"),
         F.col("properties.SA22023_V1_00_NAME").cast("string").alias("sa2_name"),
         F.col("properties.TA2023_V1_00").cast("string").alias("ta_code"),
-        F.col("properties.TA2023_V1_00_NAME").cast("string").alias("territorial_authority"),
+        F.col("properties.TA2023_V1_00_NAME")
+        .cast("string")
+        .alias("territorial_authority"),
         F.col("properties.REGC2023_V1_00").cast("string").alias("region_code"),
         F.col("properties.REGC2023_V1_00_NAME").cast("string").alias("region"),
         F.col("properties.LAND_AREA_SQ_KM").cast("double").alias("land_area_km2"),

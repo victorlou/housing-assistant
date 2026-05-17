@@ -14,7 +14,7 @@ _NOTEBOOKS = (
 if str(_NOTEBOOKS) not in sys.path:
     sys.path.insert(0, str(_NOTEBOOKS))
 
-from linz_fetch_wfs import (
+from linz_fetch_wfs import (  # noqa: E402
     build_getfeature_params,
     expand_env_placeholders,
     load_config,

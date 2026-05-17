@@ -168,11 +168,20 @@ def suburb():
 def h3_cell():
     polygons = spark.read.table(f"{SILVER}.sa2_polygon")
 
-    return polygons.selectExpr(
-        "sa2_code AS suburb_id",
-        f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
-    ).select(
-        F.col("h3_cell"),
-        F.col("suburb_id"),
-        F.current_timestamp().alias("_updated_at"),
-    ).dropDuplicates(["h3_cell"])
+    # Pass silver.geometry (WKB) straight to h3_polyfillash3 — no
+    # st_geomfromwkb wrap; the function wants BINARY/STRING, not GEOMETRY.
+    # Center-based semantics mean we usually emit each cell at most once;
+    # dropDuplicates handles the rare tie where a cell's centre lands on
+    # an exact SA2 boundary line.
+    return (
+        polygons.selectExpr(
+            "sa2_code AS suburb_id",
+            f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
+        )
+        .select(
+            F.col("h3_cell"),
+            F.col("suburb_id"),
+            F.current_timestamp().alias("_updated_at"),
+        )
+        .dropDuplicates(["h3_cell"])
+    )

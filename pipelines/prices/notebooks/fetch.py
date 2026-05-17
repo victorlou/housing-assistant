@@ -75,8 +75,8 @@ RAW_SUBDIR = "_xlsx"
 # RBNZ M10 sheet name + the canonical column titles we expect to find in
 # the header row. If RBNZ rename a column, this is the spot to update.
 M10_SHEET = "Data"
-M10_HEADER_ROW = 0   # row index (0-based) where the column titles live
-M10_DATA_START = 5   # row index where the actual quarterly rows begin
+M10_HEADER_ROW = 0  # row index (0-based) where the column titles live
+M10_DATA_START = 5  # row index where the actual quarterly rows begin
 
 # Maps the RBNZ column title → output column name. Any title not in this
 # map is silently skipped, so RBNZ adding new metrics doesn't break us.
@@ -162,9 +162,7 @@ def log_run(run_id: str, status: str, source_url_repr: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
-        INGEST_RUNS_TABLE
-    )
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
 
 
 def last_successful_content_hash() -> str | None:
