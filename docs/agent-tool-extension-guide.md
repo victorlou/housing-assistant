@@ -152,43 +152,46 @@ CATALOG = os.getenv("HOUSING_CATALOG", "housing")    # "workspace" for dev
 SCHEMA = os.getenv("HOUSING_SCHEMA", "gold")         # "test" for dev
 
 @tool
-def compute_isochrone(origin_h3: str, mode: str, minutes: int) -> list[str]:
+def compute_isochrone(
+    origin_lat: float, origin_lon: float, minutes: int, mode: str = "transit"
+) -> list[str]:
     """
-    Return H3 cells reachable from origin_h3 within the given travel time.
+    Return SA2 suburb names reachable from (lat, lon) within the given travel
+    time, on a Wednesday 08:30 NZT departure.
 
-    Use when the user asks about commute distance, travel time to work,
-    or what's accessible within N minutes.
+    Use when the user asks about commute distance, travel time to work, or
+    "what's a 30-min commute from my office at <address>".
 
     Args:
-        origin_h3: H3 res-8 cell ID for the origin (e.g. "8928308291bfffff")
-        mode: Travel mode — "transit", "drive", or "walk"
-        minutes: Maximum travel time in minutes
+        origin_lat: WGS84 latitude of origin point (e.g. workplace).
+        origin_lon: WGS84 longitude of origin point.
+        minutes: Maximum travel time in minutes (rounded to 5; capped at 90).
+        mode: Travel mode — currently only "transit" is supported.
 
     Returns:
-        List of reachable H3 cell IDs
+        Distinct list of SA2 suburb names reachable within the time limit.
     """
+    # `housing.gold.isochrone` is a symmetric, pre-computed travel-time matrix:
+    # one row per (origin_h3, destination_h3) pair. We compute origin_h3 from
+    # lat/lon, filter to travel_minutes <= N, then join to gold.h3_cell and
+    # gold.suburb to get human-readable suburb names.
     sql = f"""
-        SELECT h3_destinations
-        FROM {CATALOG}.{SCHEMA}.isochrone
-        WHERE h3_origin = :h3_origin
-          AND mode = :mode
-          AND minutes_bucket = (
-            SELECT MIN(minutes_bucket)
-            FROM {CATALOG}.{SCHEMA}.isochrone
-            WHERE h3_origin = :h3_origin
-              AND mode = :mode
-              AND minutes_bucket >= :minutes
-          )
-        LIMIT 1
+        SELECT DISTINCT s.suburb_name
+        FROM {CATALOG}.{SCHEMA}.isochrone     i
+        JOIN {CATALOG}.{SCHEMA}.h3_cell       c ON c.h3_cell   = i.destination_h3
+        JOIN {CATALOG}.{SCHEMA}.suburb        s ON s.suburb_id = c.suburb_id
+        WHERE i.origin_h3 = h3_longlatash3(:lon, :lat, 8)
+          AND i.mode = :mode
+          AND i.travel_minutes <= :minutes
+        ORDER BY s.suburb_name
     """
     rows = _execute(sql, [
-        {"name": "h3_origin", "value": origin_h3, "type": "STRING"},
-        {"name": "mode", "value": mode, "type": "STRING"},
-        {"name": "minutes", "value": str(minutes), "type": "INT"},
+        {"name": "lat",     "value": str(origin_lat), "type": "DOUBLE"},
+        {"name": "lon",     "value": str(origin_lon), "type": "DOUBLE"},
+        {"name": "mode",    "value": mode,            "type": "STRING"},
+        {"name": "minutes", "value": str(minutes),    "type": "INT"},
     ])
-    if not rows:
-        return []
-    return rows[0][0] or []   # h3_destinations is ARRAY<STRING>
+    return [r[0] for r in rows]
 
 
 def _execute(sql: str, params: list[dict]) -> list[list]:
@@ -279,16 +282,22 @@ No routing code needed — the LLM reads the docstring and decides.
 
 ## Table Name Quick Reference
 
-| Prod table (`housing.gold.*`) | Test table (`workspace.test.*`) | Old stub name (wrong — ignore) |
+| Prod (`housing.gold.*`) | Test (`workspace.test.*`) | What it carries |
 |---|---|---|
-| `housing.gold.suburb` | `workspace.test.suburb` | `dim_suburb` |
-| `housing.gold.hazard` | `workspace.test.hazard` | `dim_hazard` |
-| `housing.gold.isochrone` | `workspace.test.isochrone` | `fact_isochrone` |
-| `housing.gold.rent__month__suburb` | `workspace.test.rent__month__suburb` | `fact_rent_by_suburb_month` |
-| `housing.gold.income__year__suburb` | `workspace.test.income__year__suburb` | — |
-| `housing.gold.school` | `workspace.test.school` | — |
+| `suburb` | `workspace.test.suburb` | SA2 dimension with name, TA, region, centroid H3, geometry, 2023 census population/age |
+| `h3_cell` | `workspace.test.h3_cell` | H3 res-8 ↔ `suburb_id` spatial bridge — the workhorse join |
+| `suburb__year` | `workspace.test.suburb__year` | Wide census per (suburb_id, census_year) — income, tenure, rent, crowding, dwelling quality, **+ `total_victimisations_2023`** |
+| `ta__month` | `workspace.test.ta__month` | HUD monthly TA metrics — HPI, sale/rent prices, MSD housing register |
+| `ta__quarter` | `workspace.test.ta__quarter` | HUD quarterly affordability indices, 25 yrs back to 2001 |
+| `region__quarter` | `workspace.test.region__quarter` | RBNZ M10 HPI + sales count + investment per region per quarter |
+| `transit_stop` | `workspace.test.transit_stop` | GTFS stops keyed by H3 cell |
+| `transit_route` | `workspace.test.transit_route` | GTFS routes with agency + type label |
+| `isochrone` | `workspace.test.isochrone` | Symmetric (origin_h3, destination_h3) transit travel-time matrix |
+| `amenity__h3` | `workspace.test.amenity__h3` | OSM amenities (supermarket, school, hospital, park, …) keyed by H3 cell + `suburb_id` |
+| `hazard` | `workspace.test.hazard` | Flood/coastal hazard flags per H3 cell (booleans, no liquefaction) |
+| `nz_address` | `workspace.test.nz_address` | Current LINZ NZ Address points keyed by H3 cell |
 
-Full column definitions: [`lakehouse-gold-schema.md`](lakehouse-gold-schema.md)
+Full column definitions: [`lakehouse-gold-schema.md`](lakehouse-gold-schema.md). Crime, rent, income are **not** standalone gold tables — they live as columns on `suburb__year` (per the `<spatial_dim>__<time_grain>` convention).
 
 ---
 

@@ -1,6 +1,11 @@
 """
 Seed workspace.test.* tables with synthetic NZ housing data for agent development.
 
+Mirrors the real housing.gold.* schemas documented in
+docs/lakehouse-gold-schema.md so tool code can switch between
+workspace.test.* and housing.gold.* via one env-var change
+(HOUSING_CATALOG, HOUSING_SCHEMA).
+
 Usage:
     uv run python scripts/generate_test_data.py [--write] [--reset] [--profile NAME]
     uv run python scripts/generate_test_data.py --write --serverless
@@ -23,6 +28,8 @@ Requires:
     - For --write: provide --cluster-id, --serverless, DATABRICKS_CLUSTER_ID,
       DATABRICKS_SERVERLESS=true, or a Databricks profile with compute configured
     - databricks-connect installed: uv add databricks-connect
+    - h3-py installed: uv add h3       (computes real H3 res-8 cells from lat/lon
+                                          so they match h3_longlatash3() in Spark)
     - SP must have CREATE SCHEMA + CREATE TABLE on workspace.test
 """
 
@@ -32,11 +39,14 @@ import argparse
 import datetime
 import os
 import sys
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Parse args first so --write flag controls all remote side-effects
+# CLI parsing first so --write controls all remote side-effects
 # ---------------------------------------------------------------------------
-parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+)
 parser.add_argument("--write", action="store_true", help="Write data to Databricks (default: dry-run)")
 parser.add_argument("--reset", action="store_true", help="Drop and recreate workspace.test before seeding")
 parser.add_argument("--profile", default=None, help="Databricks config profile name")
@@ -47,10 +57,8 @@ args = parser.parse_args()
 DRY_RUN = not args.write
 
 # ---------------------------------------------------------------------------
-# Load .env before resolving Databricks config or importing Databricks SDK
+# Load .env before resolving Databricks config
 # ---------------------------------------------------------------------------
-from pathlib import Path
-
 env_path = Path(__file__).parent.parent / ".env"
 if env_path.exists():
     for line in env_path.read_text().splitlines():
@@ -61,7 +69,9 @@ if env_path.exists():
 
 PROFILE = args.profile or os.getenv("DATABRICKS_CONFIG_PROFILE", "DEFAULT")
 CLUSTER_ID = args.cluster_id or os.getenv("DATABRICKS_CLUSTER_ID")
-SERVERLESS = args.serverless or os.getenv("DATABRICKS_SERVERLESS", "").strip().lower() in {"1", "true", "yes", "y", "on"}
+SERVERLESS = args.serverless or os.getenv("DATABRICKS_SERVERLESS", "").strip().lower() in {
+    "1", "true", "yes", "y", "on",
+}
 TARGET_CATALOG = "workspace"
 TARGET_SCHEMA = "test"
 TARGET_NAMESPACE = f"{TARGET_CATALOG}.{TARGET_SCHEMA}"
@@ -72,264 +82,356 @@ if args.reset and DRY_RUN:
 if CLUSTER_ID and SERVERLESS:
     parser.error("choose either --cluster-id/DATABRICKS_CLUSTER_ID or --serverless/DATABRICKS_SERVERLESS, not both")
 
+# h3 is required for both dry-run and write modes so test data uses the same
+# H3 cells the production `h3_longlatash3()` SQL function would compute.
+try:
+    import h3.api.basic_int as h3
+except ImportError:
+    sys.exit(
+        "[generate_test_data] h3 required. Install with: uv add h3\n"
+        "  h3-py 4.x ships the int-based API at h3.api.basic_int."
+    )
+
 if DRY_RUN:
     print("[generate_test_data] DRY RUN — no data will be written.")
     print("[generate_test_data] Pass --write to actually seed the tables.\n")
 
 
 def _utc_now() -> datetime.datetime:
-    """Return a naive UTC timestamp without using deprecated utcnow()."""
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    """Naive UTC timestamp. Uses `datetime.timezone.utc` for Python 3.10 compat."""
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _h3_cell(lat: float, lon: float) -> int:
+    """Real H3 res-8 cell as int — matches Databricks `h3_longlatash3(lon, lat, 8)`."""
+    return int(h3.latlng_to_cell(lat, lon, 8))
+
 
 # ---------------------------------------------------------------------------
-# Synthetic data constants — Auckland suburbs, realistic NZ figures
+# Synthetic data: 10 Auckland SA2s + 4 TAs + national region.
+# Coords are approximate suburb centroids — accurate enough for the SQL
+# function to produce a stable, reasonable H3 cell for testing.
 # ---------------------------------------------------------------------------
 
-SUBURBS = [
-    # (suburb_name, territorial_authority, region, h3_centroid, area_km2, population_2021, median_age)
-    ("Onehunga",      "Auckland City",     "Auckland Region", "8928308291bfffff", 3.2,  21000, 34.2),
-    ("Mt Albert",     "Auckland City",     "Auckland Region", "892830808cbffff",  4.1,  18500, 35.8),
-    ("Sandringham",   "Auckland City",     "Auckland Region", "892830808d3ffff",  2.9,  15200, 33.5),
-    ("Newton",        "Auckland City",     "Auckland Region", "89283080dcbffff",  1.8,   8300, 29.4),
-    ("Grey Lynn",     "Auckland City",     "Auckland Region", "89283080dd3ffff",  2.4,  12100, 32.1),
-    ("Pt Chevalier",  "Auckland City",     "Auckland Region", "89283080c37ffff",  3.0,  11800, 36.2),
-    ("Avondale",      "Auckland City",     "Auckland Region", "89283080c2bffff",  5.5,  19600, 34.7),
-    ("Blockhouse Bay","Auckland City",     "Auckland Region", "89283080c0fffff",  6.2,  14300, 37.9),
-    ("Glen Eden",     "Waitākere Ranges",  "Auckland Region", "8928308065bffff",  8.9,  22400, 36.5),
-    ("Henderson",     "Waitākere Ranges",  "Auckland Region", "89283080617ffff",  7.3,  28700, 33.8),
-    ("New Lynn",      "Waitākere Ranges",  "Auckland Region", "89283080637ffff",  4.6,  20100, 34.1),
-    ("Papakura",      "Papakura",          "Auckland Region", "8928308521bffff",  9.4,  24200, 35.2),
-    ("Takanini",      "Papakura",          "Auckland Region", "892830852cbffff",  5.8,  16400, 34.6),
-    ("Manurewa",      "Manurewa-Papakura", "Auckland Region", "892830853cbffff",  7.1,  35600, 33.0),
-    ("Mangere",       "Mangere-Otāhuhu",   "Auckland Region", "892830854abffff",  8.3,  31900, 32.5),
+# (suburb_id, suburb_name, territorial_authority, region, lat, lon)
+SUBURBS: list[tuple[str, str, str, str, float, float]] = [
+    ("134800", "Onehunga North East",      "Auckland", "Auckland Region", -36.9197, 174.7898),
+    ("134700", "Onehunga North West",      "Auckland", "Auckland Region", -36.9244, 174.7795),
+    ("133400", "Mt Eden South",            "Auckland", "Auckland Region", -36.8800, 174.7565),
+    ("132700", "Newmarket",                "Auckland", "Auckland Region", -36.8703, 174.7765),
+    ("131700", "Ponsonby West",            "Auckland", "Auckland Region", -36.8550, 174.7350),
+    ("136200", "Mt Albert South",          "Auckland", "Auckland Region", -36.8950, 174.7100),
+    ("135700", "Sandringham North",        "Auckland", "Auckland Region", -36.8920, 174.7300),
+    ("141900", "New Lynn Central",         "Waitākere Ranges", "Auckland Region", -36.9115, 174.6850),
+    ("141100", "Henderson Central",        "Waitākere Ranges", "Auckland Region", -36.8770, 174.6280),
+    ("163200", "Papakura Central",         "Papakura", "Auckland Region", -37.0625, 174.9430),
 ]
 
-# H3 cells per suburb (simplified: centroid + 2-3 adjacent cells)
-# In production these come from LINZ meshblocks ↔ H3 intersection
-SUBURB_H3_CELLS = {name: [centroid, centroid[:-6] + "3ffff", centroid[:-6] + "7ffff"]
-                   for name, _, _, centroid, *_ in SUBURBS}
+# Headline NZ TAs we want represented in ta__month / ta__quarter.
+# "New Zealand" is the synthetic rollup row HUD ships.
+TAS = ["Auckland", "Waitākere Ranges", "Papakura", "Wellington City", "Christchurch City", "New Zealand"]
 
-# Hazard levels by suburb (rough approximation for test data)
-HAZARD_CONFIG = {
-    "Onehunga":      {"flood_risk": "medium", "coastal_risk": "low",    "liquefaction_risk": "medium"},
-    "Mt Albert":     {"flood_risk": "low",    "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Sandringham":   {"flood_risk": "low",    "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Newton":        {"flood_risk": "low",    "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Grey Lynn":     {"flood_risk": "low",    "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Pt Chevalier":  {"flood_risk": "medium", "coastal_risk": "medium", "liquefaction_risk": "low"},
-    "Avondale":      {"flood_risk": "medium", "coastal_risk": "low",    "liquefaction_risk": "medium"},
-    "Blockhouse Bay":{"flood_risk": "low",    "coastal_risk": "medium", "liquefaction_risk": "low"},
-    "Glen Eden":     {"flood_risk": "medium", "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Henderson":     {"flood_risk": "high",   "coastal_risk": "low",    "liquefaction_risk": "medium"},
-    "New Lynn":      {"flood_risk": "high",   "coastal_risk": "low",    "liquefaction_risk": "medium"},
-    "Papakura":      {"flood_risk": "medium", "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Takanini":      {"flood_risk": "high",   "coastal_risk": "low",    "liquefaction_risk": "medium"},
-    "Manurewa":      {"flood_risk": "medium", "coastal_risk": "low",    "liquefaction_risk": "low"},
-    "Mangere":       {"flood_risk": "medium", "coastal_risk": "medium", "liquefaction_risk": "medium"},
+# Per-suburb baseline census + crime numbers (loosely calibrated).
+SUBURB_STATS = {
+    "134800": dict(pop=2664, age=33.4, income=104400, hh=900,  rent=620, crowded_pct=0.082, crime=308),
+    "134700": dict(pop=2424, age=37.1, income= 96200, hh=861,  rent=580, crowded_pct=0.070, crime=261),
+    "133400": dict(pop=3171, age=36.8, income=125000, hh=1206, rent=720, crowded_pct=0.061, crime=180),
+    "132700": dict(pop=2613, age=34.9, income=104700, hh=1080, rent=750, crowded_pct=0.137, crime=152),
+    "131700": dict(pop=2154, age=35.6, income=177200, hh=894,  rent=545, crowded_pct=0.043, crime=192),
+    "136200": dict(pop=2727, age=36.2, income=105400, hh=1110, rent=680, crowded_pct=0.074, crime=110),
+    "135700": dict(pop=3441, age=34.5, income=132300, hh=1395, rent=700, crowded_pct=0.083, crime=128),
+    "141900": dict(pop=3294, age=35.0, income= 86400, hh=1257, rent=590, crowded_pct=0.119, crime=1295),
+    "141100": dict(pop=2802, age=34.1, income= 73900, hh=1029, rent=550, crowded_pct=0.155, crime=178),
+    "163200": dict(pop=3684, age=33.7, income= 72200, hh=1326, rent=560, crowded_pct=0.117, crime=955),
 }
 
-# Median weekly rent by suburb (NZD, approximate 2024 figures)
-RENT_BY_SUBURB = {
-    "Onehunga":      710,
-    "Mt Albert":     760,
-    "Sandringham":   720,
-    "Newton":        850,
-    "Grey Lynn":     830,
-    "Pt Chevalier":  745,
-    "Avondale":      680,
-    "Blockhouse Bay":670,
-    "Glen Eden":     620,
-    "Henderson":     630,
-    "New Lynn":      650,
-    "Papakura":      590,
-    "Takanini":      580,
-    "Manurewa":      600,
-    "Mangere":       610,
-}
+# Eight amenity types matching the real gold.amenity__h3 taxonomy.
+AMENITY_TYPES = ["supermarket", "school", "early_childhood", "hospital", "pharmacy", "gp_clinic", "park", "library"]
 
-# Annual household income by suburb (NZD)
-INCOME_BY_SUBURB = {
-    "Onehunga":      82000,
-    "Mt Albert":     92000,
-    "Sandringham":   88000,
-    "Newton":        110000,
-    "Grey Lynn":     105000,
-    "Pt Chevalier":  95000,
-    "Avondale":      78000,
-    "Blockhouse Bay":80000,
-    "Glen Eden":     72000,
-    "Henderson":     74000,
-    "New Lynn":      76000,
-    "Papakura":      68000,
-    "Takanini":      66000,
-    "Manurewa":      64000,
-    "Mangere":       62000,
-}
-
-# Income decile (1=lowest, 10=highest)
-INCOME_DECILE = {
-    "Newton": 9, "Grey Lynn": 8, "Pt Chevalier": 7,
-    "Mt Albert": 7, "Sandringham": 6, "Onehunga": 5,
-    "Avondale": 5, "Blockhouse Bay": 5, "Henderson": 4,
-    "New Lynn": 4, "Glen Eden": 4, "Papakura": 3,
-    "Takanini": 3, "Manurewa": 2, "Mangere": 2,
-}
-
-# Schools per suburb (name, type, year_levels, EQI)
-SCHOOLS = [
-    ("Royal Oak Primary",        "Onehunga",      "Auckland City", "primary",     "1-6",  423, 380),
-    ("Onehunga High School",     "Onehunga",      "Auckland City", "secondary",   "9-13", 471, 1180),
-    ("Edendale School",          "Mt Albert",     "Auckland City", "primary",     "1-6",  405, 350),
-    ("Mt Albert Grammar School", "Mt Albert",     "Auckland City", "secondary",   "9-13", 481, 2800),
-    ("Sandringham School",       "Sandringham",   "Auckland City", "primary",     "1-6",  441, 290),
-    ("Newton Central School",    "Newton",        "Auckland City", "primary",     "1-6",  537, 210),
-    ("Grey Lynn School",         "Grey Lynn",     "Auckland City", "primary",     "1-6",  508, 260),
-    ("Pt Chevalier School",      "Pt Chevalier",  "Auckland City", "primary",     "1-6",  489, 310),
-    ("Avondale Primary",         "Avondale",      "Auckland City", "primary",     "1-6",  399, 420),
-    ("Avondale College",         "Avondale",      "Auckland City", "secondary",   "9-13", 431, 1950),
-    ("Glen Eden Intermediate",   "Glen Eden",     "Waitākere Ranges", "intermediate","7-8",410, 580),
-    ("Henderson High School",    "Henderson",     "Waitākere Ranges", "secondary","9-13", 419, 1400),
-    ("New Lynn School",          "New Lynn",      "Waitākere Ranges", "primary",  "1-6",  385, 360),
-    ("Papakura Normal School",   "Papakura",      "Papakura",      "primary",     "1-6",  367, 290),
-    ("Manurewa High School",     "Manurewa",      "Manurewa-Papakura","secondary","9-13", 358, 1600),
-]
 
 # ---------------------------------------------------------------------------
-# Data generators
+# Generators
 # ---------------------------------------------------------------------------
 
 def _gen_suburb_rows() -> list[dict]:
-    rows = []
     now = _utc_now()
-    for name, ta, region, centroid, area, pop, median_age in SUBURBS:
-        h3_cells = SUBURB_H3_CELLS[name]
-        rows.append({
-            "suburb_name": name,
-            "territorial_authority": ta,
-            "region": region,
-            "h3_cells": h3_cells,
-            "h3_centroid": centroid,
-            "area_km2": area,
-            "population_2021": pop,
-            "median_age": median_age,
-            "_updated_at": now,
-        })
+    rows = []
+    for suburb_id, name, ta, region, lat, lon in SUBURBS:
+        stats = SUBURB_STATS[suburb_id]
+        rows.append(
+            {
+                "suburb_id": suburb_id,
+                "suburb_name": name,
+                "territorial_authority": ta,
+                "region": region,
+                "centroid_h3": _h3_cell(lat, lon),
+                "land_area_km2": 2.5 + (hash(suburb_id) % 100) / 25.0,  # 2.5..6.5
+                "population_2023": stats["pop"],
+                "median_age_2023": stats["age"],
+                "geometry": None,  # WKB not synthesised — agent tools don't query it
+                "_updated_at": now,
+            }
+        )
     return rows
 
 
-def _gen_hazard_rows() -> list[dict]:
-    rows = []
+def _gen_h3_cell_rows() -> list[dict]:
+    """For each suburb, the centroid cell + its 6 ring-1 neighbours."""
     now = _utc_now()
-    for name, _, _, centroid, *_ in SUBURBS:
-        cfg = HAZARD_CONFIG[name]
-        for h3_cell in SUBURB_H3_CELLS[name]:
-            rows.append({
-                "h3_cell": h3_cell,
-                "flood_risk": cfg["flood_risk"],
-                "coastal_risk": cfg["coastal_risk"],
-                "liquefaction_risk": cfg["liquefaction_risk"],
-                "flood_zone_name": "100yr floodplain" if cfg["flood_risk"] in ("high", "medium") else None,
-                "source": "Auckland Council GIS (synthetic test data)",
-                "effective_date": datetime.date(2024, 1, 1),
+    rows = []
+    seen: set[int] = set()
+    for suburb_id, _, _, _, lat, lon in SUBURBS:
+        centroid = _h3_cell(lat, lon)
+        ring = h3.grid_disk(centroid, 1)  # centroid + 6 neighbours
+        for cell in ring:
+            cell_int = int(cell)
+            if cell_int in seen:
+                continue
+            seen.add(cell_int)
+            rows.append({"h3_cell": cell_int, "suburb_id": suburb_id, "_updated_at": now})
+    return rows
+
+
+def _gen_suburb_year_rows() -> list[dict]:
+    now = _utc_now()
+    rows = []
+    for suburb_id, name, *_ in SUBURBS:
+        s = SUBURB_STATS[suburb_id]
+        rows.append(
+            {
+                "census_year": 2023,
+                "suburb_id": suburb_id,
+                "suburb_name": name,
+                "median_household_income": float(s["income"]),
+                "households_total": s["hh"],
+                "households_income_stated": int(s["hh"] * 0.85),
+                "tenure_owned": int(s["hh"] * 0.55),
+                "tenure_not_owned": int(s["hh"] * 0.40),
+                "tenure_total_stated": int(s["hh"] * 0.95),
+                "owner_occupier_pct": 0.55 / 0.95,
+                "median_weekly_rent": float(s["rent"]),
+                "renting_households_total": int(s["hh"] * 0.40),
+                "renting_households_stated": int(s["hh"] * 0.38),
+                "households_crowded": int(s["hh"] * s["crowded_pct"]),
+                "households_crowding_total_stated": int(s["hh"] * 0.90),
+                "percent_crowded": s["crowded_pct"],
+                "dwellings_always_damp": int(s["hh"] * 0.05),
+                "dwellings_sometimes_damp": int(s["hh"] * 0.15),
+                "dwellings_damp_total_stated": int(s["hh"] * 0.85),
+                "dwellings_mould_a4_always": int(s["hh"] * 0.04),
+                "dwellings_mould_total_stated": int(s["hh"] * 0.85),
+                "dwellings_no_heating": int(s["hh"] * 0.06),
+                "dwellings_mean_rooms": 4.5 + (hash(suburb_id) % 10) / 10.0,
+                "population_total": s["pop"],
+                "median_age": s["age"],
+                "total_victimisations_2023": s["crime"],
                 "_updated_at": now,
-            })
+            }
+        )
+    return rows
+
+
+def _gen_ta_month_rows() -> list[dict]:
+    """24 months × 6 TAs. Sparse Sales/Bonds columns; MSD populated every month."""
+    now = _utc_now()
+    rows = []
+    base = datetime.date(2024, 1, 1)
+    for ta in TAS:
+        hpi_base = {"Auckland": 1320, "Wellington City": 1180, "Christchurch City": 980,
+                    "Waitākere Ranges": 1290, "Papakura": 1050}.get(ta, 1200)
+        rent_base = {"Auckland": 670, "Wellington City": 650, "Christchurch City": 540,
+                     "Waitākere Ranges": 600, "Papakura": 590}.get(ta, 600)
+        register_base = {"Auckland": 8400, "Wellington City": 920, "Christchurch City": 540,
+                         "Waitākere Ranges": 1400, "Papakura": 380}.get(ta, 12000)
+        for m in range(24):
+            month_date = datetime.date(base.year + (base.month - 1 + m) // 12,
+                                       (base.month - 1 + m) % 12 + 1, 1)
+            is_quarterly_snapshot = month_date.month in (3, 6, 9, 12)
+            trend = 1 + m * 0.002
+            rows.append(
+                {
+                    "ta_name": ta,
+                    "ta_code": f"0{TAS.index(ta):02d}",
+                    "date": month_date,
+                    "current_hpi": (hpi_base * trend) if is_quarterly_snapshot else None,
+                    "current_annual_median_sales_nzd": (1_000_000 * trend) if is_quarterly_snapshot else None,
+                    "current_annual_lower_q_sales_nzd": (780_000 * trend) if is_quarterly_snapshot else None,
+                    "annual_sales_volume": int(2400 * trend) if is_quarterly_snapshot else None,
+                    "median_rent_nzd": (rent_base * trend) if is_quarterly_snapshot else None,
+                    "average_rent_nzd": (rent_base * 1.05 * trend) if is_quarterly_snapshot else None,
+                    "lower_quartile_rent_nzd": (rent_base * 0.82 * trend) if is_quarterly_snapshot else None,
+                    "housing_register": int(register_base * trend),
+                    "housing_register_per_10k_pop": round(register_base * trend / 35.0, 1),
+                    "_updated_at": now,
+                }
+            )
+    return rows
+
+
+def _gen_ta_quarter_rows() -> list[dict]:
+    """8 quarters × 6 TAs. Carries the four affordability indices."""
+    now = _utc_now()
+    rows = []
+    quarters: list[tuple[datetime.date, str]] = []
+    for year in (2023, 2024):
+        for q in (1, 2, 3, 4):
+            quarters.append((datetime.date(year, (q - 1) * 3 + 1, 1), f"{year}-Q{q}"))
+    for ta in TAS:
+        dep_base = {"Auckland": 1.95, "Wellington City": 1.55, "Christchurch City": 1.20,
+                    "Waitākere Ranges": 1.80, "Papakura": 1.40}.get(ta, 1.50)
+        for (qdate, qlabel) in quarters:
+            t = (qdate.year - 2023) + (qdate.month - 1) / 12.0
+            trend = 1 + t * 0.04
+            rows.append(
+                {
+                    "ta_name": ta,
+                    "ta_code": f"0{TAS.index(ta):02d}",
+                    "quarter": qdate,
+                    "quarter_label": qlabel,
+                    "deposit_affordability_index": round(dep_base * trend, 3),
+                    "mortgage_affordability_index": round(dep_base * 0.85 * trend, 3),
+                    "rent_affordability_index": round(dep_base * 0.70 * trend, 3),
+                    "median_to_median_ratio": round(dep_base * 4.5 * trend, 2),
+                    "_updated_at": now,
+                }
+            )
+    return rows
+
+
+def _gen_region_quarter_rows() -> list[dict]:
+    """RBNZ M10 is country-aggregate today: single 'New Zealand' region."""
+    now = _utc_now()
+    rows = []
+    quarters: list[tuple[datetime.date, str]] = []
+    for year in (2023, 2024):
+        for q in (1, 2, 3, 4):
+            quarters.append((datetime.date(year, (q - 1) * 3 + 1, 1), f"{year}-Q{q}"))
+    for i, (qdate, qlabel) in enumerate(quarters):
+        hpi = 1250 + i * 12
+        yoy = None
+        if i >= 4:
+            prev = 1250 + (i - 4) * 12
+            yoy = round((hpi - prev) / prev * 100, 2)
+        rows.append(
+            {
+                "region": "New Zealand",
+                "quarter": qdate,
+                "quarter_label": qlabel,
+                "hpi": float(hpi),
+                "hpi_yoy_pct": yoy,
+                "sales_count": 18000 + i * 200,
+                "total_value_nzdm": round(1_700_000.0 + i * 12_000.0, 1),
+                "residential_investment_nzdm_real": round(4_200.0 + i * 35.0, 1),
+                "_updated_at": now,
+            }
+        )
     return rows
 
 
 def _gen_isochrone_rows() -> list[dict]:
-    """Synthetic isochrone: more cells reachable at higher minute buckets."""
-    rows = []
+    """
+    Synthetic symmetric travel-time matrix over the test suburb cells.
+    Self-reach = 0 min; same TA = 15; cross-TA = 25.
+    Matches the real gold.isochrone schema (one row per cell pair).
+    """
     now = _utc_now()
-    modes = ["transit", "drive", "walk"]
-    buckets = [10, 20, 30, 45, 60]
-    # Cells reachable roughly scales with bucket: use simple formula for test data
-    for name, _, _, centroid, *_ in SUBURBS:
-        for mode in modes:
-            reachable = []
-            for bucket in buckets:
-                # Add progressively more cells from the full pool
-                pool = [h3 for n, _, _, c, *_ in SUBURBS for h3 in SUBURB_H3_CELLS[n]]
-                # Transit is slower than drive, walk is slowest
-                multiplier = {"transit": 1.0, "drive": 1.8, "walk": 0.4}[mode]
-                count = max(1, int(bucket * multiplier / 5))
-                reachable_set = pool[:count]
-                rows.append({
-                    "h3_origin": centroid,
-                    "mode": mode,
-                    "minutes_bucket": bucket,
-                    "h3_destinations": reachable_set,
-                    "destination_count": len(reachable_set),
-                    "_updated_at": now,
-                })
+    cells = [(suburb_id, ta, _h3_cell(lat, lon))
+             for suburb_id, _, ta, _, lat, lon in SUBURBS]
+    rows = []
+    for origin_sid, origin_ta, origin_cell in cells:
+        for dest_sid, dest_ta, dest_cell in cells:
+            if origin_cell == dest_cell:
+                minutes = 0
+            elif origin_ta == dest_ta:
+                minutes = 15
+            else:
+                minutes = 25
+            rows.append(
+                {
+                    "origin_h3": origin_cell,
+                    "destination_h3": dest_cell,
+                    "mode": "transit",
+                    "travel_minutes": minutes,
+                    "feed_source": "auckland_transport",
+                    "departure_time": "08:30",
+                    "service_date": datetime.date(2026, 5, 20),
+                    "computed_at": now,
+                    "computation_version": "r5py-v2-test",
+                }
+            )
     return rows
 
 
-def _gen_rent_rows() -> list[dict]:
-    """24 months of rent data, 4 dwelling types."""
-    rows = []
+def _gen_amenity_h3_rows() -> list[dict]:
+    """Three amenities per suburb across rotating types."""
     now = _utc_now()
-    dwelling_types = ["all", "house", "apartment", "townhouse"]
-    type_multiplier = {"all": 1.0, "house": 1.12, "apartment": 0.82, "townhouse": 0.95}
-
-    for name, ta, *_ in SUBURBS:
-        base_rent = RENT_BY_SUBURB[name]
-        for month_offset in range(24):
-            month = datetime.date(2023, 1, 1) + datetime.timedelta(days=30 * month_offset)
-            month = month.replace(day=1)
-            trend = 1 + (month_offset * 0.003)   # ~3% annual increase
-            for dtype in dwelling_types:
-                weekly = int(base_rent * type_multiplier[dtype] * trend)
-                rows.append({
-                    "suburb_name": name,
-                    "territorial_authority": ta,
-                    "month": month,
-                    "dwelling_type": dtype,
-                    "median_rent_weekly": weekly,
-                    "p25_rent_weekly": int(weekly * 0.85),
-                    "p75_rent_weekly": int(weekly * 1.15),
-                    "sample_size": 45 + (hash(name + str(month)) % 60),
+    rows = []
+    counter = 0
+    for suburb_id, name, _, _, lat, lon in SUBURBS:
+        cell = _h3_cell(lat, lon)
+        for offset in range(3):
+            atype = AMENITY_TYPES[(counter + offset) % len(AMENITY_TYPES)]
+            counter += 1
+            rows.append(
+                {
+                    "osm_id": f"node/{1000 + counter}",
+                    "amenity_type": atype,
+                    "name": f"{name} {atype.replace('_', ' ').title()} {offset + 1}",
+                    "lat": lat + offset * 0.0008,
+                    "lon": lon + offset * 0.0008,
+                    "h3_cell": cell,
+                    "suburb_id": suburb_id,
                     "_updated_at": now,
-                })
+                }
+            )
     return rows
 
 
-def _gen_income_rows() -> list[dict]:
-    rows = []
+def _gen_hazard_rows() -> list[dict]:
+    """
+    One hazard row per H3 cell in h3_cell_rows. Most cells are clean; a couple
+    of Onehunga / Henderson / New Lynn cells flagged as flood-prone for testing
+    (those suburbs are known flood-affected in reality too).
+    """
     now = _utc_now()
-    for name, ta, *_ in SUBURBS:
-        base_income = INCOME_BY_SUBURB[name]
-        for year, growth in [(2023, 1.0), (2024, 1.035)]:
-            rows.append({
-                "suburb_name": name,
-                "territorial_authority": ta,
-                "year": year,
-                "median_household_income_annual": int(base_income * growth),
-                "income_decile": INCOME_DECILE[name],
-                "sample_size": 200 + (hash(name) % 300),
+    seen: set[int] = set()
+    cell_suburb: dict[int, str] = {}
+    for suburb_id, _, _, _, lat, lon in SUBURBS:
+        centroid = _h3_cell(lat, lon)
+        for cell in h3.grid_disk(centroid, 1):
+            cell_int = int(cell)
+            if cell_int in seen:
+                continue
+            seen.add(cell_int)
+            cell_suburb[cell_int] = suburb_id
+
+    flood_prone_suburbs = {"134700", "134800", "141100", "141900"}
+    coastal_suburbs = {"134700", "134800"}  # Onehunga sits on Manukau Harbour
+
+    rows = []
+    for cell_int, suburb_id in cell_suburb.items():
+        in_flood = suburb_id in flood_prone_suburbs
+        in_coastal = suburb_id in coastal_suburbs
+        sources = []
+        if in_flood:
+            sources.append("auckland_council_flood_plain")
+        if in_coastal:
+            sources.append("auckland_coastal_inundation_1_aep")
+        rows.append(
+            {
+                "h3_cell": cell_int,
+                "in_flood_plain": in_flood,
+                "in_flood_prone_area": in_flood,
+                "in_flood_sensitive_area": in_flood,
+                "in_coastal_inundation_1_aep": in_coastal,
+                "in_coastal_inundation_100yr": in_coastal,
+                "in_regional_flood_zone": False,
+                "hazard_sources": sources,
+                "max_rainfall_event": 100 if in_flood else None,
+                "sample_report_url": None,
                 "_updated_at": now,
-            })
-    return rows
-
-
-def _gen_school_rows() -> list[dict]:
-    rows = []
-    now = _utc_now()
-    for i, (school_name, suburb_name, ta, school_type, year_levels, eqi, roll) in enumerate(SCHOOLS, start=1):
-        centroid = next((c for n, _, _, c, *_ in SUBURBS if n == suburb_name), None)
-        rows.append({
-            "school_id": f"SYNTH{i:04d}",
-            "school_name": school_name,
-            "suburb_name": suburb_name,
-            "territorial_authority": ta,
-            "h3_cell": centroid,
-            "school_type": school_type,
-            "year_levels": year_levels,
-            "eqi_score": eqi,
-            "roll_2023": roll,
-            "latitude": None,
-            "longitude": None,
-            "_updated_at": now,
-        })
+            }
+        )
     return rows
 
 
@@ -337,8 +439,11 @@ def _gen_school_rows() -> list[dict]:
 # Spark write helpers
 # ---------------------------------------------------------------------------
 
+# Columns whose pandas dtype needs explicit casting to Spark ArrayType when written.
+_ARRAY_COLUMNS = {"hazard_sources": "array<string>"}
+
+
 def _create_databricks_session():
-    """Create a Databricks Connect Spark session with explicit compute, if set."""
     from databricks.connect import DatabricksSession
 
     builder = DatabricksSession.builder.profile(PROFILE)
@@ -359,7 +464,7 @@ def _create_databricks_session():
         if "Cluster id or serverless" in str(exc):
             raise SystemExit(
                 "[generate_test_data] Databricks Connect requires compute for --write. "
-                "Rerun with --serverless, rerun with --cluster-id CLUSTER_ID, set "
+                "Rerun with --serverless, --cluster-id CLUSTER_ID, set "
                 "DATABRICKS_SERVERLESS=true, set DATABRICKS_CLUSTER_ID, or add "
                 f"cluster_id/serverless to your Databricks profile ({PROFILE})."
             ) from None
@@ -367,16 +472,14 @@ def _create_databricks_session():
 
 
 def _write_table(spark, rows: list[dict], table: str) -> None:
-    """Write rows to a Delta table, overwriting any existing data."""
     import pandas as pd
     from pyspark.sql import functions as F
 
     df = spark.createDataFrame(pd.DataFrame(rows))
-    # Coerce list columns to ArrayType (pandas doesn't do this automatically)
-    if "h3_cells" in rows[0]:
-        df = df.withColumn("h3_cells", F.col("h3_cells").cast("array<string>"))
-    if "h3_destinations" in rows[0]:
-        df = df.withColumn("h3_destinations", F.col("h3_destinations").cast("array<string>"))
+    # Pandas can't infer ArrayType for list columns — coerce explicitly.
+    for col, dtype in _ARRAY_COLUMNS.items():
+        if col in rows[0]:
+            df = df.withColumn(col, F.col(col).cast(dtype))
 
     df.write.format("delta").mode("overwrite").saveAsTable(table)
     print(f"[generate_test_data] wrote {len(rows):,} rows → {table}")
@@ -388,23 +491,24 @@ def _write_table(spark, rows: list[dict], table: str) -> None:
 
 def main() -> None:
     datasets = {
-        "suburb":                         _gen_suburb_rows(),
-        "hazard":                         _gen_hazard_rows(),
-        "isochrone":                       _gen_isochrone_rows(),
-        "rent__month__suburb":            _gen_rent_rows(),
-        "income__year__suburb":           _gen_income_rows(),
-        "school":                         _gen_school_rows(),
+        "suburb":          _gen_suburb_rows(),
+        "h3_cell":         _gen_h3_cell_rows(),
+        "suburb__year":    _gen_suburb_year_rows(),
+        "ta__month":       _gen_ta_month_rows(),
+        "ta__quarter":     _gen_ta_quarter_rows(),
+        "region__quarter": _gen_region_quarter_rows(),
+        "isochrone":       _gen_isochrone_rows(),
+        "amenity__h3":     _gen_amenity_h3_rows(),
+        "hazard":          _gen_hazard_rows(),
     }
 
     if DRY_RUN:
-        # Dry-run mode is intentionally local-only: no Databricks connection required.
         print(f"[generate_test_data] Would write the following to {TARGET_NAMESPACE}.*:\n")
         for table, rows in datasets.items():
-            print(f"  {TARGET_NAMESPACE}.{table:<40} {len(rows):>6,} rows")
+            print(f"  {TARGET_NAMESPACE}.{table:<20} {len(rows):>6,} rows")
         print("\n[generate_test_data] Re-run with --write to execute.")
         return
 
-    # --- WRITE MODE: touches remote Databricks ---
     spark = _create_databricks_session()
 
     if args.reset:
