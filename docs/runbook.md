@@ -80,6 +80,8 @@ Conventions:
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
 - Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
+- Naming conventions for gold tables live in [`docs/conventions.md`](conventions.md).
+- All scheduled jobs, their cron, and the rationale for each cadence live in [`docs/schedules.md`](schedules.md) — update both the bundle and that doc when changing a schedule.
 
 ## Working on the agent
 
