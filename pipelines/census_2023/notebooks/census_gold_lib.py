@@ -14,7 +14,9 @@ _MANIFEST_PATH = Path(__file__).resolve().parent.parent / "census_2023_gold.yml"
 
 def load_gold_manifest() -> dict[str, Any]:
     if not _MANIFEST_PATH.is_file():
-        raise FileNotFoundError(f"census_2023_gold.yml not found; expected at {_MANIFEST_PATH}")
+        raise FileNotFoundError(
+            f"census_2023_gold.yml not found; expected at {_MANIFEST_PATH}"
+        )
     with _MANIFEST_PATH.open(encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 

@@ -67,7 +67,9 @@ def police_recorded_crime_anzsoc_victimisations_raw():
 @dlt.expect("has_area_unit", "area_unit IS NOT NULL")
 @dlt.expect("positive_victimisations", "victimisations >= 0")
 def police_recorded_crime_anzsoc_victimisations():
-    raw = _strip_column_names(dlt.read_stream("police_recorded_crime_anzsoc_victimisations_raw"))
+    raw = _strip_column_names(
+        dlt.read_stream("police_recorded_crime_anzsoc_victimisations_raw")
+    )
     return raw.select(
         F.trim(F.col("Year Month")).alias("year_month"),
         F.trim(F.regexp_replace(F.col("Territorial Authority"), r"\.$", "")).alias(
@@ -79,9 +81,9 @@ def police_recorded_crime_anzsoc_victimisations():
         F.trim(F.col("ANZSOC Division")).alias("anzsoc_division"),
         F.trim(F.col("ANZSOC Group")).alias("anzsoc_group"),
         F.trim(F.col("ANZSOC Subdivision")).alias("anzsoc_subdivision"),
-        F.to_date(F.concat(F.lit("01 "), F.trim(F.col("Year Month"))), "dd MMMM yyyy").alias(
-            "report_month"
-        ),
+        F.to_date(
+            F.concat(F.lit("01 "), F.trim(F.col("Year Month"))), "dd MMMM yyyy"
+        ).alias("report_month"),
         F.col("_source_file"),
         F.col("_ingested_at"),
     ).filter(F.col("area_unit") != "999999")

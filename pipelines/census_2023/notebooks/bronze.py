@@ -27,7 +27,9 @@ def _stream_census_jsonl(dataset_subdir: str, dataset_name: str):
         raw.withColumn("_dataset", F.lit(dataset_name))
         .withColumn(
             "_run_date",
-            F.regexp_extract(F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})/", 1),
+            F.regexp_extract(
+                F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})/", 1
+            ),
         )
         .withColumn("_ingested_at", F.current_timestamp())
         .withColumn("_source_file", F.col("_metadata.file_path"))
@@ -40,7 +42,9 @@ def _stream_census_jsonl(dataset_subdir: str, dataset_name: str):
             "geometry_json",
             F.col("properties.SA22023_V1_00").cast("string").alias("sa2_code"),
             F.col("properties.SA22023_V1_00_NAME").cast("string").alias("sa2_name"),
-            F.col("properties.SA22023_V1_00_NAME_ASCII").cast("string").alias("sa2_name_ascii"),
+            F.col("properties.SA22023_V1_00_NAME_ASCII")
+            .cast("string")
+            .alias("sa2_name_ascii"),
             F.coalesce(
                 F.col("properties.LAND_AREA_SQ_KM"),
                 F.col("properties.AREA_SQ_KM"),

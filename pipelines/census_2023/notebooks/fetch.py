@@ -163,7 +163,9 @@ def cleanup_old_landings(retention_days: int) -> int:
         if not landing_dir.is_dir():
             continue
         try:
-            run_date = datetime.strptime(landing_dir.name, "%Y-%m-%d").replace(tzinfo=UTC)
+            run_date = datetime.strptime(landing_dir.name, "%Y-%m-%d").replace(
+                tzinfo=UTC
+            )
         except ValueError:
             continue
         if run_date < cutoff:
@@ -182,7 +184,9 @@ t0 = time.time()
 try:
     print(f"[{run_id}] Fetching {feed_source} from ArcGIS")
     tmp_path = Path(tempfile.gettempdir()) / f"{SOURCE_NAME}_{run_id}.jsonl"
-    tmp_dict_path = Path(tempfile.gettempdir()) / f"{FIELD_DICTIONARY_FILENAME}_{run_id}"
+    tmp_dict_path = (
+        Path(tempfile.gettempdir()) / f"{FIELD_DICTIONARY_FILENAME}_{run_id}"
+    )
     try:
         feature_count, content_hash = fetch_layer_to_jsonl_hashed(feed_source, tmp_path)
         field_count = fetch_layer_field_dictionary_csv(feed_source, tmp_dict_path)

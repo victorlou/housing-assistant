@@ -38,7 +38,9 @@ def flood_hazard_feature():
         )
         .withColumn(
             "_run_date",
-            F.regexp_extract(F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})/", 1),
+            F.regexp_extract(
+                F.col("_metadata.file_path"), r"/([0-9]{4}-[0-9]{2}-[0-9]{2})/", 1
+            ),
         )
         .withColumn("_ingested_at", F.current_timestamp())
         .withColumn("_source_file", F.col("_metadata.file_path"))

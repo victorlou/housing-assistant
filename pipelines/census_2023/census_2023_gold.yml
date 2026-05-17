@@ -64,20 +64,23 @@ metrics:
     dataset: individuals_sa2
     field_name: VAR_1_69
 
+# Single wide gold mart following `docs/conventions.md` (`<spatial_dim>__<time_grain>`).
+# Lists every census metric we surface as a named column on `housing.gold.suburb__year`.
+# `census_gold_lib.all_feature_export_keys` unions this with `suburb_enrichment`
+# below to drive `housing.silver.census_sa2_features`.
 marts:
-  income__year__suburb:
+  suburb__year:
     - median_household_income
     - households_total
     - households_income_stated
-  tenure__year__suburb:
     - tenure_owned
     - tenure_not_owned
     - tenure_total_stated
-  rent__year__suburb:
     - median_weekly_rent
     - renting_households_total
     - renting_households_stated
-  dwelling__year__suburb:
+    - households_crowded
+    - households_crowding_total_stated
     - dwellings_always_damp
     - dwellings_sometimes_damp
     - dwellings_damp_total_stated
@@ -85,7 +88,12 @@ marts:
     - dwellings_mould_total_stated
     - dwellings_no_heating
     - dwellings_mean_rooms
+    - population_total
+    - median_age
 
+# Subset of metrics also denormalised onto `housing.gold.suburb` (places pipeline)
+# as a current-snapshot dim. Kept as a smaller list because the suburb dim is
+# read on every "tell me about this SA2" query and shouldn't get too wide.
 suburb_enrichment:
   - median_household_income
   - households_total

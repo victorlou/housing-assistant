@@ -56,7 +56,9 @@ def layer_metadata_rows() -> list[dict[str, Any]]:
                 "region_name": spec.get("region_name"),
                 "return_period": spec.get("return_period"),
                 "aep": spec.get("aep"),
-                "hazard_category": HAZARD_CATEGORY_BY_SOURCE.get(layer_id, "regional_flood_zone"),
+                "hazard_category": HAZARD_CATEGORY_BY_SOURCE.get(
+                    layer_id, "regional_flood_zone"
+                ),
             }
         )
     return rows

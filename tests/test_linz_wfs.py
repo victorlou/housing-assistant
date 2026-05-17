@@ -59,7 +59,10 @@ def test_build_getfeature_params() -> None:
 
 
 def test_parse_feature_collection_geojson() -> None:
-    body = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"a": 1}}]}
+    body = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "properties": {"a": 1}}],
+    }
     feats = parse_feature_collection(body)
     assert len(feats) == 1
     assert feats[0]["type"] == "Feature"

@@ -155,7 +155,9 @@ def cleanup_old_landings(retention_days: int) -> int:
         if not landing_dir.is_dir():
             continue
         try:
-            run_date = datetime.strptime(landing_dir.name, "%Y-%m-%d").replace(tzinfo=UTC)
+            run_date = datetime.strptime(landing_dir.name, "%Y-%m-%d").replace(
+                tzinfo=UTC
+            )
         except ValueError:
             continue
         if run_date < cutoff:

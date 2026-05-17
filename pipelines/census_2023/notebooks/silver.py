@@ -58,10 +58,16 @@ def _load_field_dictionary():
             path = _latest_field_dictionary_path(subdir)
         except FileNotFoundError:
             continue
-        df = spark.read.option("header", True).csv(str(path)).withColumn("dataset", F.lit(name))
+        df = (
+            spark.read.option("header", True)
+            .csv(str(path))
+            .withColumn("dataset", F.lit(name))
+        )
         frames.append(df)
     if not frames:
-        raise FileNotFoundError("No census field dictionary CSVs under census_2023_files volume")
+        raise FileNotFoundError(
+            "No census field dictionary CSVs under census_2023_files volume"
+        )
     combined = frames[0]
     for df in frames[1:]:
         combined = combined.unionByName(df)
@@ -120,7 +126,9 @@ def _latest_bronze(dataset: str):
         df.withColumn("_run_date", F.col("_run_date").cast("date"))
         .withColumn(
             "_rank",
-            F.row_number().over(Window.partitionBy("sa2_code").orderBy(F.col("_run_date").desc())),
+            F.row_number().over(
+                Window.partitionBy("sa2_code").orderBy(F.col("_run_date").desc())
+            ),
         )
         .filter(F.col("_rank") == 1)
         .drop("_rank")
@@ -130,7 +138,9 @@ def _latest_bronze(dataset: str):
 def _land_area_sq_km(df):
     """Bronze may expose land area under different names depending on deploy/schema evolution."""
     candidates = [
-        c for c in ("land_area_sq_km", "LAND_AREA_SQ_KM", "AREA_SQ_KM") if c in df.columns
+        c
+        for c in ("land_area_sq_km", "LAND_AREA_SQ_KM", "AREA_SQ_KM")
+        if c in df.columns
     ]
     if not candidates:
         return F.lit(None).cast(DoubleType()).alias("land_area_sq_km")
@@ -225,7 +235,9 @@ def census_sa2_metric():
 )
 def census_sa2_features():
     metrics = dlt.read("census_sa2_metric")
-    wide = pivot_manifest_metrics(metrics, all_feature_export_keys(_MANIFEST), _MANIFEST)
+    wide = pivot_manifest_metrics(
+        metrics, all_feature_export_keys(_MANIFEST), _MANIFEST
+    )
     return (
         wide.withColumn("census_year", F.lit(_CENSUS_YEAR))
         .withColumn(

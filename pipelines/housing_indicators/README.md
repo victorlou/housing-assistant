@@ -159,9 +159,10 @@ DROP TABLE IF EXISTS housing.gold.affordability__quarter__ta;
 
 | Question grain | Use |
 |----------------|-----|
-| Suburb / SA2 demographics | `housing.gold.suburb`, `housing.gold.income__year__suburb`, other `*__year__suburb` census marts |
-| TA affordability, sales, rent | `housing.gold.affordability__quarter__ta`, `house_price__month__ta`, etc. |
-| TA census % (quick join on `ta_name`) | `housing.gold.housing_indicator__month__ta` |
+| Suburb / SA2 demographics | `housing.gold.suburb` (current snapshot dim), `housing.gold.suburb__year` (time series + full census columns) |
+| TA affordability (quarterly, 25-year back to 2001) | `housing.gold.ta__quarter` |
+| TA sales / rent / MSD (monthly) | `housing.gold.ta__month` |
+| TA-level HUD census themes (Tenure, Crowding, Housing Deprivation, Rent Proportion) | `housing.silver.housing_indicator` (long-format, filter `theme IN ('Census Tenure', ...)`) — not pivoted into gold because the SA2 census marts now cover the same questions at finer grain. |
 
 Median household income at SA2 is **not** in HUD; use census marts. HUD uses income only inside affordability ratios.
 

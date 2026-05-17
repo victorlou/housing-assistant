@@ -63,19 +63,28 @@ databricks bundle run police_recorded_crime_gold --target dev -p hackathon --ref
 |-------|-------|------|
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations_raw` | Auto Loader CSV |
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations` | Typed rows |
-| Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month, area unit, ANZSOC subdivision |
-| Gold | `housing.gold.crime__month__area_unit` | Genie-ready area-unit mart |
+| Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month, area unit, ANZSOC subdivision — long-format breakdown escape hatch |
+| Gold | `housing.gold.area_unit__month` | Wide-at-grain Genie-ready mart: one row per (area_unit, month) with `total_victimisations` |
+
+Following [`docs/conventions.md`](../../docs/conventions.md): gold is wide-at-grain (`<spatial_dim>__<time_grain>`); long-format breakdowns stay in silver.
 
 ## Verify
 
 ```sql
 SELECT COUNT(*) FROM housing.bronze.police_recorded_crime_anzsoc_victimisations;
 SELECT COUNT(*) FROM housing.silver.crime_victimisation_monthly;
-SELECT COUNT(*) FROM housing.gold.crime__month__area_unit;
+SELECT COUNT(*) FROM housing.gold.area_unit__month;
 
-SELECT report_month, territorial_authority, area_unit, anzsoc_division, SUM(victimisation_count) AS total
-FROM housing.gold.crime__month__area_unit
-GROUP BY 1, 2, 3, 4
-ORDER BY 1 DESC, 5 DESC
+-- Top area units by total recorded victimisations in the latest month
+SELECT report_month, territorial_authority, area_unit, total_victimisations
+FROM housing.gold.area_unit__month
+WHERE report_month = (SELECT MAX(report_month) FROM housing.gold.area_unit__month)
+ORDER BY total_victimisations DESC
 LIMIT 20;
+
+-- Offence-subdivision breakdown for one area unit (silver, long-format)
+SELECT report_month, anzsoc_division, anzsoc_subdivision, victimisation_count
+FROM housing.silver.crime_victimisation_monthly
+WHERE area_unit = 'Onehunga West' AND report_month >= add_months(current_date(), -12)
+ORDER BY report_month DESC, victimisation_count DESC;
 ```

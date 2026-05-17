@@ -74,7 +74,10 @@ def iter_arcgis_features(
         for attempt in range(max_retries):
             try:
                 resp = sess.get(full_url, timeout=180)
-                if resp.status_code in (429, 502, 503, 504) and attempt < max_retries - 1:
+                if (
+                    resp.status_code in (429, 502, 503, 504)
+                    and attempt < max_retries - 1
+                ):
                     time.sleep(backoff_seconds * (attempt + 1))
                     continue
                 resp.raise_for_status()
@@ -84,7 +87,9 @@ def iter_arcgis_features(
                 if attempt < max_retries - 1:
                     time.sleep(backoff_seconds * (attempt + 1))
                     continue
-                raise RuntimeError(f"ArcGIS query failed after {max_retries} attempts") from exc
+                raise RuntimeError(
+                    f"ArcGIS query failed after {max_retries} attempts"
+                ) from exc
 
         if payload is None:
             raise RuntimeError("ArcGIS query returned no payload")
@@ -114,7 +119,9 @@ def fetch_layer_to_jsonl_hashed(
 ) -> tuple[int, str]:
     """Write features as JSONL; return (count, sha256 hex)."""
     if feed_source not in LAYERS:
-        raise ValueError(f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}")
+        raise ValueError(
+            f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}"
+        )
     spec = LAYERS[feed_source]
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -144,7 +151,9 @@ def fetch_layer_field_dictionary_csv(
 ) -> int:
     """Write ArcGIS field name → alias map for VAR_* columns; return field count."""
     if feed_source not in LAYERS:
-        raise ValueError(f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}")
+        raise ValueError(
+            f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}"
+        )
     spec = LAYERS[feed_source]
     sess = session or requests.Session()
     resp = sess.get(
