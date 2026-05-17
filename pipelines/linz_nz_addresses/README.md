@@ -31,7 +31,7 @@ For ad-hoc runs from your laptop:
 ```bash
 cd pipelines/linz_nz_addresses
 set LINZ_API_KEY=...
-python linz_fetch_wfs.py --output ./out
+python notebooks/linz_fetch_wfs.py --output ./out
 ```
 
 Config defaults live in `linz_nz_addresses.yml` (`${LINZ_API_KEY}` expansion for that path only).

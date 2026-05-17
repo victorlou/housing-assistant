@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 import requests
 import yaml
 
-_REGIONS_FILE = Path(__file__).resolve().parent / "regions.yaml"
+_REGIONS_FILE = Path(__file__).resolve().parent.parent / "regions.yaml"
 
 
 def load_layers_config(path: Path | None = None) -> dict[str, dict[str, Any]]:

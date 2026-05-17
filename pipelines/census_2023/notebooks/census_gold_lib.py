@@ -9,7 +9,7 @@ import yaml
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-_MANIFEST_PATH = Path(__file__).resolve().parent / "census_2023_gold.yml"
+_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "census_2023_gold.yml"
 
 
 def load_gold_manifest() -> dict[str, Any]:

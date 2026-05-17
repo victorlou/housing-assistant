@@ -10,7 +10,6 @@
 
 import os
 import shutil
-import sys
 import tempfile
 import time
 import uuid
@@ -26,19 +25,6 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
-
-
-def _bundle_files_root() -> Path:
-    try:
-        return Path(__file__).resolve().parent.parent
-    except NameError:
-        nb = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-        return Path("/Workspace" + nb).resolve().parent.parent
-
-
-_bundle_root = _bundle_files_root()
-if str(_bundle_root) not in sys.path:
-    sys.path.insert(0, str(_bundle_root))
 
 from census_fetch_arcgis import (
     LAYERS,

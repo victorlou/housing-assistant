@@ -210,7 +210,7 @@ def with_wfs_overrides(cfg: dict[str, Any], **overrides: Any) -> dict[str, Any]:
     return out
 
 
-_PIPELINE_DIR = Path(__file__).resolve().parent
+_PIPELINE_DIR = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _PIPELINE_DIR.parents[1]
 _DEFAULT_CONFIG = _PIPELINE_DIR / "linz_nz_addresses.yml"
 

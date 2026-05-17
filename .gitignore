@@ -123,5 +123,5 @@ logs/
 tmp/
 .tmp/
 
-# Local LINZ WFS fetch output (linz_fetch_wfs.py default)
+# Local LINZ WFS fetch output (notebooks/linz_fetch_wfs.py default)
 out/
