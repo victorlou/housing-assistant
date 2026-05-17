@@ -72,7 +72,9 @@ def _safe_polygon_wkt(geojson_str: str) -> str | None:
 
 def _latest_bronze_features():
     bronze = spark.read.table(f"{BRONZE}.flood_hazard_feature")
-    w = Window.partitionBy("_hazard_source", "source_object_id").orderBy(F.col("_run_date").desc())
+    w = Window.partitionBy("_hazard_source", "source_object_id").orderBy(
+        F.col("_run_date").desc()
+    )
     return (
         bronze.withColumn(
             "source_object_id",
@@ -111,7 +113,9 @@ def _conformed_features(df):
         )
         .withColumn(
             "climate_change_adjusted",
-            F.coalesce(_prop("CLIMATE_CHANGE_ADJUSTED"), _prop("Climate_Change_Adjusted")),
+            F.coalesce(
+                _prop("CLIMATE_CHANGE_ADJUSTED"), _prop("Climate_Change_Adjusted")
+            ),
         )
         .withColumn(
             "year_produced",

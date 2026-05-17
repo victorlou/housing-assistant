@@ -64,7 +64,9 @@ def linz_nz_addresses():
         F.col("id").alias("feature_id"),
         F.col("geometry_name").alias("source_geometry_name"),
         F.col("geometry.type").alias("geometry_type"),
-        F.element_at(F.col("geometry.coordinates"), 1).cast("double").alias("longitude"),
+        F.element_at(F.col("geometry.coordinates"), 1)
+        .cast("double")
+        .alias("longitude"),
         F.element_at(F.col("geometry.coordinates"), 2).cast("double").alias("latitude"),
         F.col("properties.address_id").alias("address_id"),
         F.col("properties.source_dataset").alias("source_dataset"),

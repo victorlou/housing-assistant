@@ -36,7 +36,9 @@ def expand_env_placeholders(value: str) -> str:
         name = match.group(1)
         got = os.environ.get(name)
         if got is None or got == "":
-            raise RuntimeError(f"Environment variable {name} is not set (required by config).")
+            raise RuntimeError(
+                f"Environment variable {name} is not set (required by config)."
+            )
         return got
 
     return _ENV_PATTERN.sub(repl, value)
@@ -95,7 +97,9 @@ def parse_feature_collection(body: Any) -> list[dict[str, Any]]:
         return [x for x in body if isinstance(x, dict)]
     if not isinstance(body, dict):
         return []
-    if body.get("type") == "FeatureCollection" and isinstance(body.get("features"), list):
+    if body.get("type") == "FeatureCollection" and isinstance(
+        body.get("features"), list
+    ):
         return [f for f in body["features"] if isinstance(f, dict)]
     if body.get("type") == "Feature" or "geometry" in body or "properties" in body:
         return [body]
@@ -135,7 +139,10 @@ def iter_wfs_pages(
         for attempt in range(max_retries):
             try:
                 resp = sess.get(url, timeout=timeout)
-                if resp.status_code in (429, 502, 503, 504) and attempt < max_retries - 1:
+                if (
+                    resp.status_code in (429, 502, 503, 504)
+                    and attempt < max_retries - 1
+                ):
                     time.sleep(backoff * (attempt + 1))
                     continue
                 resp.raise_for_status()
@@ -182,7 +189,10 @@ def fetch_to_jsonl_hashed(
     with output_path.open("wb") as fh:
         for page in iter_wfs_pages(cfg, session=session):
             for feature in page:
-                line = json.dumps(feature, separators=(",", ":"), ensure_ascii=False) + "\n"
+                line = (
+                    json.dumps(feature, separators=(",", ":"), ensure_ascii=False)
+                    + "\n"
+                )
                 blob = line.encode("utf-8")
                 fh.write(blob)
                 digest.update(blob)

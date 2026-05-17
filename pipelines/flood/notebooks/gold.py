@@ -47,9 +47,9 @@ def hazard():
 
     def _flag(source_set):
         return F.max(
-            F.when(F.col("hazard_source").isin(*sorted(source_set)), F.lit(True)).otherwise(
-                F.lit(False)
-            )
+            F.when(
+                F.col("hazard_source").isin(*sorted(source_set)), F.lit(True)
+            ).otherwise(F.lit(False))
         )
 
     agg = h3.groupBy("h3_cell").agg(
@@ -68,14 +68,18 @@ def hazard():
         "h3_cell",
         F.coalesce("in_flood_plain", F.lit(False)).alias("in_flood_plain"),
         F.coalesce("in_flood_prone_area", F.lit(False)).alias("in_flood_prone_area"),
-        F.coalesce("in_flood_sensitive_area", F.lit(False)).alias("in_flood_sensitive_area"),
+        F.coalesce("in_flood_sensitive_area", F.lit(False)).alias(
+            "in_flood_sensitive_area"
+        ),
         F.coalesce("in_coastal_inundation_1_aep", F.lit(False)).alias(
             "in_coastal_inundation_1_aep"
         ),
         F.coalesce("in_coastal_inundation_100yr", F.lit(False)).alias(
             "in_coastal_inundation_100yr"
         ),
-        F.coalesce("in_regional_flood_zone", F.lit(False)).alias("in_regional_flood_zone"),
+        F.coalesce("in_regional_flood_zone", F.lit(False)).alias(
+            "in_regional_flood_zone"
+        ),
         "hazard_sources",
         "max_rainfall_event",
         "sample_report_url",
