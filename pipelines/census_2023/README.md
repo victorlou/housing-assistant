@@ -36,7 +36,7 @@ NZDep2023 is **not** in this bundle (SA1 / separate ADE tables).
 
 ## Relationship to housing_indicators (HUD)
 
-HUD ships **TA-level** census themes (Tenure, Crowding, Housing Deprivation, Rent Proportion) in `housing.gold.housing_indicator__month__ta`. This pipeline is the **SA2 canonical** source. Use HUD for TA rollups and affordability; use census marts + `gold.suburb` for suburb-level questions.
+HUD ships **TA-level** census themes (Tenure, Crowding, Housing Deprivation, Rent Proportion) in the long-format silver `housing.silver.housing_indicator` (filter `theme LIKE 'Census %' OR theme = 'Rent Proportion'`); they aren't pivoted into `gold.ta__month` because the SA2 census marts now cover those questions at finer grain. This pipeline is the **SA2 canonical** source. Use HUD `housing.gold.ta__quarter` / `ta__month` for TA-level affordability, sales, rent, and MSD; use census marts + `gold.suburb` for suburb-level questions.
 
 Optional validation: roll up SA2 `owner_occupier_pct` to TA and compare to HUD `Census Tenure` for the same TA.
 

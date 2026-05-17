@@ -181,7 +181,8 @@ def dwelling__year__suburb():
 def census_metric__year__sa2():
     specs = metric_specs(_MANIFEST)
     keys = [
-        (specs[k]["dataset"], specs[k]["field_name"]) for k in all_feature_export_keys(_MANIFEST)
+        (specs[k]["dataset"], specs[k]["field_name"])
+        for k in all_feature_export_keys(_MANIFEST)
     ]
     keys_df = spark.createDataFrame(keys, ["dataset", "field_name"])
     metrics = spark.read.table(f"{SILVER}.census_sa2_metric")
