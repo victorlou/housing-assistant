@@ -59,20 +59,23 @@ def _first_where(series_name: str, alias: str, cast_type: str):
 
 
 # (series_name in HUD, output column, cast type)
+# Deliberate column alignment; ruff would squish the contents below.
+# fmt: off
 TA_MONTH_METRICS = [
     # Sales theme - HUD ships these as snapshot rows (rolling 12-month values).
-    ("Current House Price Index",                "current_hpi",                       "double"),
-    ("Current Annual Median Sales Price",        "current_annual_median_sales_nzd",   "double"),
-    ("Current Annual Lower Quartile Sales Price","current_annual_lower_q_sales_nzd",  "double"),
-    ("Current number of Annual Sales volume",    "annual_sales_volume",               "int"),
+    ("Current House Price Index",                 "current_hpi",                      "double"),
+    ("Current Annual Median Sales Price",         "current_annual_median_sales_nzd",  "double"),
+    ("Current Annual Lower Quartile Sales Price", "current_annual_lower_q_sales_nzd", "double"),
+    ("Current number of Annual Sales volume",     "annual_sales_volume",              "int"),
     # Bonds theme - rolling-annual rent stats, snapshot cadence.
-    ("Median Rent Price",                        "median_rent_nzd",                   "double"),
-    ("Average Rent Price",                       "average_rent_nzd",                  "double"),
-    ("Lower Quartile Rent Price",                "lower_quartile_rent_nzd",           "double"),
+    ("Median Rent Price",                         "median_rent_nzd",                  "double"),
+    ("Average Rent Price",                        "average_rent_nzd",                 "double"),
+    ("Lower Quartile Rent Price",                 "lower_quartile_rent_nzd",          "double"),
     # MSD theme - monthly time series back to 2017.
-    ("Housing Register",                         "housing_register",                  "int"),
-    ("Housing Register per 10k population",      "housing_register_per_10k_pop",      "double"),
+    ("Housing Register",                          "housing_register",                 "int"),
+    ("Housing Register per 10k population",       "housing_register_per_10k_pop",     "double"),
 ]
+# fmt: on
 
 
 @dlt.table(
@@ -143,12 +146,15 @@ def ta__month():
 # COMMAND ----------
 
 
+# Deliberate column alignment; ruff would squish the contents below.
+# fmt: off
 TA_QUARTER_METRICS = [
-    ("Deposit affordability index",     "deposit_affordability_index",  "double"),
-    ("Mortgage affordability index",    "mortgage_affordability_index", "double"),
-    ("Rent affordability index",        "rent_affordability_index",     "double"),
-    ("Timeseries Median-Median ratio",  "median_to_median_ratio",       "double"),
+    ("Deposit affordability index",    "deposit_affordability_index",  "double"),
+    ("Mortgage affordability index",   "mortgage_affordability_index", "double"),
+    ("Rent affordability index",       "rent_affordability_index",     "double"),
+    ("Timeseries Median-Median ratio", "median_to_median_ratio",       "double"),
 ]
+# fmt: on
 
 
 @dlt.table(

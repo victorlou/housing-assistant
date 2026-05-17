@@ -28,7 +28,6 @@
 # COMMAND ----------
 
 import hashlib
-import io
 import json
 import os
 import time
@@ -75,7 +74,9 @@ dbutils.widgets.dropdown(
     ["none", "url_placeholder", "header"],
     "How to inject the secret",
 )
-dbutils.widgets.text("auth_url_placeholder", "{api_key}", "URL placeholder to substitute")
+dbutils.widgets.text(
+    "auth_url_placeholder", "{api_key}", "URL placeholder to substitute"
+)
 dbutils.widgets.text("auth_header_name", "Authorization", "HTTP header name")
 
 dataset = dbutils.widgets.get("dataset").strip()
@@ -156,9 +157,7 @@ def log_run(run_id: str, status: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
-        INGEST_RUNS_TABLE
-    )
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
 
 
 def last_successful_content_hash() -> str | None:
@@ -189,7 +188,11 @@ t0 = time.time()
 resolved_url = source_url
 auth_headers: dict[str, str] | None = None
 
-if auth_inject_mode in ("url_placeholder", "header") and auth_secret_scope and auth_secret_key:
+if (
+    auth_inject_mode in ("url_placeholder", "header")
+    and auth_secret_scope
+    and auth_secret_key
+):
     try:
         token = dbutils.secrets.get(scope=auth_secret_scope, key=auth_secret_key)
     except Exception as exc:
@@ -274,9 +277,7 @@ def write_to_volume(geojson_bytes: bytes, run_date: str) -> tuple[str, int, int]
     bytes_written += os.path.getsize(jsonl_path)
     file_count += 1
     feature_count = len(payload["features"])
-    print(
-        f"[{run_id}] Wrote {feature_count:,} features → {jsonl_path}"
-    )
+    print(f"[{run_id}] Wrote {feature_count:,} features → {jsonl_path}")
 
     return raw_path, file_count, bytes_written
 
@@ -340,7 +341,9 @@ try:
         )
         print(f"[{run_id}] Skipped: content_hash matches last run")
     else:
-        target_path, file_count, bytes_written = write_to_volume(geojson_bytes, run_date)
+        target_path, file_count, bytes_written = write_to_volume(
+            geojson_bytes, run_date
+        )
         removed = cleanup_old_landings(retention_days)
         log_run(
             run_id,

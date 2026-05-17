@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Iterable
 
 import geopandas as gpd
+
 # h3-py 4.x ships the string-based API as the default top-level module — every
 # call expects hex H3 IDs like "8928308280fffff". We work in the BIGINT
 # representation (matches Databricks' `h3_cell` column), so we import the
@@ -82,9 +83,7 @@ COMPUTATION_VERSION = "r5py-v2"
 DESTINATION_RING = 1
 
 # Where the combined Parquet lands on Databricks and which table it backs.
-BRONZE_VOLUME_TARGET = (
-    "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
-)
+BRONZE_VOLUME_TARGET = "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
 GOLD_TABLE = "housing.gold.isochrone"
 
 # Source NZ-wide OSM extract. Used as input to per-region osmium clipping.
@@ -180,9 +179,7 @@ def _warehouse_id() -> str:
         w for w in workspace.warehouses.list() if w.name == DATABRICKS_WAREHOUSE_NAME
     ]
     if not matching:
-        sys.exit(
-            f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found."
-        )
+        sys.exit(f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found.")
     return matching[0].id
 
 
@@ -207,9 +204,7 @@ def _run_sql(stmt: str) -> list[list]:
         StatementState.RUNNING,
     ):
         time.sleep(1)
-        response = workspace.statement_execution.get_statement(
-            response.statement_id
-        )
+        response = workspace.statement_execution.get_statement(response.statement_id)
 
     state = response.status.state if response.status else None
     if state != StatementState.SUCCEEDED:
@@ -265,9 +260,7 @@ def ensure_osm_clip(region: dict) -> Path:
     suffix = source.name.replace("new-zealand-", "").replace(".osm.pbf", "")
     target = DATA / f"{region_key}-{suffix}.osm.pbf"
 
-    print(
-        f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})"
-    )
+    print(f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})")
     subprocess.run(
         [
             "osmium",
@@ -324,7 +317,8 @@ def clean_gtfs_zip(src_zip: Path) -> Path:
         for info in src.infolist():
             data = src.read(info.filename)
             lines = [
-                ln for ln in data.decode("utf-8", errors="ignore").splitlines()
+                ln
+                for ln in data.decode("utf-8", errors="ignore").splitlines()
                 if ln.strip()
             ]
             if len(lines) <= 1:
@@ -532,20 +526,21 @@ def refresh_gold_table(volume_path: str, table: str) -> None:
     print(f"  ✓ {table} has {int(row_count):,} rows")
 
 
-def _apply_comments(table: str, table_comment: str, column_comments: dict[str, str]) -> None:
+def _apply_comments(
+    table: str, table_comment: str, column_comments: dict[str, str]
+) -> None:
     """
     Apply COMMENT ON TABLE + ALTER COLUMN COMMENT for every column listed.
     Comments propagate into Genie's schema descriptions, so this is the
     primary place to put discoverable guidance for natural-language queries.
     """
+
     def _esc(s: str) -> str:
         return s.replace("'", "''")
 
     _run_sql(f"COMMENT ON TABLE {table} IS '{_esc(table_comment)}'")
     for col, comment in column_comments.items():
-        _run_sql(
-            f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'"
-        )
+        _run_sql(f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'")
 
 
 # ── Main ────────────────────────────────────────────────────────────

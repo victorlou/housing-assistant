@@ -39,8 +39,6 @@ import sys
 import tempfile
 import time
 import traceback
-import uuid
-from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -72,12 +70,18 @@ REGIONS = [
     {"key": "auckland", "display": "Auckland", "pbf_glob": "auckland-*.osm.pbf"},
     {"key": "wellington", "display": "Wellington", "pbf_glob": "wellington-*.osm.pbf"},
     {"key": "waikato", "display": "Waikato", "pbf_glob": "waikato-*.osm.pbf"},
-    {"key": "christchurch", "display": "Christchurch", "pbf_glob": "christchurch-*.osm.pbf"},
+    {
+        "key": "christchurch",
+        "display": "Christchurch",
+        "pbf_glob": "christchurch-*.osm.pbf",
+    },
 ]
 
 # Map (osm_tag_key, osm_tag_value) → our canonical amenity_type. Order is
 # significant only for tags that overlap between keys — first match wins
 # (e.g. both shop=supermarket and amenity=supermarket map to "supermarket").
+# Deliberate column alignment; ruff would squish the contents below.
+# fmt: off
 AMENITY_TAG_MAP: dict[tuple[str, str], str] = {
     ("shop", "supermarket"):     "supermarket",
     ("amenity", "supermarket"):  "supermarket",
@@ -93,6 +97,7 @@ AMENITY_TAG_MAP: dict[tuple[str, str], str] = {
     ("leisure", "park"):         "park",
     ("amenity", "library"):      "library",
 }
+# fmt: on
 
 # osmium tags-filter expressions. We accept nodes, ways, and relations
 # (`nwr/`) for each tag key — osmium-export then computes centroids for the
@@ -111,8 +116,7 @@ OSMIUM_FILTERS = [
 def ensure_osmium() -> None:
     if not shutil.which("osmium"):
         sys.exit(
-            "\n  osmium not on PATH. Install once:\n\n"
-            "    brew install osmium-tool\n"
+            "\n  osmium not on PATH. Install once:\n\n    brew install osmium-tool\n"
         )
 
 
@@ -145,17 +149,32 @@ def extract_region(region: dict) -> list[dict]:
         geojson_out = Path(tmp) / "amenities.geojson"
 
         subprocess.run(
-            ["osmium", "tags-filter", "--overwrite", str(pbf), *OSMIUM_FILTERS,
-             "-o", str(filtered_pbf)],
+            [
+                "osmium",
+                "tags-filter",
+                "--overwrite",
+                str(pbf),
+                *OSMIUM_FILTERS,
+                "-o",
+                str(filtered_pbf),
+            ],
             check=True,
         )
         # `--add-unique-id=type_id` makes each Feature's top-level `id`
         # field the canonical "node/123" / "way/456" / "relation/789" form,
         # which is the stable OSM identifier we want in gold.
         subprocess.run(
-            ["osmium", "export", "--overwrite", "-f", "geojson",
-             "--add-unique-id=type_id",
-             str(filtered_pbf), "-o", str(geojson_out)],
+            [
+                "osmium",
+                "export",
+                "--overwrite",
+                "-f",
+                "geojson",
+                "--add-unique-id=type_id",
+                str(filtered_pbf),
+                "-o",
+                str(geojson_out),
+            ],
             check=True,
         )
 
@@ -191,11 +210,7 @@ def extract_region(region: dict) -> list[dict]:
         # osmium-export with --add-unique-id=type_id puts the stable OSM
         # identifier on the Feature itself (e.g. "node/123"). Fall back
         # to a few less-common locations for resilience.
-        osm_id = (
-            feature.get("id")
-            or props.get("@id")
-            or props.get("osm_id")
-        )
+        osm_id = feature.get("id") or props.get("@id") or props.get("osm_id")
         if osm_id is None:
             skipped_no_id += 1
             continue
@@ -204,18 +219,19 @@ def extract_region(region: dict) -> list[dict]:
         if "/" not in osm_id_str:
             osm_id_str = f"node/{osm_id_str}"
 
-        records.append({
-            "osm_id": osm_id_str,
-            "amenity_type": category,
-            "name": props.get("name"),
-            "lat": lat,
-            "lon": lon,
-            "h3_cell": h3.latlng_to_cell(lat, lon, H3_RESOLUTION),
-        })
+        records.append(
+            {
+                "osm_id": osm_id_str,
+                "amenity_type": category,
+                "name": props.get("name"),
+                "lat": lat,
+                "lon": lon,
+                "h3_cell": h3.latlng_to_cell(lat, lon, H3_RESOLUTION),
+            }
+        )
 
     print(
-        f"  Extracted {len(records):,} amenities from {region['display']} "
-        f"({pbf.name})"
+        f"  Extracted {len(records):,} amenities from {region['display']} ({pbf.name})"
     )
 
     # Self-diagnostic: if we got zero, dump a sample of the GeoJSON so the
@@ -229,7 +245,7 @@ def extract_region(region: dict) -> list[dict]:
         print(f"     skipped_no_category = {skipped_no_category:,}")
         print(f"     skipped_no_id       = {skipped_no_id:,}")
         print(f"     skipped_bad_geom    = {skipped_bad_geom:,}")
-        print(f"  ⚠ First feature in this region's GeoJSON (debug):")
+        print("  ⚠ First feature in this region's GeoJSON (debug):")
         print(f"     {json.dumps(features[0], default=str)[:800]}")
 
     return records
@@ -248,8 +264,7 @@ def _workspace() -> tuple[Config, WorkspaceClient]:
 def _warehouse_id() -> str:
     _, workspace = _workspace()
     matches = [
-        w for w in workspace.warehouses.list()
-        if w.name == DATABRICKS_WAREHOUSE_NAME
+        w for w in workspace.warehouses.list() if w.name == DATABRICKS_WAREHOUSE_NAME
     ]
     if not matches:
         sys.exit(f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r}.")
@@ -264,12 +279,11 @@ def _run_sql(stmt: str, wait_s: int = 50) -> list[list]:
         wait_timeout=f"{wait_s}s",
     )
     while response.status and response.status.state in (
-        StatementState.PENDING, StatementState.RUNNING,
+        StatementState.PENDING,
+        StatementState.RUNNING,
     ):
         time.sleep(1)
-        response = workspace.statement_execution.get_statement(
-            response.statement_id
-        )
+        response = workspace.statement_execution.get_statement(response.statement_id)
     state = response.status.state if response.status else None
     if state != StatementState.SUCCEEDED:
         err = (
@@ -289,7 +303,9 @@ def upload_to_volume(local_path: Path, volume_path: str) -> None:
     _, workspace = _workspace()
     with open(local_path, "rb") as fin:
         workspace.files.upload(
-            file_path=volume_path, contents=fin, overwrite=True,
+            file_path=volume_path,
+            contents=fin,
+            overwrite=True,
         )
     print(f"  ✓ uploaded ({local_path.stat().st_size / 1e6:,.2f} MB)")
 
@@ -371,20 +387,21 @@ def refresh_gold_table(volume_path: str, table: str) -> None:
     print(f"  ✓ {table} has {int(row_count):,} rows")
 
 
-def _apply_comments(table: str, table_comment: str, column_comments: dict[str, str]) -> None:
+def _apply_comments(
+    table: str, table_comment: str, column_comments: dict[str, str]
+) -> None:
     """
     Apply COMMENT ON TABLE + ALTER COLUMN COMMENT for every column listed.
     Comments propagate into Genie's schema descriptions, so this is the
     primary place to put discoverable guidance for natural-language queries.
     """
+
     def _esc(s: str) -> str:
         return s.replace("'", "''")
 
     _run_sql(f"COMMENT ON TABLE {table} IS '{_esc(table_comment)}'")
     for col, comment in column_comments.items():
-        _run_sql(
-            f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'"
-        )
+        _run_sql(f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'")
 
 
 # ── Main ────────────────────────────────────────────────────────────
