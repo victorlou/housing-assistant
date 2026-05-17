@@ -31,11 +31,13 @@ resources:
           - name: DATABRICKS_EMBEDDING_ENDPOINT
             value: "databricks-gte-large-en"
           - name: HOUSING_CATALOG
-            value: "workspace"
+            value: "housing"
           - name: HOUSING_SCHEMA
-            value: "test"
+            value: "gold"
           - name: DATABRICKS_WAREHOUSE_ID
             value_from: "warehouse_secret"
+          - name: DATABRICKS_GENIE_SPACE_ID
+            value: "01f150e43bb31de198a7f9e01a945f64"
 
       # Resources which this app has access to
       resources:
@@ -60,8 +62,15 @@ resources:
             permission: 'READ'
         - name: 'sql_warehouse'
           sql_warehouse:
-              id: "f21913d784edd9ad"
-              permission: "CAN_MANAGE"
+            id: "f21913d784edd9ad"
+            permission: "CAN_MANAGE"
+        - name: 'genie-space'
+          genie_space:
+            name: "Suburban Demographics and Housing Risks"
+            space_id: "01f150e43bb31de198a7f9e01a945f64"
+            permission: CAN_MANAGE
+
+
 # Shadow resource: App Service Principal to be granted permissions to catalogs using UI or Terraform
 
 targets:

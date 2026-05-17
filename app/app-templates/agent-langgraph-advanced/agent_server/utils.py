@@ -1,3 +1,4 @@
+from agent_server.databricks_clients import sp_workspace_client
 import json
 import logging
 import os
@@ -41,26 +42,35 @@ def _is_databricks_app_env() -> bool:
 
 
 def init_mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerMCPClient:
-    host_name = get_databricks_host_from_env()
-    return DatabricksMultiServerMCPClient(
-        [
+    host_name = get_databricks_host_from_env(workspace_client)
+    servers = []
+    if space_id := get_databricks_genie_space_id():
+        servers.append(
             DatabricksMCPServer(
-                name="system-ai",
-                url=f"{host_name}/api/2.0/mcp/functions/system/ai",
+                name="genie-space",
+                url=f"{host_name}/api/2.0/mcp/genie/{space_id}",
                 workspace_client=workspace_client,
-            ),
-        ]
-    )
+                handle_tool_error=True,
+                timeout=60.0,
+            )
+        )
+    return DatabricksMultiServerMCPClient(servers)
 
+
+def get_databricks_genie_space_id() -> Optional[str]:
+    """Get the Databricks Genie space ID from environment variable."""
+    space_id = os.getenv("DATABRICKS_GENIE_SPACE_ID")
+    if not space_id:
+        logging.warning("DATABRICKS_GENIE_SPACE_ID environment variable is not set.")
+    return space_id
 
 def get_user_workspace_client() -> WorkspaceClient:
     token = get_request_headers().get("x-forwarded-access-token")
     return WorkspaceClient(token=token, auth_type="pat")
 
 
-def get_databricks_host_from_env() -> Optional[str]:
+def get_databricks_host_from_env(w: WorkspaceClient) -> Optional[str]:
     try:
-        w = WorkspaceClient()
         return w.config.host
     except Exception as e:
         logging.exception("Error getting databricks host from env: %s", e)

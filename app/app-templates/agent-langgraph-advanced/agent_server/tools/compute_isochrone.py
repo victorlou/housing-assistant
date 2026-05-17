@@ -1,4 +1,3 @@
-import json
 import logging
 
 from langchain_core.tools import tool
@@ -6,6 +5,7 @@ from langchain_core.tools import tool
 from agent_server.tools.utils import CATALOG as _CATALOG
 from agent_server.tools.utils import SCHEMA as _SCHEMA
 from agent_server.tools.utils import execute_statement as _execute
+from agent_server.tools.utils import resolve_suburb_fuzzy as _resolve
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +36,12 @@ def compute_isochrone(suburb_name: str, mode: str, minutes: int) -> dict:
           - minutes: time limit applied
           - reachable_suburbs: list of suburb names reachable within the time limit.
                                Pass each of these to score_affordability / lookup_hazards.
-          - reachable_cell_count: number of H3 cells covered (proxy for geographic area)
+          - reachable_cell_count: number of distinct reachable suburbs found
           - error: present only if the origin suburb was not found in the data
     """
-    # Step 1: resolve suburb name → h3_centroid
-    centroid_rows = _execute(
-        f"SELECT h3_centroid FROM {_CATALOG}.{_SCHEMA}.suburb WHERE suburb_name = :suburb LIMIT 1",
-        [{"name": "suburb", "value": suburb_name, "type": "STRING"}],
-    )
-    if not centroid_rows or not centroid_rows[0][0]:
+    # Step 1: resolve suburb name → suburb_id (fuzzy: exact first, ILIKE fallback)
+    suburb_rows = _resolve(suburb_name)
+    if not suburb_rows or not suburb_rows[0][0]:
         return {
             "origin": suburb_name,
             "mode": mode,
@@ -53,63 +50,41 @@ def compute_isochrone(suburb_name: str, mode: str, minutes: int) -> dict:
             "reachable_cell_count": 0,
             "error": f"Suburb '{suburb_name}' not found in housing data.",
         }
-    h3_origin = centroid_rows[0][0]
+    origin_suburb_id, matched_name = suburb_rows[0][0], suburb_rows[0][1]
 
-    # Step 2: fetch h3_destinations for the closest minutes_bucket >= requested minutes
-    iso_rows = _execute(
+    # Step 2: join all H3 cells in origin suburb → isochrone → destination cells → suburb.
+    # Isochrone origin cells are transit-stop-adjacent — using suburb_id (not centroid_h3)
+    # ensures we find the cells that are actually in the isochrone table.
+    # travel_minutes > 0 drops self-reach rows; r5py-v2 is the current computation.
+    result_rows = _execute(
         f"""
-        SELECT h3_destinations
-        FROM {_CATALOG}.{_SCHEMA}.isochrone
-        WHERE h3_origin = :h3_origin
-          AND mode = :mode
-          AND minutes_bucket = (
-            SELECT MIN(minutes_bucket)
-            FROM {_CATALOG}.{_SCHEMA}.isochrone
-            WHERE h3_origin = :h3_origin
-              AND mode = :mode
-              AND minutes_bucket >= :minutes
-          )
-        LIMIT 1
+        SELECT DISTINCT s.suburb_name
+        FROM {_CATALOG}.{_SCHEMA}.h3_cell origin_hc
+        JOIN {_CATALOG}.{_SCHEMA}.isochrone iso ON origin_hc.h3_cell = iso.origin_h3
+        JOIN {_CATALOG}.{_SCHEMA}.h3_cell dest_hc ON iso.destination_h3 = dest_hc.h3_cell
+        JOIN {_CATALOG}.{_SCHEMA}.suburb s ON dest_hc.suburb_id = s.suburb_id
+        WHERE origin_hc.suburb_id = :origin_suburb_id
+          AND iso.mode = :mode
+          AND iso.travel_minutes <= :minutes
+          AND iso.travel_minutes > 0
+          AND iso.computation_version = 'r5py-v2'
+          AND s.suburb_id != :origin_suburb_id
+          AND s.population_2023 > 500
+        ORDER BY s.suburb_name
         """,
         [
-            {"name": "h3_origin", "value": h3_origin, "type": "STRING"},
+            {"name": "origin_suburb_id", "value": origin_suburb_id, "type": "STRING"},
             {"name": "mode", "value": mode, "type": "STRING"},
             {"name": "minutes", "value": str(minutes), "type": "INT"},
         ],
     )
-    if not iso_rows or not iso_rows[0][0]:
-        return {
-            "origin": suburb_name,
-            "mode": mode,
-            "minutes": minutes,
-            "reachable_suburbs": [],
-            "reachable_cell_count": 0,
-        }
 
-    # h3_destinations is returned as a JSON array string by the Statement Execution API
-    raw = iso_rows[0][0]
-    h3_destinations: list[str] = json.loads(raw) if isinstance(raw, str) else list(raw)
-
-    # Step 3: resolve destination cells → suburb names
-    reachable_suburbs: list[str] = []
-    if h3_destinations:
-        placeholders = ", ".join(f"'{c}'" for c in h3_destinations)
-        suburb_rows = _execute(
-            f"""
-            SELECT DISTINCT suburb_name
-            FROM {_CATALOG}.{_SCHEMA}.suburb
-            WHERE h3_centroid IN ({placeholders})
-              AND suburb_name != :origin
-            ORDER BY suburb_name
-            """,
-            [{"name": "origin", "value": suburb_name, "type": "STRING"}],
-        )
-        reachable_suburbs = [row[0] for row in suburb_rows if row[0]]
+    reachable_suburbs = [row[0] for row in result_rows if row[0]]
 
     return {
-        "origin": suburb_name,
+        "origin": matched_name,
         "mode": mode,
         "minutes": minutes,
         "reachable_suburbs": reachable_suburbs,
-        "reachable_cell_count": len(h3_destinations),
+        "reachable_cell_count": len(reachable_suburbs),
     }

@@ -21,6 +21,7 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
+from agent_server.tools.find_affordable_suburbs import find_affordable_suburbs
 from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
@@ -36,6 +37,7 @@ from agent_server.utils_memory import (
     lakebase_context,
     memory_tools,
 )
+from agent_server.databricks_clients import sp_workspace_client
 
 logger = logging.getLogger(__name__)
 mlflow.langchain.autolog()
@@ -61,13 +63,13 @@ async def init_agent(
     store: BaseStore,
     checkpointer: Optional[Any] = None,
 ):
-    tools = [get_current_time, compute_isochrone, score_affordability, lookup_hazards] + memory_tools()
+    tools = [get_current_time, find_affordable_suburbs, compute_isochrone, score_affordability, lookup_hazards] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
-    # mcp_client = init_mcp_client(workspace_client or sp_workspace_client)
-    # try:
-    #     tools.extend(await mcp_client.get_tools())
-    # except Exception:
-    #     logger.warning("Failed to fetch MCP tools. Continuing without MCP tools.", exc_info=True)
+    mcp_client = init_mcp_client(sp_workspace_client)
+    try:
+        tools.extend(await mcp_client.get_tools())
+    except Exception:
+        logger.warning("Failed to fetch MCP tools. Continuing without MCP tools.", exc_info=True)
 
     model = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
