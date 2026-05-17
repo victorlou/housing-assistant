@@ -16,10 +16,10 @@
 # Resource is in Beta. Spec/status field names may change; pin a working
 # provider version in versions.tf and re-verify on upgrades.
 locals {
-  production_branch_name   = "${databricks_postgres_project.main.name}/branches/production"
-  production_endpoint_name = "${local.production_branch_name}/endpoints/primary"
-  postgres_database_name   = coalesce(var.postgres_database_name, replace(var.database_id, "-", "_"))
-  database_resource_name   = "${local.production_branch_name}/databases/${var.database_id}"
+  production_branch_name         = "${databricks_postgres_project.main.name}/branches/production"
+  production_endpoint_name       = "${local.production_branch_name}/endpoints/primary"
+  postgres_database_name         = coalesce(var.postgres_database_name, replace(var.database_id, "-", "_"))
+  database_resource_name         = "${local.production_branch_name}/databases/${var.database_id}"
   default_database_resource_name = "${local.production_branch_name}/databases/databricks_postgres"
 }
 
