@@ -12,6 +12,7 @@ locals {
     "places_files",             # Stats NZ SA2 polygons (+ future census, LINZ addresses, school zones)
     "prices_files",             # RBNZ HPI (NZ-aggregate price index time series)
     "housing_indicators_files", # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
+    "amenities_files",          # Amenity POIs (supermarkets, schools, hospitals, parks) extracted from OSM
   ]
 }
 

@@ -502,6 +502,50 @@ def upload_to_volume(local_path: Path, volume_path: str) -> None:
     print(f"  ✓ uploaded ({local_path.stat().st_size / 1e6:,.2f} MB)")
 
 
+TABLE_COMMENT = (
+    "Door-to-door public-transit travel-time matrix across NZ's four metro "
+    "regions (Auckland, Wellington, Waikato/Hamilton, Christchurch). One "
+    "row per (origin, destination) pair where the destination is reachable "
+    "from the origin within 90 min on a Wednesday 08:30 NZT departure, "
+    "computed via r5py + R5 routing over OSM walking network + GTFS transit. "
+    "Origins are pre-defined origin centres (Britomart, Newmarket, Wellington "
+    "Station, etc., 22 in total) keyed by their res-8 H3 cell. Destinations "
+    "are H3 res-8 cells covering each region (every cell hosting a transit "
+    "stop, plus a 1-ring expansion to cover residential cells adjacent to "
+    "transit). JOINS: gold.isochrone.destination_h3 → gold.h3_cell.h3_cell → "
+    "gold.suburb.suburb_id is the path to translate an isochrone reach into "
+    "named suburbs. Pattern: `WHERE travel_minutes <= N AND origin_h3 = "
+    "h3_longlatash3(<origin_lon>, <origin_lat>, 8)`. Refreshed locally; see "
+    "pipelines/isochrone/local/."
+)
+
+COLUMN_COMMENTS = {
+    "origin_h3": (
+        "H3 res-8 cell of the origin point (a transit hub like Britomart). "
+        "Use h3_longlatash3(lon, lat, 8) to compute for any lat/lon."
+    ),
+    "destination_h3": (
+        "H3 res-8 cell of the destination. Joins to gold.h3_cell.h3_cell "
+        "to translate to a suburb_id."
+    ),
+    "mode": "Always 'transit' today. Future: 'drive', 'walk' for fallback modes.",
+    "travel_minutes": (
+        "Total trip time (origin walk → transit → destination walk) bucketed "
+        "to the nearest 5 minutes, hard-capped at 90. Smaller is more "
+        "reachable."
+    ),
+    "feed_source": (
+        "Which regional GTFS feed produced this row: 'auckland_transport', "
+        "'metlink' (Wellington), 'busit' (Waikato/Hamilton), 'metroinfo' "
+        "(Christchurch). Partition column. Use to filter to one region."
+    ),
+    "departure_time": "Assumed departure clock time, e.g. '08:30'. Currently weekday peak only.",
+    "service_date": "Service date used for the routing query (currently Wednesday 2026-05-20).",
+    "computed_at": "When this row was computed by r5py.",
+    "computation_version": "Bumped when the routing algorithm or assumptions change. e.g. 'r5py-v1'.",
+}
+
+
 def refresh_gold_table(volume_path: str, table: str) -> None:
     """
     Replace `housing.gold.isochrone` with the contents of the uploaded
@@ -514,8 +558,25 @@ def refresh_gold_table(volume_path: str, table: str) -> None:
         PARTITIONED BY (mode, feed_source)
         AS SELECT * FROM parquet.`{volume_path}`
     """)
+    _apply_comments(table, TABLE_COMMENT, COLUMN_COMMENTS)
     [(row_count,)] = _run_sql(f"SELECT COUNT(*) FROM {table}")
     print(f"  ✓ {table} has {int(row_count):,} rows")
+
+
+def _apply_comments(table: str, table_comment: str, column_comments: dict[str, str]) -> None:
+    """
+    Apply COMMENT ON TABLE + ALTER COLUMN COMMENT for every column listed.
+    Comments propagate into Genie's schema descriptions, so this is the
+    primary place to put discoverable guidance for natural-language queries.
+    """
+    def _esc(s: str) -> str:
+        return s.replace("'", "''")
+
+    _run_sql(f"COMMENT ON TABLE {table} IS '{_esc(table_comment)}'")
+    for col, comment in column_comments.items():
+        _run_sql(
+            f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'"
+        )
 
 
 # ── Main ────────────────────────────────────────────────────────────

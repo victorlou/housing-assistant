@@ -97,9 +97,9 @@ resources:
       name: places_ingest
       description: |
         Quarterly refresh of NZ place dimensions, sourced from Stats NZ
-        DataFinder (SA2 2023 polygons). Produces housing.gold.suburb and
-        housing.gold.h3_cell. Census demographics are a follow-up — see
-        ./README.md.
+        DataFinder (SA2 2023 polygons + 2023 census). Produces
+        housing.gold.suburb (with demographics) and housing.gold.h3_cell.
+        See ./README.md.
 
       tags:
         project: housing-assistant
@@ -135,9 +135,21 @@ resources:
               auth_inject_mode: "url_placeholder"
               auth_url_placeholder: "{api_key}"
 
+        # Census is a manual quarterly upload (5-yearly refresh in reality —
+        # most runs hash-skip cleanly). Operator uploads the Stats NZ CSV to
+        # /Volumes/housing/bronze/places_files/sa2_census/<date>.csv — see README.
+        - task_key: fetch_sa2_census
+          notebook_task:
+            notebook_path: ./notebooks/fetch_csv.py
+            base_parameters:
+              dataset: sa2_census
+              retention_days: "365"
+
         - task_key: transform_bronze
           depends_on:
             - task_key: fetch_sa2_polygons
+            - task_key: fetch_sa2_census
+          run_if: ALL_DONE
           run_if: ALL_DONE
           pipeline_task:
             pipeline_id: ${resources.pipelines.places_bronze.id}

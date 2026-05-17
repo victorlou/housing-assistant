@@ -56,12 +56,22 @@ H3_RESOLUTION = 8
 @dlt.table(
     name="suburb",
     comment=(
-        "Canonical NZ suburb dimension, keyed by Stats NZ SA2 2023 code. "
-        "centroid_h3 is the res-8 cell at the polygon centroid — a handy "
-        "single-point handle (e.g. for isochrone origins). land_area_km2 "
-        "from Stats NZ pre-computed LAND_AREA_SQ_KM. population_2023 and "
-        "median_age_2023 are reserved nullable columns — populated in a "
-        "census follow-up PR."
+        "Canonical NZ suburb dimension. One row per Stats NZ Statistical "
+        "Area 2 (SA2) — the smallest official geography Stats NZ publishes. "
+        "SA2 names roughly correspond to colloquial NZ suburbs (e.g. "
+        "'Newmarket', 'Hataitai South') but are sometimes finer than common "
+        "usage ('Onehunga' splits into 'Onehunga West' + 'Onehunga East' + "
+        "'Onehunga Central'). The table also contains non-residential "
+        "polygons — harbour surfaces, inland water (lakes), ocean EEZ cells, "
+        "airport runway zones — which have population_2023 near zero. "
+        "FILTERING GUIDANCE: for residential 'where should I live' queries, "
+        "filter `population_2023 > 500` (or `> 0` more strictly) to exclude "
+        "those non-residential polygons; for exhaustive geographic queries, "
+        "keep them. JOINS: connects to housing.gold.h3_cell via suburb_id "
+        "(the spatial bridge from any H3-keyed fact); connects to "
+        "housing.gold.house_price__month__ta and other TA-level facts via "
+        "territorial_authority (Stats NZ canonical names); connects to "
+        "housing.gold.house_price__quarter__region via region."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     partition_cols=["region"],
@@ -72,8 +82,8 @@ H3_RESOLUTION = 8
         region STRING COMMENT 'Containing region, e.g. "Auckland Region".',
         centroid_h3 BIGINT COMMENT 'H3 cell at the SA2 polygon centroid (resolution 8). Use as a single-point handle for spatial queries.',
         land_area_km2 DOUBLE COMMENT 'Land area in square kilometres (Stats NZ LAND_AREA_SQ_KM, excludes water surfaces).',
-        population_2023 INT COMMENT 'Total usual residents from Stats NZ 2023 census. Null until the census follow-up PR.',
-        median_age_2023 DOUBLE COMMENT 'Median age of usual residents from Stats NZ 2023 census. Null until the census follow-up PR.',
+        population_2023 INT COMMENT 'Total usually-resident population from Stats NZ 2023 census (source: VAR_1_3, -999 sentinel replaced with NULL). Doubles as a residential-vs-non-residential proxy — SA2s with population near zero (e.g. harbour, inland water, EEZ) are not places people live. Filter > 500 for Sarah-style residential queries.',
+        median_age_2023 DOUBLE COMMENT 'Median age (years) of usually-resident population from Stats NZ 2023 census (source: VAR_1_69, -999 sentinel replaced with NULL). NULL on SA2s with no residents.',
         geometry BINARY COMMENT 'SA2 polygon as WKB. Carried through from silver for downstream spatial work.',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
@@ -81,11 +91,16 @@ H3_RESOLUTION = 8
 @dlt.expect_or_drop("has_centroid", "centroid_h3 IS NOT NULL")
 def suburb():
     polygons = spark.read.table(f"{SILVER}.sa2_polygon")
+    census = spark.read.table(f"{SILVER}.sa2_census")
 
     # Centroid: GEOMETRY → WKB roundtrip because h3_pointash3 needs BINARY.
     # The path is: WKB (silver) → GEOMETRY (st_geomfromwkb) → centroid
     # (st_centroid, still GEOMETRY) → WKB (st_asbinary) → H3 cell.
-    return polygons.select(
+    #
+    # LEFT JOIN census: if a census row doesn't exist for a given SA2 (e.g.
+    # population was suppressed for privacy, or the census CSV missed an SA2),
+    # the demographic columns land null. Spatial attributes are always set.
+    return polygons.join(census, on="sa2_code", how="left").select(
         F.col("sa2_code").alias("suburb_id"),
         F.col("sa2_name").alias("suburb_name"),
         F.col("territorial_authority"),
@@ -94,8 +109,8 @@ def suburb():
             f"h3_pointash3(st_asbinary(st_centroid(st_geomfromwkb(geometry))), {H3_RESOLUTION})"
         ).alias("centroid_h3"),
         F.col("land_area_km2"),
-        F.lit(None).cast("int").alias("population_2023"),
-        F.lit(None).cast("double").alias("median_age_2023"),
+        F.col("population_2023"),
+        F.col("median_age_2023"),
         F.col("geometry"),
         F.current_timestamp().alias("_updated_at"),
     )
@@ -111,10 +126,18 @@ def suburb():
 @dlt.table(
     name="h3_cell",
     comment=(
-        "Every H3 cell (resolution 8) whose centre falls inside an NZ SA2, "
-        "mapped to that SA2's suburb_id. Built via Databricks' centre-based "
-        "h3_polyfillash3, so each cell maps to at most one SA2. Facts join "
-        "here on h3_cell; then h3_cell.suburb_id → gold.suburb is a flat lookup."
+        "Every H3 cell (resolution 8, ~0.7 km² hexagon) whose centre falls "
+        "inside an NZ SA2, mapped to that SA2's suburb_id. This is the "
+        "spine for spatial joins across the lakehouse: any fact keyed by "
+        "H3 cell (gold.transit_stop.h3_cell, gold.isochrone.destination_h3 "
+        "/.origin_h3, gold.amenity__h3.h3_cell, future listings) "
+        "reaches its suburb name through this bridge. Standard pattern: "
+        "`JOIN gold.h3_cell USING (h3_cell)` then `JOIN gold.suburb ON "
+        "suburb_id`. Built via Databricks' centre-based h3_polyfillash3, "
+        "so each cell maps to at most one SA2 (cells whose centres fall "
+        "in water/EEZ get assigned to harbour-style SA2s — filter on "
+        "gold.suburb.population_2023 > 0 to exclude those if querying "
+        "for residential context)."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     schema="""

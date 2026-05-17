@@ -5,6 +5,7 @@ Canonical place dimension for the housing lakehouse — Stats NZ Statistical Are
 Source: **Stats NZ DataFinder** (Koordinates platform, same family as LINZ Data Service). Currently one dataset:
 
 - `sa2_polygons` — "Statistical Area 2 Higher Geographies 2023 (generalised)", [layer 111218](https://datafinder.stats.govt.nz/layer/111218-statistical-area-2-higher-geographies-2023-generalised/), via WFS as GeoJSON in WGS84. Same SA2 polygons as the bare 111227 layer but pre-joined with parent territorial authority + region attributes, so silver doesn't need a separate spatial join.
+- `sa2_census` — Stats NZ 2023 Census aggregates per SA2 (downloaded manually as CSV from DataFinder, e.g. [layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/)). Wide source format with hundreds of columns; silver projects just `population_2023` and `median_age_2023`. Refreshes 5-yearly so manual upload is fine.
 
 Census demographics (population, median age) are reserved nullable columns on the gold table; populated in a follow-up PR — see [What's still TODO](#whats-still-todo).
 
@@ -24,8 +25,8 @@ CREATE TABLE housing.gold.suburb (
   region                 STRING,             -- "Auckland Region"
   centroid_h3            BIGINT,             -- res-8 cell at polygon centroid
   land_area_km2          DOUBLE,             -- Stats NZ LAND_AREA_SQ_KM (excludes water)
-  population_2023        INT,                -- null until census follow-up
-  median_age_2023        DOUBLE,             -- null until census follow-up
+  population_2023        INT,                -- Stats NZ 2023 census, joined on sa2_code
+  median_age_2023        DOUBLE,             -- Stats NZ 2023 census, joined on sa2_code
   geometry               BINARY,             -- WKB for downstream spatial queries
   _updated_at            TIMESTAMP NOT NULL
 )
@@ -130,6 +131,19 @@ GROUP BY s.feed_source;
 
 -- Cells with no suburb (sanity — should be water/EEZ only, expect 0 for AKL stops)
 SELECT COUNT(*) FROM housing.gold.h3_cell WHERE suburb_id IS NULL;
+
+-- Demographics populated? (expect ~2,395 SA2s with non-null population_2023)
+SELECT COUNT(*) AS suburbs,
+       COUNT(population_2023) AS with_pop,
+       COUNT(median_age_2023) AS with_age
+FROM housing.gold.suburb;
+
+-- Top 10 most populous suburbs nationally
+SELECT suburb_name, territorial_authority, population_2023, median_age_2023
+FROM housing.gold.suburb
+WHERE population_2023 IS NOT NULL
+ORDER BY population_2023 DESC
+LIMIT 10;
 ```
 
 ## Setup before first run
@@ -149,13 +163,38 @@ databricks --profile hackathon secrets put-secret housing-assistant stats_nz_api
 
 The bundle picks it up via the `auth_secret_key = "stats_nz_api_key"` parameter in `databricks.yml`. Until this is configured, `fetch_sa2_polygons` logs `status='skipped'` and exits cleanly.
 
+### Upload the SA2 census CSV (one-time, refresh every 5 years)
+
+Census data isn't on the Koordinates WFS API like the polygons — it sits behind a per-table CSV export on DataFinder. Since the data refreshes every 5 years anyway, manual upload is the simpler path:
+
+1. Open [DataFinder layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/) (2023 Census totals by topic for individuals by SA2 — part 1) in a browser. Use the **Download** button to grab the table as CSV. Part 2 ([layer 120898](https://datafinder.stats.govt.nz/layer/120898-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-2/)) has additional columns; for the population + median age we use today, part 1 alone is enough.
+2. Upload it to the bronze volume with today's date as the filename:
+
+   ```bash
+   # First-time only: create the directory.
+   databricks --profile hackathon fs mkdirs \
+     dbfs:/Volumes/housing/bronze/places_files/sa2_census
+
+   # Every refresh:
+   today=$(date +%Y-%m-%d)
+   databricks --profile hackathon fs cp \
+     ~/Downloads/<the-census-csv>.csv \
+     "dbfs:/Volumes/housing/bronze/places_files/sa2_census/${today}.csv"
+   ```
+
+3. On the next pipeline run, `fetch_sa2_census` validates + hashes the CSV, bronze streams it via Auto Loader, and silver/gold join it into `housing.gold.suburb`.
+
 ## What's still TODO
 
 The notebooks are wired up but a few things need verifying or following up:
 
 - **Stats NZ DataFinder API key** in the `housing-assistant` secret scope (see [Setup before first run](#setup-before-first-run)).
 - **SA2 polygon property names** in `silver.py` (`SA22023_V1_00`, `SA22023_V1_00_NAME`, `TA2023_V1_00*`, `REGC2023_V1_00*`, `LAND_AREA_SQ_KM`). Verify against `housing.bronze.places_sa2_polygon_raw` with `DESCRIBE`; the `properties` struct should show all of these as nested fields. If any are absent on layer 111218 the SELECT in `silver.py` is the one place to fix.
-- **Census demographics follow-up.** Stats NZ publishes "totals by topic for individuals by SA2" as two wide tables on DataFinder ([layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/) + [layer 120898](https://datafinder.stats.govt.nz/layer/120898-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-2/)) with hundreds of columns. Cleanest path: pick the population/age columns we want via the DataFinder web UI, download the CSV manually, drop it into `/Volumes/housing/bronze/places_files/sa2_census/<date>.csv`, then a follow-up PR adds a bronze table, silver projection, and the `sa2_code` join in gold. Census is every 5 years, so automating the fetch isn't worth it.
+- **Census column codes**: Stats NZ ships the 2023 census as a ~530-column wide CSV where columns are coded `VAR_1_1` through `VAR_1_530-ish` with meanings only in the accompanying lookup CSV. We currently project two:
+  - `VAR_1_3` → `population_2023` (2023 Census usually resident population count)
+  - `VAR_1_69` → `median_age_2023` (2023 Median age)
+  - `-999` is Stats NZ's suppression / not-applicable sentinel (mostly "Inland water" SA2s). Silver replaces it with NULL via `nullif(..., -999)`.
+  - To add more demographic columns later, grep the lookup CSV in the source zip for the right code and add a `cast(nullif(VAR_1_N, -999) AS <type>) AS <out_name>` line to silver.
 
 ## Volume migration note
 
