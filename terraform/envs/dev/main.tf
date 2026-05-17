@@ -128,9 +128,17 @@ resource "databricks_grant" "catalog_usage_app" {
 }
 
 resource "databricks_grant" "catalog_usage_admins" {
-  catalog    = module.catalog.catalog_name
-  principal  = module.identity.admins_group_display_name
-  privileges = ["USE_CATALOG"]
+  catalog   = module.catalog.catalog_name
+  principal = module.identity.admins_group_display_name
+  # Admins are co-owners of the project. They need:
+  #   - ALL_PRIVILEGES: covers everything DATA-related (SELECT, MODIFY,
+  #     CREATE_*, etc. on objects below the catalog).
+  #   - MANAGE: separate UC privilege that grants the right to grant /
+  #     revoke privileges to other principals. ALL_PRIVILEGES explicitly
+  #     does NOT include MANAGE per Databricks UC docs.
+  # Without MANAGE, co-owners couldn't adjust the jobs SP's grants when
+  # adding a new pipeline. Both privileges = full co-owner posture.
+  privileges = ["ALL_PRIVILEGES", "MANAGE"]
 }
 
 # Gold schema: the app reads, the jobs SP writes (write grant lives in catalog module).
@@ -149,23 +157,22 @@ resource "databricks_grant" "app_state_rw" {
   privileges = ["USE_SCHEMA", "SELECT", "MODIFY", "CREATE_TABLE"]
 }
 
-# Admin group: full data access on every schema. Members get this by being
-# added to the group in the account console (not Terraform).
-locals {
-  admin_schema_privileges = [
-    "USE_SCHEMA",
-    "SELECT",
-    "MODIFY",
-    "CREATE_TABLE",
-    "CREATE_VOLUME",
-    "READ_VOLUME",
-    "WRITE_VOLUME",
-  ]
-}
-
+# Admin group: full access on every schema, including the right to grant
+# privileges to other principals. Members get this by being added to the
+# group in the account console (not Terraform). ALL_PRIVILEGES + MANAGE
+# rather than an explicit privilege list — admins are co-owners and
+# shouldn't need a Terraform change to grant a new SP access to a schema
+# or run admin-y maintenance. ALL_PRIVILEGES alone doesn't include MANAGE
+# (that's a separate UC privilege per Databricks docs), so we list both.
 resource "databricks_grant" "admins_schemas" {
   for_each   = module.catalog.schema_names
   schema     = each.value
   principal  = module.identity.admins_group_display_name
-  privileges = local.admin_schema_privileges
+  privileges = ["ALL_PRIVILEGES", "MANAGE"]
 }
+
+# Note on secrets: the secret scope `housing-assistant` is provisioned by the
+# `secrets` module above, but individual secret VALUES are managed out of
+# band via the Databricks CLI. See docs/runbook.md ("Managing per-source API
+# keys") for the commands. Keeping the values out of Terraform state means
+# they live only in the Databricks secret vault, not on developer laptops.

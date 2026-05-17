@@ -1,0 +1,152 @@
+bundle:
+  name: housing_indicators
+
+variables:
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
+  notification_email:
+    description: Email to alert on job failure.
+
+  # HUD publishes the Local Housing Statistics XLSX monthly with a date-stamped
+  # filename (LHS-data-download-<Month>-<Year>.xlsx). Volume-read pattern: the
+  # operator uploads each month, fetch.py picks up the most recent. No URL
+  # in the bundle; see README for the upload step.
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
+
+resources:
+  pipelines:
+    housing_indicators_bronze:
+      name: housing_indicators_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: housing_indicators
+        layer: bronze
+        # Fail fast on hard errors: try a flow once, no retry. Default is 2
+        # retries (3 attempts), which masks code bugs as "intermittent" and
+        # spams the event log when iterating.
+        pipelines.maxFlowRetryAttempts: "0"
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    housing_indicators_silver:
+      name: housing_indicators_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: housing_indicators
+        layer: silver
+        pipelines.maxFlowRetryAttempts: "0"
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    housing_indicators_gold:
+      name: housing_indicators_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: housing_indicators
+        layer: gold
+        pipelines.maxFlowRetryAttempts: "0"
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
+  jobs:
+    housing_indicators_ingest:
+      name: housing_indicators_ingest
+      description: |
+        Monthly fetch of HUD Local Housing Statistics (TA-level NZ housing
+        indicators: prices, rents, affordability, MSD, census tenure).
+        Produces housing.gold.ta__month and housing.gold.ta__quarter
+        (wide time-series tables keyed by territorial authority).
+
+        Manual XLSX upload to the bronze volume; see ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: housing_indicators
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      schedule:
+        # 10th of every month, 04:00 Pacific/Auckland. HUD refreshes monthly.
+        # If no fresh XLSX has been uploaded, the fetch hash-skips harmlessly.
+        quartz_cron_expression: "0 0 4 10 * ?"
+        timezone_id: Pacific/Auckland
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: fetch_hud_lhs
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              dataset: hud_lhs
+              retention_days: "365"
+
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch_hud_lhs
+          run_if: ALL_DONE
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.housing_indicators_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.housing_indicators_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.housing_indicators_gold.id}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
+      notification_email: victor.lourenco@zuru.com

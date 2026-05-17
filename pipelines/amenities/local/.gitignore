@@ -1,0 +1,5 @@
+# Local Python env
+.venv/
+
+# Parquet output (gets uploaded to a Databricks volume instead)
+*.parquet

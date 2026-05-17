@@ -1,0 +1,58 @@
+# Project-level Python tooling config.
+#
+# We don't ship a Python package — the source-of-truth Python is the DLT
+# notebooks under `pipelines/**/notebooks/` (run on Databricks Serverless)
+# and the local compute scripts under `pipelines/{amenities,isochrone}/local/`
+# (run on a contributor's laptop). This file exists so `ruff` has a single
+# place to read its config from, and CI matches local dev exactly.
+#
+# Install dev tools with:  pip install -r requirements-dev.txt
+
+[project]
+name = "housing-assistant"
+version = "0.1.0"
+description = "NZ housing affordability lakehouse on Databricks. See README.md."
+requires-python = ">=3.11"
+
+[tool.ruff]
+# Pin to the Python version the Databricks Serverless runtime ships. Bumping
+# this is a coordinated change with the Databricks runtime upgrade.
+target-version = "py311"
+
+extend-exclude = [
+    ".venv",
+    "**/.venv",
+    "**/.databricks",
+    "**/__pycache__",
+    "**/.terraform",
+    "terraform",            # HCL, not Python
+    "data",
+    "**/data/**",           # local OSM extracts, GTFS zips, parquet samples
+    "**/*.parquet",
+]
+
+# Databricks Serverless / DLT / interactive notebook runtimes inject these
+# names into every Python session. They're "undefined" only when a linter
+# reads the file as plain Python. Registering them here turns dozens of
+# F821 false positives into 0.
+builtins = [
+    "spark",       # Databricks SparkSession
+    "dbutils",     # Databricks utilities (widgets, fs, secrets, ...)
+    "display",     # Databricks display() in interactive notebooks
+    "displayHTML", # ditto
+    "sc",          # legacy SparkContext alias
+    "sqlContext",  # legacy SQLContext alias
+]
+
+[tool.ruff.lint]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks use `# COMMAND ----------` cell separators, so imports
+# legitimately appear below the file header (one per logical cell). Treating
+# this as an E402 violation fights the platform.
+"pipelines/**/notebooks/*.py" = ["E402"]
+
+[tool.ruff.format]
+# Don't churn the whole codebase re-quoting strings on the first pass; let
+# authors keep whichever quote style they reached for.
+quote-style = "preserve"

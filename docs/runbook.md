@@ -80,6 +80,8 @@ Conventions:
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
 - Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
+- Naming conventions for gold tables live in [`docs/conventions.md`](conventions.md).
+- All scheduled jobs, their cron, and the rationale for each cadence live in [`docs/schedules.md`](schedules.md) — update both the bundle and that doc when changing a schedule.
 
 ## Working on the agent
 
@@ -195,7 +197,59 @@ The exact field name is in flux while the API is in Beta. If the call rejects `s
 
 While you're there, also set the autoscaling range. The default for projects created via the Database instance API is min 4 / max 8 CU; for dev, min 0.5 / max 2 CU is plenty.
 
-### Watch the cost dashboard
+### Managing per-source API keys
+
+Some open-data sources require an API key (currently: Metroinfo). The split of responsibilities is:
+
+- The **secret scope** (`housing-assistant`) is Terraform-managed in `modules/secrets/`.
+- The **secret values** are set via the Databricks CLI. They live only in the Databricks secret vault — not in Terraform state, not in `.tfvars`, not on developer laptops.
+- Each fetch task declares which scope/key/header to read. If the secret doesn't exist yet, the fetch logs `status='skipped'` and exits cleanly so downstream pipelines aren't blocked.
+
+#### Add a secret (also how you rotate — `put-secret` overwrites)
+
+```bash
+# Interactive: the CLI prompts for the value; never appears in shell history.
+databricks --profile hackathon secrets put-secret \
+  housing-assistant metroinfo_api_key
+
+# Or pipe from a shell variable (use single quotes to avoid expansion):
+echo -n "$METROINFO_KEY" | databricks --profile hackathon secrets put-secret \
+  housing-assistant metroinfo_api_key
+```
+
+#### List and delete
+
+```bash
+# List secret keys in the scope (values are never shown):
+databricks --profile hackathon secrets list-secrets housing-assistant
+
+# Delete a key (rare — usually you'd just put-secret to overwrite):
+databricks --profile hackathon secrets delete-secret \
+  housing-assistant metroinfo_api_key
+```
+
+#### Rotation pattern for sources with primary + secondary keys
+
+Some APIs (including Metroinfo) issue a **primary** and a **secondary** key, both valid at the same time. That makes zero-downtime rotation possible:
+
+1. Regenerate the **secondary** key on the source's portal. The primary still works.
+2. `put-secret` the new secondary value into Databricks. The next job run uses it.
+3. Regenerate the **primary** key on the portal. The old primary becomes invalid, but the secret in Databricks is now using the new secondary — no break.
+4. Next rotation cycle, swap which is "active": put-secret the new primary, then regenerate secondary.
+
+For sources with a single key, simpler: regenerate, then `put-secret` with the new value. There's a small window during which a running fetch would fail.
+
+#### Where the secret name is referenced in code
+
+`pipelines/gtfs/databricks.yml` declares for the Metroinfo fetch task:
+
+```yaml
+auth_secret_scope: housing-assistant
+auth_secret_key: metroinfo_api_key
+auth_header_name: Ocp-Apim-Subscription-Key
+```
+
+`notebooks/fetch.py` reads those parameters, calls `dbutils.secrets.get(...)`, and sends the value as an HTTP header. If you add a new auth-required source, add the same three parameters to its task and run one `put-secret`. No code change.
 
 ### Watch the cost dashboard
 
