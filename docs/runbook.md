@@ -7,7 +7,7 @@ This is the practical guide to working on Housing Assistant. If something here i
 You will need:
 
 - **Databricks workspace access.** AWS, `us-west-2`, Premium tier. Workspace admin can grant you access.
-- **Databricks CLI** from `databricks auth login --profile <name>` (stored in `~/.databrickscfg`). Terraform uses the same credentials via environment variables (see below), not committed config.
+- **Personal access token** (Databricks → User Settings → Access Tokens). Used for CLI and Terraform.
 - **AWS credentials** with at least read access to the Databricks-managed buckets, only if your task needs it. Most tasks do not.
 - **Local toolchain:**
   - `terraform` ≥ 1.7
@@ -28,16 +28,13 @@ cd housing-assistant
 # install pre-commit
 pre-commit install
 
-# authenticate CLI (writes ~/.databrickscfg)
-databricks auth login --profile <name>
+# configure databricks CLI
+databricks configure --token
+# host: https://<your-workspace>.cloud.databricks.com
+# token: <your PAT>
 
-# Terraform reads credentials from the environment (pick one approach; do not commit profile names)
-#   Unix:    export DATABRICKS_CONFIG_PROFILE=<name>
-#   PowerShell: $env:DATABRICKS_CONFIG_PROFILE = "<name>"
-# Alternative: export DATABRICKS_HOST=... and DATABRICKS_TOKEN=... (e.g. CI)
-
-# verify access (same profile as above)
-databricks workspace list / --profile <name>
+# verify access
+databricks workspace list /
 ```
 
 ## Working on infrastructure (Terraform)
@@ -45,8 +42,9 @@ databricks workspace list / --profile <name>
 ```bash
 cd terraform/envs/dev
 
-# optional: only if you set variables such as data_principal_names
-# cp terraform.tfvars.example terraform.tfvars
+# only the first time on a new machine
+cp terraform.tfvars.example terraform.tfvars
+# fill in your values; never commit terraform.tfvars
 
 terraform init
 terraform plan
@@ -81,7 +79,7 @@ Conventions:
 
 - One pipeline per source; one "marts" pipeline that fans in from sources to gold.
 - Prefer SQL over Python where possible.
-- Every pipeline writes only under the UC catalog from Terraform (`catalog_name`, default `housing`) in `bronze` / `silver` / `gold`. Never directly to `<catalog>.app.*`.
+- Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
 
 ## Working on the agent
 
@@ -197,59 +195,9 @@ The exact field name is in flux while the API is in Beta. If the call rejects `s
 
 While you're there, also set the autoscaling range. The default for projects created via the Database instance API is min 4 / max 8 CU; for dev, min 0.5 / max 2 CU is plenty.
 
-### Managing per-source API keys
+### Watch the cost dashboard
 
-Some open-data sources require an API key (currently: Metroinfo). The split of responsibilities is:
-
-- The **secret scope** (`housing-assistant`) is Terraform-managed in `modules/secrets/`.
-- The **secret values** are set via the Databricks CLI. They live only in the Databricks secret vault — not in Terraform state, not in `.tfvars`, not on developer laptops.
-- Each fetch task declares which scope/key/header to read. If the secret doesn't exist yet, the fetch logs `status='skipped'` and exits cleanly so downstream pipelines aren't blocked.
-
-#### Add a secret (also how you rotate — `put-secret` overwrites)
-
-```bash
-# Interactive: the CLI prompts for the value; never appears in shell history.
-databricks --profile hackathon secrets put-secret \
-  housing-assistant metroinfo_api_key
-
-# Or pipe from a shell variable (use single quotes to avoid expansion):
-echo -n "$METROINFO_KEY" | databricks --profile hackathon secrets put-secret \
-  housing-assistant metroinfo_api_key
-```
-
-#### List and delete
-
-```bash
-# List secret keys in the scope (values are never shown):
-databricks --profile hackathon secrets list-secrets housing-assistant
-
-# Delete a key (rare — usually you'd just put-secret to overwrite):
-databricks --profile hackathon secrets delete-secret \
-  housing-assistant metroinfo_api_key
-```
-
-#### Rotation pattern for sources with primary + secondary keys
-
-Some APIs (including Metroinfo) issue a **primary** and a **secondary** key, both valid at the same time. That makes zero-downtime rotation possible:
-
-1. Regenerate the **secondary** key on the source's portal. The primary still works.
-2. `put-secret` the new secondary value into Databricks. The next job run uses it.
-3. Regenerate the **primary** key on the portal. The old primary becomes invalid, but the secret in Databricks is now using the new secondary — no break.
-4. Next rotation cycle, swap which is "active": put-secret the new primary, then regenerate secondary.
-
-For sources with a single key, simpler: regenerate, then `put-secret` with the new value. There's a small window during which a running fetch would fail.
-
-#### Where the secret name is referenced in code
-
-`pipelines/gtfs/databricks.yml` declares for the Metroinfo fetch task:
-
-```yaml
-auth_secret_scope: housing-assistant
-auth_secret_key: metroinfo_api_key
-auth_header_name: Ocp-Apim-Subscription-Key
-```
-
-`notebooks/fetch.py` reads those parameters, calls `dbutils.secrets.get(...)`, and sends the value as an HTTP header. If you add a new auth-required source, add the same three parameters to its task and run one `put-secret`. No code change.
+### Watch the cost dashboard
 
 ```sql
 SELECT

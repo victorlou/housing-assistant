@@ -63,7 +63,6 @@ housing-assistant/
 ├── dashboards/                  ← AI/BI dashboard exports
 ├── notebooks/                   ← exploration, prototypes
 ├── data/                        ← canonical source registry (sources.yaml)
-├── ingestion/                   ← small fetch helpers (e.g. LINZ WFS → JSONL)
 └── .github/                     ← CI workflows, PR template, CODEOWNERS
 ```
 

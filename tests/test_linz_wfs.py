@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from ingestion.linz_wfs import (
+from linz_fetch_wfs import (
     build_getfeature_params,
-    expand_env_vars,
+    expand_env_placeholders,
     load_config,
     parse_feature_collection,
     wfs_base_url,
@@ -29,7 +29,7 @@ def test_load_source_config() -> None:
 
 def test_expand_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LINZ_API_KEY", "abc")
-    assert expand_env_vars("x=${LINZ_API_KEY}!") == "x=abc!"
+    assert expand_env_placeholders("x=${LINZ_API_KEY}!") == "x=abc!"
 
 
 def test_wfs_base_url(monkeypatch: pytest.MonkeyPatch) -> None:

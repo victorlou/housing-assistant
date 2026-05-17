@@ -224,5 +224,5 @@ After this, `databricks bundle run places_ingest --target dev` does a clean fetc
 
 - **Census:** additional 2023 topics can be added via `pipelines/census_2023/census_2023_gold.yml` without changing the suburb contract shape.
 - **School zones:** Ministry of Education school catchment polygons → new `gold.school_zone` dim plus a `gold.h3_cell__school_zone` bridge (cells can sit in multiple zones simultaneously — primary, intermediate, secondary — so a single FK column on h3_cell won't do).
-- **Amenities:** supermarkets, hospitals, employment centres. Gives Genie destinations beyond the seven origins hardcoded in `pipelines/isochrone/`.
+- **Amenities:** supermarkets, hospitals, employment centres. Gives Genie destinations beyond pre-defined transit origin centres.
 - **Address-level lookup:** LINZ NZ Addresses in [`pipelines/linz_nz_addresses`](../linz_nz_addresses/) (`linz_nz_addresses_files` volume). Useful for the "is this listing near a bus stop" question.

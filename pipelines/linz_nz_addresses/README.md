@@ -29,8 +29,9 @@ If your Terraform `catalog_name` is not `housing`, update `BRONZE_VOLUME` in `no
 For ad-hoc runs from your laptop:
 
 ```bash
+cd pipelines/linz_nz_addresses
 set LINZ_API_KEY=...
-python -m ingestion.linz_wfs --output ./out
+python linz_fetch_wfs.py --output ./out
 ```
 
 Config defaults live in `linz_nz_addresses.yml` (`${LINZ_API_KEY}` expansion for that path only).
