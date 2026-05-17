@@ -1,0 +1,123 @@
+# Regional council / city flood hazard polygon layers (ArcGIS).
+# Verified queryable 2026-05-17. See .devnotes/flood/access-paths.md.
+
+layers:
+  - id: auckland_flood_plains
+    publisher: Auckland Council
+    region_name: Auckland
+    return_period: "100-year"
+    aep: null
+    base: https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Flood_Plains/FeatureServer
+    layer_id: 0
+    file_stem: auckland_flood_plains
+    notes: Regionwide Urban Flood Model; RAINFALL_EVENT=100. Primary fluvial/pluvial plain polygons (~12.7k).
+
+  - id: auckland_flood_prone_areas
+    publisher: Auckland Council
+    region_name: Auckland
+    return_period: null
+    aep: null
+    base: https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Flood_Prone_Areas/FeatureServer
+    layer_id: 0
+    file_stem: auckland_flood_prone_areas
+    notes: Catchment-level flood prone flags (~35k).
+
+  - id: auckland_flood_sensitive_areas
+    publisher: Auckland Council
+    region_name: Auckland
+    return_period: null
+    aep: null
+    base: https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Flood_Sensitive_Areas/FeatureServer
+    layer_id: 0
+    file_stem: auckland_flood_sensitive_areas
+    notes: Planning overlay polygons (~859).
+
+  - id: auckland_coastal_inundation_1_aep
+    publisher: Auckland Council
+    region_name: Auckland (coastal)
+    return_period: null
+    aep: "1%"
+    base: https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Coastal_Inundation_1_AEP/FeatureServer
+    layer_id: 0
+    file_stem: auckland_coastal_inundation_1_aep
+    notes: Coastal inundation 1% AEP (~689 polygons).
+
+  - id: auckland_coastal_inundation_100yr
+    publisher: Auckland Council
+    region_name: Auckland (coastal)
+    return_period: "100-year"
+    aep: null
+    base: https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Coastal_Inundation_100_yr_return/FeatureServer
+    layer_id: 0
+    file_stem: auckland_coastal_inundation_100yr
+    notes: Coastal inundation 100-year return (~695).
+
+  - id: greater_wellington_100yr_outline
+    publisher: Greater Wellington Regional Council
+    region_name: Wellington Region
+    return_period: "100-year"
+    aep: "1%"
+    base: https://mapping.gw.govt.nz/arcgis/rest/services/Floods/Flood_Protection_Advisory_Web_Map_2016/MapServer
+    layer_id: 97
+    file_stem: gw_flood_100yr_hazard_outline
+    notes: GWRC 100 yr hazard map outline.
+
+  - id: wellington_city_100yr
+    publisher: Wellington City Council
+    region_name: Wellington City
+    return_period: "100-year"
+    aep: "1%"
+    base: https://gis.wcc.govt.nz/arcgis/rest/services/Environment/FloodZones/MapServer
+    layer_id: 0
+    file_stem: wcc_flood_zones_100yr
+    notes: City flood zones.
+
+  - id: hamilton_100yr
+    publisher: Hamilton City Council
+    region_name: Hamilton (Waikato)
+    return_period: "100-year"
+    aep: null
+    base: https://maps.hamilton.govt.nz/server/rest/services/hcc_entpublic/portal_floodviewer_floodhazard/MapServer
+    layer_id: 1
+    file_stem: hamilton_flood_hazard_100yr
+    notes: 100-year rainfall flood hazards.
+
+  - id: queenstown_lakes_orc_hazard
+    publisher: Queenstown Lakes District Council / ORC
+    region_name: Queenstown Lakes
+    return_period: mixed
+    aep: null
+    base: https://gis.qldc.govt.nz/server/rest/services/Hazards/Flooding/MapServer
+    layer_id: 3
+    file_stem: qldc_orc_flood_hazard_area
+    notes: 2021 ORC flood hazard area polygons.
+
+  - id: queenstown_lakes_wanaka_100yr
+    publisher: Queenstown Lakes District Council
+    region_name: Wanaka (Queenstown Lakes)
+    return_period: "100-year"
+    aep: null
+    base: https://gis.qldc.govt.nz/server/rest/services/Hazards/Flooding/MapServer
+    layer_id: 9
+    file_stem: qldc_wanaka_flood_hazard_100yr
+    notes: Wanaka 100-year hazard polygons.
+
+  - id: canterbury_selwyn_flood_zones
+    publisher: Environment Canterbury
+    region_name: Selwyn District
+    return_period: null
+    aep: null
+    base: https://gis.ecan.govt.nz/arcgis/rest/services/Selwyn_DC/SDC_DistrictPlan/MapServer
+    layer_id: 22
+    file_stem: ecan_selwyn_flood_zones
+    notes: Ecan defined flood zones.
+
+  - id: otago_waitaki_floodplain
+    publisher: Otago Regional Council
+    region_name: Waitaki (Otago)
+    return_period: indicative
+    aep: null
+    base: https://maps.orc.govt.nz/arcgis/rest/services/WaitakiRiverIndicativeFloodplain_DistrictPlanReview2021/MapServer
+    layer_id: 0
+    file_stem: orc_waitaki_indicative_floodplain
+    notes: Indicative Waitaki floodplain.

@@ -14,6 +14,7 @@ from pathlib import Path
 import dlt
 from pyspark.sql import functions as F
 
+
 def _bundle_files_root() -> Path:
     try:
         return Path(__file__).resolve().parent.parent
@@ -209,22 +210,18 @@ def dwelling__year__suburb():
 def census_metric__year__sa2():
     specs = metric_specs(_MANIFEST)
     keys = [
-        (specs[k]["dataset"], specs[k]["field_name"])
-        for k in all_feature_export_keys(_MANIFEST)
+        (specs[k]["dataset"], specs[k]["field_name"]) for k in all_feature_export_keys(_MANIFEST)
     ]
     keys_df = spark.createDataFrame(keys, ["dataset", "field_name"])
     metrics = spark.read.table(f"{SILVER}.census_sa2_metric")
-    return (
-        metrics.join(keys_df, on=["dataset", "field_name"], how="inner")
-        .select(
-            F.lit(_CENSUS_YEAR).alias("census_year"),
-            F.col("sa2_code"),
-            F.col("sa2_name"),
-            F.trim(F.col("variable_l1")).alias("topic"),
-            F.col("measure"),
-            F.col("category"),
-            F.col("field_name"),
-            F.col("value"),
-            F.current_timestamp().alias("_updated_at"),
-        )
+    return metrics.join(keys_df, on=["dataset", "field_name"], how="inner").select(
+        F.lit(_CENSUS_YEAR).alias("census_year"),
+        F.col("sa2_code"),
+        F.col("sa2_name"),
+        F.trim(F.col("variable_l1")).alias("topic"),
+        F.col("measure"),
+        F.col("category"),
+        F.col("field_name"),
+        F.col("value"),
+        F.current_timestamp().alias("_updated_at"),
     )

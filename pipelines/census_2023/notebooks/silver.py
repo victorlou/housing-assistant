@@ -9,6 +9,7 @@
 
 # COMMAND ----------
 
+import contextlib
 import sys
 from pathlib import Path
 
@@ -30,7 +31,12 @@ _bundle_root = _bundle_files_root()
 if str(_bundle_root) not in sys.path:
     sys.path.insert(0, str(_bundle_root))
 
-from census_gold_lib import all_feature_export_keys, census_year, load_gold_manifest, pivot_manifest_metrics
+from census_gold_lib import (
+    all_feature_export_keys,
+    census_year,
+    load_gold_manifest,
+    pivot_manifest_metrics,
+)
 
 BRONZE = "housing.bronze"
 VOLUME_ROOT = "/Volumes/housing/bronze/census_2023_files"
@@ -108,8 +114,11 @@ def census_field_dictionary():
 def _resolve_bronze_table(dataset: str) -> str:
     """Prefer census_2023_* tables; fall back to legacy census_* names in UC."""
     for name in (f"census_2023_{dataset}", f"census_{dataset}"):
-        if spark.catalog.tableExists(f"{BRONZE}.{name}"):
+        try:
+            spark.read.table(f"{BRONZE}.{name}").limit(0).collect()
             return name
+        except Exception:
+            continue
     raise ValueError(
         f"No bronze census table for {dataset!r}; "
         f"expected census_2023_{dataset} or census_{dataset} in {BRONZE}"
@@ -133,7 +142,9 @@ def _latest_bronze(dataset: str):
 
 def _land_area_sq_km(df):
     """Bronze may expose land area under different names depending on deploy/schema evolution."""
-    candidates = [c for c in ("land_area_sq_km", "LAND_AREA_SQ_KM", "AREA_SQ_KM") if c in df.columns]
+    candidates = [
+        c for c in ("land_area_sq_km", "LAND_AREA_SQ_KM", "AREA_SQ_KM") if c in df.columns
+    ]
     if not candidates:
         return F.lit(None).cast(DoubleType()).alias("land_area_sq_km")
     return F.coalesce(*[F.col(c) for c in candidates]).alias("land_area_sq_km")
@@ -152,12 +163,9 @@ def census_sa2_area():
         F.col("sa2_name_ascii"),
         _land_area_sq_km(hh),
         F.col("_run_date").alias("source_run_date"),
-        F.expr(
-            "h3_longlatash3("
-            "cast(ST_X(ST_Centroid(ST_GeomFromGeoJSON(geometry_json))) as double), "
-            "cast(ST_Y(ST_Centroid(ST_GeomFromGeoJSON(geometry_json))) as double), "
-            "8)"
-        ).alias("h3_cell_res8"),
+        # H3 from GeoJSON is deferred: geometry_json from Auto Loader is not always
+        # valid GeoJSON for ST_GeomFromGeoJSON on this runtime. Join SA2 boundaries later.
+        F.lit(None).cast("long").alias("h3_cell_res8"),
     )
 
 
@@ -201,9 +209,7 @@ def census_sa2_metric():
         _unpivot_metrics("households_sa2"),
         _unpivot_metrics("dwellings_sa2"),
     ]
-    if spark.catalog.tableExists(f"{BRONZE}.census_2023_individuals_sa2") or spark.catalog.tableExists(
-        f"{BRONZE}.census_individuals_sa2"
-    ):
+    with contextlib.suppress(Exception):
         parts.append(_unpivot_metrics("individuals_sa2"))
     metrics = parts[0]
     for part in parts[1:]:

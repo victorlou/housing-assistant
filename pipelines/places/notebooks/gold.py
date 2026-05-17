@@ -108,25 +108,22 @@ def suburb():
             F.current_timestamp().alias("_updated_at"),
         )
 
-    return (
-        base.join(census, base.suburb_id == census.sa2_code, how="left")
-        .select(
-            F.col("suburb_id"),
-            F.col("suburb_name"),
-            F.col("territorial_authority"),
-            F.col("region"),
-            F.col("centroid_h3"),
-            F.col("land_area_km2"),
-            F.col("population_2023"),
-            F.col("median_age_2023"),
-            F.col("median_household_income_2023"),
-            F.col("household_count_2023"),
-            F.col("owner_occupier_pct_2023"),
-            F.col("median_weekly_rent_2023"),
-            F.col("percent_crowded_2023"),
-            F.col("geometry"),
-            F.current_timestamp().alias("_updated_at"),
-        )
+    return base.join(census, base.suburb_id == census.sa2_code, how="left").select(
+        F.col("suburb_id"),
+        F.col("suburb_name"),
+        F.col("territorial_authority"),
+        F.col("region"),
+        F.col("centroid_h3"),
+        F.col("land_area_km2"),
+        F.col("population_2023"),
+        F.col("median_age_2023"),
+        F.col("median_household_income_2023"),
+        F.col("household_count_2023"),
+        F.col("owner_occupier_pct_2023"),
+        F.col("median_weekly_rent_2023"),
+        F.col("percent_crowded_2023"),
+        F.col("geometry"),
+        F.current_timestamp().alias("_updated_at"),
     )
 
 
@@ -154,11 +151,15 @@ def suburb():
 def h3_cell():
     polygons = spark.read.table(f"{SILVER}.sa2_polygon")
 
-    return polygons.selectExpr(
-        "sa2_code AS suburb_id",
-        f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
-    ).select(
-        F.col("h3_cell"),
-        F.col("suburb_id"),
-        F.current_timestamp().alias("_updated_at"),
-    ).dropDuplicates(["h3_cell"])
+    return (
+        polygons.selectExpr(
+            "sa2_code AS suburb_id",
+            f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
+        )
+        .select(
+            F.col("h3_cell"),
+            F.col("suburb_id"),
+            F.current_timestamp().alias("_updated_at"),
+        )
+        .dropDuplicates(["h3_cell"])
+    )

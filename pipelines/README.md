@@ -6,6 +6,9 @@ Lakeflow Declarative Pipelines that move open NZ data from raw landings into the
 
 ```
 pipelines/
+├── flood/                  # regional flood hazard ArcGIS → gold.hazard (H3)
+├── gtfs/                   # NZ transit feeds
+├── census_2023/            # Stats NZ census SA2
 ├── <source>/
 │   ├── databricks.yml      # bundle definition
 │   ├── pipeline.yml        # pipeline definition

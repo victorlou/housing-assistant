@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Census 2023 ArcGIS fetch
+# MAGIC # Flood hazard ArcGIS fetch
 # MAGIC
-# MAGIC Fetches one Stats NZ "totals by topic" SA2 layer (households or dwellings),
-# MAGIC writes GeoJSON JSONL to the census bronze volume, skips unchanged content,
-# MAGIC prunes old landings, and logs to `housing.bronze.ingest_runs`.
+# MAGIC Fetches one regional flood polygon layer from `regions.yaml`, writes GeoJSON
+# MAGIC JSONL to the flood bronze volume, skips unchanged content, prunes old landings,
+# MAGIC and logs to `housing.bronze.ingest_runs`.
 
 # COMMAND ----------
 
@@ -40,32 +40,27 @@ _bundle_root = _bundle_files_root()
 if str(_bundle_root) not in sys.path:
     sys.path.insert(0, str(_bundle_root))
 
-from census_fetch_arcgis import (
-    LAYERS,
-    fetch_layer_field_dictionary_csv,
-    fetch_layer_to_jsonl_hashed,
-)
+from flood_fetch_arcgis import fetch_layer_to_jsonl_hashed, load_layers_config
 
 # COMMAND ----------
 
-BRONZE_VOLUME = "/Volumes/housing/bronze/census_2023_files"
+BRONZE_VOLUME = "/Volumes/housing/bronze/flood_files"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 
+_LAYER_IDS = sorted(load_layers_config().keys())
+
 dbutils.widgets.dropdown(
-    "feed_source",
-    "households_sa2",
-    list(LAYERS.keys()),
-    "ArcGIS layer preset",
+    "hazard_source", _LAYER_IDS[0], _LAYER_IDS, "Flood layer (regions.yaml id)"
 )
 dbutils.widgets.text("retention_days", "365", "Retention (days)")
 
-feed_source = dbutils.widgets.get("feed_source").strip()
+hazard_source = dbutils.widgets.get("hazard_source").strip()
 retention_days = int(dbutils.widgets.get("retention_days"))
-spec = LAYERS[feed_source]
-SOURCE_NAME = f"census_2023_{feed_source}"
+spec = load_layers_config()[hazard_source]
+SOURCE_NAME = f"flood_{hazard_source}"
 SOURCE_SUBDIR = spec["file_stem"]
-OUTPUT_FILENAME = f"{spec['file_stem']}.jsonl"
-SOURCE_URL = f"arcgis://{spec['service']}/FeatureServer/{spec['layer_id']}"
+OUTPUT_FILENAME = "features.jsonl"
+SOURCE_URL = f"{spec['base']}/{spec['layer_id']}"
 
 # COMMAND ----------
 
@@ -155,15 +150,11 @@ def last_successful_content_hash() -> str | None:
     return result[0].content_hash
 
 
-FIELD_DICTIONARY_FILENAME = f"{SOURCE_NAME}_field_dictionary.csv"
-
-
-def publish_landing(tmp_path: Path, tmp_dict_path: Path, run_date: str) -> str:
+def publish_landing(tmp_path: Path, run_date: str) -> str:
     target_dir = f"{BRONZE_VOLUME}/{SOURCE_SUBDIR}/{run_date}"
     os.makedirs(target_dir, exist_ok=True)
     target_path = f"{target_dir}/{OUTPUT_FILENAME}"
     shutil.move(str(tmp_path), target_path)
-    shutil.move(str(tmp_dict_path), f"{target_dir}/{FIELD_DICTIONARY_FILENAME}")
     return target_path
 
 
@@ -194,17 +185,17 @@ started_at = datetime.now(UTC)
 t0 = time.time()
 
 try:
-    print(f"[{run_id}] Fetching {feed_source} from ArcGIS")
+    print(f"[{run_id}] Fetching {hazard_source} from {SOURCE_URL}")
     tmp_path = Path(tempfile.gettempdir()) / f"{SOURCE_NAME}_{run_id}.jsonl"
-    tmp_dict_path = Path(tempfile.gettempdir()) / f"{FIELD_DICTIONARY_FILENAME}_{run_id}"
     try:
-        feature_count, content_hash = fetch_layer_to_jsonl_hashed(feed_source, tmp_path)
-        field_count = fetch_layer_field_dictionary_csv(feed_source, tmp_dict_path)
-        print(f"[{run_id}] staged field dictionary ({field_count} fields)")
+        feature_count, content_hash = fetch_layer_to_jsonl_hashed(
+            hazard_source,
+            tmp_path,
+            return_geometry=True,
+        )
     except Exception:
         if tmp_path.is_file():
             tmp_path.unlink()
-        tmp_dict_path.unlink(missing_ok=True)
         raise
 
     bytes_written = tmp_path.stat().st_size
@@ -216,26 +207,23 @@ try:
     last_hash = last_successful_content_hash()
     if last_hash and content_hash == last_hash:
         tmp_path.unlink(missing_ok=True)
-        tmp_dict_path.unlink(missing_ok=True)
         log_run(
             run_id,
             "skipped",
             content_hash=content_hash,
-            feed_version="2023",
             fetched_at=started_at,
             duration_seconds=time.time() - t0,
             notes="content unchanged (hash matches last successful run)",
         )
         print(f"[{run_id}] Skipped: content_hash matches last run")
     else:
-        target_path = publish_landing(tmp_path, tmp_dict_path, run_date)
+        target_path = publish_landing(tmp_path, run_date)
         removed = cleanup_old_landings(retention_days)
         try:
             log_run(
                 run_id,
                 "succeeded",
                 content_hash=content_hash,
-                feed_version="2023",
                 fetched_at=started_at,
                 duration_seconds=time.time() - t0,
                 file_count=1,
@@ -255,7 +243,7 @@ except Exception as exc:
         "failed",
         fetched_at=started_at,
         duration_seconds=time.time() - t0,
-        error_message=str(exc),
+        error_message=str(exc)[:8000],
     )
     print(f"[{run_id}] Failed: {exc}")
     raise

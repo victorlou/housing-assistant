@@ -1,0 +1,223 @@
+bundle:
+  name: flood
+
+variables:
+  jobs_service_principal_id:
+    description: Application ID of the sp-housing-jobs service principal.
+  admins_group_name:
+    description: Account-level admin group whose members can deploy and manage this bundle.
+  notification_email:
+    description: Email to alert on job failure.
+
+permissions:
+  - level: CAN_MANAGE
+    service_principal_name: ${var.jobs_service_principal_id}
+  - level: CAN_MANAGE
+    group_name: ${var.admins_group_name}
+  - level: CAN_MANAGE
+    user_name: ${workspace.current_user.userName}
+
+resources:
+  pipelines:
+    flood_bronze:
+      name: flood_bronze
+      catalog: housing
+      schema: bronze
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: flood
+        layer: bronze
+      libraries:
+        - notebook:
+            path: ./notebooks/bronze.py
+
+    flood_silver:
+      name: flood_silver
+      catalog: housing
+      schema: silver
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: flood
+        layer: silver
+      libraries:
+        - notebook:
+            path: ./notebooks/silver.py
+
+    flood_gold:
+      name: flood_gold
+      catalog: housing
+      schema: gold
+      serverless: true
+      development: false
+      edition: ADVANCED
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+      configuration:
+        project: housing-assistant
+        source: flood
+        layer: gold
+      libraries:
+        - notebook:
+            path: ./notebooks/gold.py
+
+  jobs:
+    flood_ingest:
+      name: flood_ingest
+      description: |
+        Annual fetch of regional flood hazard ArcGIS layers (12 sources) followed by
+        bronze → silver → gold transformations. See ./README.md.
+
+      tags:
+        project: housing-assistant
+        source: flood
+
+      run_as:
+        service_principal_name: ${var.jobs_service_principal_id}
+
+      schedule:
+        quartz_cron_expression: "0 0 4 1 6 ?"
+        timezone_id: Pacific/Auckland
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 10800
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: fetch_auckland_flood_plains
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: auckland_flood_plains
+              retention_days: "365"
+
+        - task_key: fetch_auckland_flood_prone_areas
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: auckland_flood_prone_areas
+              retention_days: "365"
+
+        - task_key: fetch_auckland_flood_sensitive_areas
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: auckland_flood_sensitive_areas
+              retention_days: "365"
+
+        - task_key: fetch_auckland_coastal_inundation_1_aep
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: auckland_coastal_inundation_1_aep
+              retention_days: "365"
+
+        - task_key: fetch_auckland_coastal_inundation_100yr
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: auckland_coastal_inundation_100yr
+              retention_days: "365"
+
+        - task_key: fetch_greater_wellington_100yr_outline
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: greater_wellington_100yr_outline
+              retention_days: "365"
+
+        - task_key: fetch_wellington_city_100yr
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: wellington_city_100yr
+              retention_days: "365"
+
+        - task_key: fetch_hamilton_100yr
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: hamilton_100yr
+              retention_days: "365"
+
+        - task_key: fetch_queenstown_lakes_orc_hazard
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: queenstown_lakes_orc_hazard
+              retention_days: "365"
+
+        - task_key: fetch_queenstown_lakes_wanaka_100yr
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: queenstown_lakes_wanaka_100yr
+              retention_days: "365"
+
+        - task_key: fetch_canterbury_selwyn_flood_zones
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: canterbury_selwyn_flood_zones
+              retention_days: "365"
+
+        - task_key: fetch_otago_waitaki_floodplain
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              hazard_source: otago_waitaki_floodplain
+              retention_days: "365"
+
+        - task_key: transform_bronze
+          depends_on:
+            - task_key: fetch_auckland_flood_plains
+            - task_key: fetch_auckland_flood_prone_areas
+            - task_key: fetch_auckland_flood_sensitive_areas
+            - task_key: fetch_auckland_coastal_inundation_1_aep
+            - task_key: fetch_auckland_coastal_inundation_100yr
+            - task_key: fetch_greater_wellington_100yr_outline
+            - task_key: fetch_wellington_city_100yr
+            - task_key: fetch_hamilton_100yr
+            - task_key: fetch_queenstown_lakes_orc_hazard
+            - task_key: fetch_queenstown_lakes_wanaka_100yr
+            - task_key: fetch_canterbury_selwyn_flood_zones
+            - task_key: fetch_otago_waitaki_floodplain
+          run_if: ALL_DONE
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.flood_bronze.id}
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: transform_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.flood_silver.id}
+
+        - task_key: transform_gold
+          depends_on:
+            - task_key: transform_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.flood_gold.id}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+      profile: hackathon
+    variables:
+      jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
+      admins_group_name: housing-assistant-dev-admins
+      notification_email: victor.lourenco@zuru.com

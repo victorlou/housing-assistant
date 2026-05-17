@@ -70,6 +70,21 @@ sources:
     notes: |
       Manual Tableau CSV to police_recorded_crime_files; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
       Current export is ANZSOC-by-month (no geography). crime__month__area_unit needs Time and Place export.
+
+  - name: flood_hazard_regional
+    publisher: Multiple (Auckland Council, GWRC, regional councils)
+    licence: CC-BY-4.0
+    url: https://data-aucklandcouncil.opendata.arcgis.com/
+    auth: none
+    cadence: annual
+    ingestion_pipeline: pipelines/flood
+    target_tables:
+      - housing.gold.hazard
+    tier: 2
+    notes: |
+      Twelve ArcGIS polygon layers in regions.yaml; parallel fetch job + DLT bronze/silver/gold.
+      Auckland org host n4yPwebTjJCmXB6W. Overland_Flow_Paths excluded from bulk ingest.
+
 # Sources will be added as they are wired up. Schema:
 #
 #   - name: tenancy_bonds

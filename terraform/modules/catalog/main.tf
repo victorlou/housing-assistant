@@ -15,6 +15,7 @@ locals {
     "police_recorded_crime_files",   # NZ Police Tableau CSV landings
     "prices_files",                  # RBNZ HPI (NZ-aggregate price index time series)
     "housing_indicators_files",      # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
+    "flood_files",                   # Regional flood hazard ArcGIS JSONL landings
   ]
 }
 
