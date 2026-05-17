@@ -32,8 +32,35 @@ from census_gold_lib import (
 )
 
 SILVER = "housing.silver"
+CRIME_AT_SUBURB_YEAR = f"{SILVER}.crime_at_suburb_year"
 _MANIFEST = load_gold_manifest()
 _CENSUS_YEAR = census_year(_MANIFEST)
+
+
+def _crime_for_census_year_df():
+    """
+    Return (suburb_id, total_victimisations) for the census year if
+    `silver.crime_at_suburb_year` exists, otherwise None so `suburb__year`
+    materialises with a null crime column instead of failing.
+
+    Mirrors the graceful-degradation pattern used by `places/notebooks/gold.py::_census_features_df`.
+    `spark.catalog.tableExists` is Py4J-blocked in DLT serverless, so we
+    probe with a zero-row read instead.
+    """
+    try:
+        spark.read.table(CRIME_AT_SUBURB_YEAR).limit(0).collect()
+    except Exception:
+        return None
+    return (
+        spark.read.table(CRIME_AT_SUBURB_YEAR)
+        .filter(F.col("crime_year") == _CENSUS_YEAR)
+        .select(
+            F.col("suburb_id"),
+            F.col("total_victimisations")
+            .cast("int")
+            .alias(f"total_victimisations_{_CENSUS_YEAR}"),
+        )
+    )
 
 
 # COMMAND ----------
@@ -87,6 +114,7 @@ _CENSUS_YEAR = census_year(_MANIFEST)
         dwellings_mean_rooms DOUBLE COMMENT 'Mean number of rooms per dwelling.',
         population_total INT COMMENT 'Usually-resident population count for the SA2.',
         median_age DOUBLE COMMENT 'Median age (years) of usually-resident population.',
+        total_victimisations_2023 INT COMMENT 'Recorded NZ Police victimisations for the SA2 over calendar year 2023, allocated from AU2013-keyed crime data through silver.area_unit_to_suburb (population-weighted concordance). NULL where silver.crime_at_suburb_year is not yet materialised, or for SA2 2023 codes that were added after the 2018 vintage bridge (~6% of SA2s).',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
 )
@@ -94,6 +122,18 @@ _CENSUS_YEAR = census_year(_MANIFEST)
 @dlt.expect_or_drop("has_census_year", "census_year IS NOT NULL")
 def suburb__year():
     features = spark.read.table(f"{SILVER}.census_sa2_features")
+    crime = _crime_for_census_year_df()
+    if crime is not None:
+        features = features.join(
+            crime,
+            features.sa2_code == crime.suburb_id,
+            how="left",
+        ).drop(crime.suburb_id)
+    else:
+        features = features.withColumn(
+            f"total_victimisations_{_CENSUS_YEAR}",
+            F.lit(None).cast("int"),
+        )
     return features.select(
         F.col("census_year").cast("int"),
         F.col("sa2_code").alias("suburb_id"),
@@ -126,5 +166,7 @@ def suburb__year():
         # Demographics
         F.col("population_total").cast("int"),
         F.col("median_age").cast("double"),
+        # Crime (allocated from AU2013 via silver.area_unit_to_suburb bridge)
+        F.col(f"total_victimisations_{_CENSUS_YEAR}").cast("int"),
         F.current_timestamp().alias("_updated_at"),
     )

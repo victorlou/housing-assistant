@@ -55,30 +55,17 @@ resources:
         - notebook:
             path: ./notebooks/silver.py
 
-    police_recorded_crime_gold:
-      name: police_recorded_crime_gold
-      catalog: housing
-      schema: gold
-      serverless: true
-      development: false
-      edition: ADVANCED
-      run_as:
-        service_principal_name: ${var.jobs_service_principal_id}
-      configuration:
-        project: housing-assistant
-        source: police_recorded_crime
-        layer: gold
-        pipelines.maxFlowRetryAttempts: "0"
-      libraries:
-        - notebook:
-            path: ./notebooks/gold.py
+    # No gold layer of its own: crime is folded into housing.gold.suburb__year
+    # (owned by the census_2023 pipeline) via housing.silver.crime_at_suburb_year.
+    # See README.md "Area-unit-to-suburb bridge".
 
   jobs:
     police_recorded_crime_ingest:
       name: police_recorded_crime_ingest
       description: |
-        Bronze → silver → gold for NZ Police ANZSOC victimisation CSV landings.
+        Bronze → silver for NZ Police ANZSOC victimisation CSV landings.
         Upload CSV to crime_files/police_recorded_crime volume before running (no automated fetch yet).
+        Gold materialisation happens downstream in pipelines/census_2023 (gold.suburb__year).
         See ./README.md.
 
       tags:
@@ -111,12 +98,6 @@ resources:
             - task_key: transform_bronze
           pipeline_task:
             pipeline_id: ${resources.pipelines.police_recorded_crime_silver.id}
-
-        - task_key: transform_gold
-          depends_on:
-            - task_key: transform_silver
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.police_recorded_crime_gold.id}
 
 targets:
   dev:

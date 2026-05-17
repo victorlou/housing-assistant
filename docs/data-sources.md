@@ -27,7 +27,7 @@ We deliberately avoid:
 | **Census 2023 income / dwellings / individuals** | Stats NZ | Median income, tenure, rent, crowding, dwelling quality, population by SA2. | Per census (2023) | `suburb__year` (wide-at-grain); enriches `gold.suburb` (places) with a current-snapshot subset |
 | **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `house_price__month__territorial_authority` |
 | **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `isochrone` |
-| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `area_unit__month` (total) + long-format silver for ANZSOC breakdown |
+| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `suburb__year` (annual total, allocated via AU2013→SA2 bridge); long-format silver for ANZSOC breakdown |
 
 ### Tier 2. Second wave
 
