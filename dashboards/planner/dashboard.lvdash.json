@@ -54,8 +54,8 @@
                       "name": "rent_bucket"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "budget_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -69,7 +69,8 @@
                   {
                     "displayName": "Weekly Rent Budget",
                     "fieldName": "rent_bucket",
-                    "queryName": "q_budget"
+                    "queryName": "q_budget",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -101,8 +102,8 @@
                       "name": "region"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "region_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -116,7 +117,8 @@
                   {
                     "displayName": "Region",
                     "fieldName": "region",
-                    "queryName": "q_region"
+                    "queryName": "q_region",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -148,8 +150,8 @@
                       "name": "territorial_authority"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "ta_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -163,7 +165,8 @@
                   {
                     "displayName": "City / District",
                     "fieldName": "territorial_authority",
-                    "queryName": "q_ta"
+                    "queryName": "q_ta",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -195,8 +198,8 @@
                       "name": "flood_plain"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "flood_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -210,13 +213,14 @@
                   {
                     "displayName": "Flood Zone?",
                     "fieldName": "flood_plain",
-                    "queryName": "q_flood"
+                    "queryName": "q_flood",
+                    "counterFieldName": "n"
                   }
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "Exclude flood zones (select False)"
+                "title": "Flood zone?"
               }
             }
           }
@@ -242,8 +246,8 @@
                       "name": "has_schools"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "schools_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -257,13 +261,14 @@
                   {
                     "displayName": "Schools nearby?",
                     "fieldName": "has_schools",
-                    "queryName": "q_schools"
+                    "queryName": "q_schools",
+                    "counterFieldName": "n"
                   }
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "Schools nearby (select True)"
+                "title": "Schools nearby?"
               }
             }
           }
@@ -530,8 +535,8 @@
                       "name": "rent_bucket"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "budget_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -543,9 +548,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "Budget",
+                    "displayName": "My budget",
                     "fieldName": "rent_bucket",
-                    "queryName": "q_p2_budget"
+                    "queryName": "q_p2_budget",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -577,8 +583,8 @@
                       "name": "region"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "region_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -592,7 +598,8 @@
                   {
                     "displayName": "Region",
                     "fieldName": "region",
-                    "queryName": "q_p2_region"
+                    "queryName": "q_p2_region",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -624,8 +631,8 @@
                       "name": "territorial_authority"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "ta_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -637,9 +644,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "City/District",
+                    "displayName": "City / District",
                     "fieldName": "territorial_authority",
-                    "queryName": "q_p2_ta"
+                    "queryName": "q_p2_ta",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -965,8 +973,8 @@
                       "name": "region"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "region_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -980,7 +988,8 @@
                   {
                     "displayName": "Region",
                     "fieldName": "region",
-                    "queryName": "q_p3_region"
+                    "queryName": "q_p3_region",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1012,8 +1021,8 @@
                       "name": "territorial_authority"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "ta_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1025,9 +1034,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "City/District",
+                    "displayName": "City / District",
                     "fieldName": "territorial_authority",
-                    "queryName": "q_p3_ta"
+                    "queryName": "q_p3_ta",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1059,8 +1069,8 @@
                       "name": "flood_plain"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "flood_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1074,13 +1084,14 @@
                   {
                     "displayName": "Flood Zone?",
                     "fieldName": "flood_plain",
-                    "queryName": "q_p3_flood"
+                    "queryName": "q_p3_flood",
+                    "counterFieldName": "n"
                   }
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "Exclude flood zones (select False)"
+                "title": "Flood zone?"
               }
             }
           }
@@ -1297,8 +1308,8 @@
                       "name": "territorial_authority"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "ta_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1310,9 +1321,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "City/District",
+                    "displayName": "City / District",
                     "fieldName": "territorial_authority",
-                    "queryName": "q_p4_ta"
+                    "queryName": "q_p4_ta",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1344,8 +1356,8 @@
                       "name": "amenity_type"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "type_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1357,9 +1369,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "Amenity type",
+                    "displayName": "Type of amenity",
                     "fieldName": "amenity_type",
-                    "queryName": "q_p4_amenity"
+                    "queryName": "q_p4_amenity",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1391,8 +1404,8 @@
                       "name": "feed_source"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "feed_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1404,9 +1417,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "Transit feed",
+                    "displayName": "Transit network",
                     "fieldName": "feed_source",
-                    "queryName": "q_p4_feed"
+                    "queryName": "q_p4_feed",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1716,8 +1730,8 @@
                       "name": "territorial_authority"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "ta_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1729,9 +1743,10 @@
               "encodings": {
                 "fields": [
                   {
-                    "displayName": "City/District",
+                    "displayName": "City / District",
                     "fieldName": "territorial_authority",
-                    "queryName": "q_p5_ta"
+                    "queryName": "q_p5_ta",
+                    "counterFieldName": "n"
                   }
                 ]
               },
@@ -1763,8 +1778,8 @@
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "suburb_assoc"
+                      "expression": "COUNT(*)",
+                      "name": "n"
                     }
                   ]
                 }
@@ -1778,7 +1793,8 @@
                   {
                     "displayName": "Suburb",
                     "fieldName": "suburb_name",
-                    "queryName": "q_p5_suburb"
+                    "queryName": "q_p5_suburb",
+                    "counterFieldName": "n"
                   }
                 ]
               },
