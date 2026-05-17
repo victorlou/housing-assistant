@@ -60,7 +60,13 @@ async def _lifespan(app):
         error_msg = str(exc).lower()
         if any(
             keyword in error_msg
-            for keyword in ["lakebase", "pg_hba", "postgres", "database instance", "insufficient privilege"]
+            for keyword in [
+                "lakebase",
+                "pg_hba",
+                "postgres",
+                "database instance",
+                "insufficient privilege",
+            ]
         ):
             logger.error(
                 "Lakebase session setup failed: %s\n\n%s",
@@ -74,7 +80,9 @@ async def _lifespan(app):
         async with _original_lifespan(app):
             yield
     except Exception as exc:
-        logger.warning("Long-running DB initialization failed: %s. Background mode disabled.", exc)
+        logger.warning(
+            "Long-running DB initialization failed: %s. Background mode disabled.", exc
+        )
         yield
 
 

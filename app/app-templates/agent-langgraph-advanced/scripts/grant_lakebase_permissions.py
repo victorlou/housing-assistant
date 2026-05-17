@@ -76,7 +76,13 @@ SHARED_SEQUENCE_SCHEMAS = ["drizzle"]
 SHARED_SCHEMAS: dict[str, list[str]] = {
     "ai_chatbot": ["Chat", "Message", "User", "Vote", "saved_searches", "alerts"],
     "drizzle": ["__drizzle_migrations"],
-    "housing": ["users", "user_constraints", "saved_searches", "alerts", "conversation_turns"],
+    "housing": [
+        "users",
+        "user_constraints",
+        "saved_searches",
+        "alerts",
+        "conversation_turns",
+    ],
 }
 
 

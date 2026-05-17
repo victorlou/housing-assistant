@@ -8,6 +8,7 @@ Usage:
     uv run grant-app-permissions --app-name housing-assistant-dev
     uv run grant-app-permissions --app-name housing-assistant-dev --memory-type langgraph
 """
+
 import argparse
 import json
 import os
@@ -24,7 +25,16 @@ _DIR = Path(__file__).parent
 
 def _get_sp_client_id(app_name: str, profile: str) -> str:
     result = subprocess.run(
-        ["databricks", "apps", "get", app_name, "--profile", profile, "--output", "json"],
+        [
+            "databricks",
+            "apps",
+            "get",
+            app_name,
+            "--profile",
+            profile,
+            "--output",
+            "json",
+        ],
         capture_output=True,
         text=True,
     )
@@ -81,7 +91,13 @@ def main():
         sys.exit(1)
 
     grant_script = _DIR / "grant_lakebase_permissions.py"
-    cmd = [sys.executable, str(grant_script), sp_client_id, "--memory-type", args.memory_type]
+    cmd = [
+        sys.executable,
+        str(grant_script),
+        sp_client_id,
+        "--memory-type",
+        args.memory_type,
+    ]
 
     if instance:
         cmd += ["--instance-name", instance]

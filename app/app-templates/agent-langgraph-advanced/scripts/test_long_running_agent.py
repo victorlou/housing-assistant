@@ -47,6 +47,7 @@ from databricks.sdk import WorkspaceClient
 def agent_url(request):
     return request.config.getoption("--agent-url")
 
+
 PROMPT = "What time is it?"
 
 

@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def score_affordability(suburb_name: str, household_income: Optional[float] = None) -> dict:
+def score_affordability(
+    suburb_name: str, household_income: Optional[float] = None
+) -> dict:
     """
     Score the housing affordability of a suburb for a given (or median) household income.
 
@@ -61,7 +63,11 @@ def score_affordability(suburb_name: str, household_income: Optional[float] = No
     suburb_rows = _resolve(suburb_name, ", territorial_authority")
     if not suburb_rows:
         return {"suburb": suburb_name, "error": f"Suburb '{suburb_name}' not found."}
-    suburb_id, matched_name, ta_name = suburb_rows[0][0], suburb_rows[0][1], suburb_rows[0][2]
+    suburb_id, matched_name, ta_name = (
+        suburb_rows[0][0],
+        suburb_rows[0][1],
+        suburb_rows[0][2],
+    )
 
     # Step 2: suburb-level census rent (primary — most granular)
     rent_rows = _execute(
@@ -79,7 +85,10 @@ def score_affordability(suburb_name: str, household_income: Optional[float] = No
         [{"name": "suburb_id", "value": suburb_id, "type": "STRING"}],
     )
     if not rent_rows:
-        return {"suburb": matched_name, "error": f"No rent data found for '{matched_name}'."}
+        return {
+            "suburb": matched_name,
+            "error": f"No rent data found for '{matched_name}'.",
+        }
     weekly_rent = float(rent_rows[0][0])
     data_year = int(rent_rows[0][1])
 
@@ -101,8 +110,16 @@ def score_affordability(suburb_name: str, household_income: Optional[float] = No
         """,
         [{"name": "ta_name", "value": ta_name, "type": "STRING"}],
     )
-    ta_median_rent = float(ta_rent_rows[0][0]) if ta_rent_rows and ta_rent_rows[0][0] is not None else None
-    ta_data_month = str(ta_rent_rows[0][1]) if ta_rent_rows and ta_rent_rows[0][1] is not None else None
+    ta_median_rent = (
+        float(ta_rent_rows[0][0])
+        if ta_rent_rows and ta_rent_rows[0][0] is not None
+        else None
+    )
+    ta_data_month = (
+        str(ta_rent_rows[0][1])
+        if ta_rent_rows and ta_rent_rows[0][1] is not None
+        else None
+    )
 
     # Step 4: income — user-provided or suburb median with computed decile
     income_source = "user_provided"

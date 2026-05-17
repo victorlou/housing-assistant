@@ -68,10 +68,16 @@ def find_affordable_suburbs(
     # Step 1: resolve origin suburb_id (fuzzy: exact first, ILIKE fallback)
     suburb_rows = _resolve(origin)
     if not suburb_rows or not suburb_rows[0][0]:
-        return {"origin": origin, "results": [], "error": f"Suburb '{origin}' not found."}
+        return {
+            "origin": origin,
+            "results": [],
+            "error": f"Suburb '{origin}' not found.",
+        }
     origin_suburb_id, matched_origin = suburb_rows[0][0], suburb_rows[0][1]
 
-    income_param = float(household_income) if household_income and household_income > 0 else 0.0
+    income_param = (
+        float(household_income) if household_income and household_income > 0 else 0.0
+    )
     using_user_income = income_param > 0
     safe_limit = min(int(limit), 10)
 
@@ -157,35 +163,43 @@ def find_affordable_suburbs(
         LIMIT {safe_limit}
         """,
         [
-            {"name": "origin_suburb_id", "value": origin_suburb_id,     "type": "STRING"},
-            {"name": "mode",             "value": mode,                  "type": "STRING"},
-            {"name": "minutes",          "value": str(minutes),          "type": "INT"},
-            {"name": "income_param",     "value": str(income_param),     "type": "DOUBLE"},
-            {"name": "max_rent",         "value": str(max_rent_val),     "type": "DOUBLE"},
+            {"name": "origin_suburb_id", "value": origin_suburb_id, "type": "STRING"},
+            {"name": "mode", "value": mode, "type": "STRING"},
+            {"name": "minutes", "value": str(minutes), "type": "INT"},
+            {"name": "income_param", "value": str(income_param), "type": "DOUBLE"},
+            {"name": "max_rent", "value": str(max_rent_val), "type": "DOUBLE"},
         ],
     )
 
     results = []
     for row in rows:
-        suburb_name, median_rent, rent_pct, band, income_decile, flood_risk, coastal_risk = row
+        (
+            suburb_name,
+            median_rent,
+            rent_pct,
+            band,
+            income_decile,
+            flood_risk,
+            coastal_risk,
+        ) = row
         entry = {
-            "suburb_name":       suburb_name,
+            "suburb_name": suburb_name,
             "median_rent_weekly": int(median_rent) if median_rent is not None else None,
-            "rent_to_income_pct": float(rent_pct)  if rent_pct  is not None else None,
+            "rent_to_income_pct": float(rent_pct) if rent_pct is not None else None,
             "affordability_band": band,
-            "flood_risk":         flood_risk,
-            "coastal_risk":       coastal_risk,
-            "overall_risk":       _worst(flood_risk or "unknown", coastal_risk or "unknown"),
+            "flood_risk": flood_risk,
+            "coastal_risk": coastal_risk,
+            "overall_risk": _worst(flood_risk or "unknown", coastal_risk or "unknown"),
         }
         if not using_user_income and income_decile is not None:
             entry["income_decile"] = income_decile
         results.append(entry)
 
     return {
-        "origin":         matched_origin,
-        "mode":           mode,
-        "minutes":        minutes,
-        "income_source":  "user_provided" if using_user_income else "suburb_median",
-        "results":        results,
+        "origin": matched_origin,
+        "mode": mode,
+        "minutes": minutes,
+        "income_source": "user_provided" if using_user_income else "suburb_median",
+        "results": results,
         "filtered_count": len(results),
     }

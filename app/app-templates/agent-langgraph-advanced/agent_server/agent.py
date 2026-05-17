@@ -62,13 +62,21 @@ async def init_agent(
     store: BaseStore,
     checkpointer: Optional[Any] = None,
 ):
-    tools = [get_current_time, find_affordable_suburbs, compute_isochrone, score_affordability, lookup_hazards] + memory_tools()
+    tools = [
+        get_current_time,
+        find_affordable_suburbs,
+        compute_isochrone,
+        score_affordability,
+        lookup_hazards,
+    ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     mcp_client = init_mcp_client(sp_workspace_client)
     try:
         tools.extend(await mcp_client.get_tools())
     except Exception:
-        logger.warning("Failed to fetch MCP tools. Continuing without MCP tools.", exc_info=True)
+        logger.warning(
+            "Failed to fetch MCP tools. Continuing without MCP tools.", exc_info=True
+        )
 
     model = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
@@ -120,7 +128,9 @@ async def stream_handler(
         async with lakebase_context(LAKEBASE_CONFIG) as (checkpointer, store):
             config["configurable"]["store"] = store
 
-            agent = await init_agent(store=store, checkpointer=checkpointer)  # SP client used inside tools
+            agent = await init_agent(
+                store=store, checkpointer=checkpointer
+            )  # SP client used inside tools
 
             # process_agent_astream_events - works on agent.astream - which emits events and then our below function handles emission on their end
             async for event in process_agent_astream_events(

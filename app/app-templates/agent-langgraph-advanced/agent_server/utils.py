@@ -40,7 +40,9 @@ def _is_databricks_app_env() -> bool:
     return bool(os.getenv("DATABRICKS_APP_NAME"))
 
 
-def init_mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerMCPClient:
+def init_mcp_client(
+    workspace_client: WorkspaceClient,
+) -> DatabricksMultiServerMCPClient:
     host_name = get_databricks_host_from_env(workspace_client)
     servers = []
     if space_id := get_databricks_genie_space_id():
@@ -62,6 +64,7 @@ def get_databricks_genie_space_id() -> Optional[str]:
     if not space_id:
         logging.warning("DATABRICKS_GENIE_SPACE_ID environment variable is not set.")
     return space_id
+
 
 def get_user_workspace_client() -> WorkspaceClient:
     token = get_request_headers().get("x-forwarded-access-token")
@@ -228,7 +231,11 @@ async def process_agent_astream_events(
                 for i, msg in enumerate(messages):
                     if isinstance(msg, ToolMessage):
                         # Tool result — standalone event between turns
-                        content = msg.content if isinstance(msg.content, str) else json.dumps(msg.content)
+                        content = (
+                            msg.content
+                            if isinstance(msg.content, str)
+                            else json.dumps(msg.content)
+                        )
                         item = create_function_call_output_item(
                             call_id=msg.tool_call_id,
                             output=content,
@@ -251,7 +258,11 @@ async def process_agent_astream_events(
                             call_id = tc.get("id", "")
                             name = tc.get("name", "")
                             args = tc.get("args", {})
-                            args_str = json.dumps(args) if isinstance(args, dict) else str(args)
+                            args_str = (
+                                json.dumps(args)
+                                if isinstance(args, dict)
+                                else str(args)
+                            )
 
                             # Match to active tool call by chunk index
                             tc_info = active_tool_calls.get(j)
@@ -307,7 +318,11 @@ async def process_agent_astream_events(
                                 item_id=item_id,
                                 output_index=output_index,
                                 content_index=0,
-                                part={"type": "output_text", "text": "", "annotations": []},
+                                part={
+                                    "type": "output_text",
+                                    "text": "",
+                                    "annotations": [],
+                                },
                             )
 
                         yield ResponsesAgentStreamEvent(
@@ -315,7 +330,11 @@ async def process_agent_astream_events(
                             item_id=item_id,
                             output_index=output_index,
                             content_index=0,
-                            part={"type": "output_text", "text": text, "annotations": []},
+                            part={
+                                "type": "output_text",
+                                "text": text,
+                                "annotations": [],
+                            },
                         )
 
                         item = create_text_output_item(text=text, id=item_id)

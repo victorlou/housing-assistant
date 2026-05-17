@@ -91,13 +91,17 @@ def lookup_hazards(suburb_name: str) -> dict:
 
     # Derive risk levels from boolean flags (worst-case across all H3 cells)
     flood_risk = (
-        "high" if any(_bool(r[0]) for r in hazard_rows)
-        else "medium" if any(_bool(r[1]) or _bool(r[2]) or _bool(r[5]) for r in hazard_rows)
+        "high"
+        if any(_bool(r[0]) for r in hazard_rows)
+        else "medium"
+        if any(_bool(r[1]) or _bool(r[2]) or _bool(r[5]) for r in hazard_rows)
         else "low"
     )
     coastal_risk = (
-        "high" if any(_bool(r[3]) for r in hazard_rows)
-        else "medium" if any(_bool(r[4]) for r in hazard_rows)
+        "high"
+        if any(_bool(r[3]) for r in hazard_rows)
+        else "medium"
+        if any(_bool(r[4]) for r in hazard_rows)
         else "low"
     )
     overall_risk = _worst([flood_risk, coastal_risk])
@@ -116,7 +120,9 @@ def lookup_hazards(suburb_name: str) -> dict:
                 all_sources.append(raw)
         else:
             all_sources.extend(raw)
-    hazard_sources = list(dict.fromkeys(s for s in all_sources if s))  # dedupe, preserve order
+    hazard_sources = list(
+        dict.fromkeys(s for s in all_sources if s)
+    )  # dedupe, preserve order
 
     return {
         "suburb": matched_name,

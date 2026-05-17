@@ -28,7 +28,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Readiness patterns
-BACKEND_READY = [r"Uvicorn running on", r"Application startup complete", r"Started server process"]
+BACKEND_READY = [
+    r"Uvicorn running on",
+    r"Application startup complete",
+    r"Started server process",
+]
 FRONTEND_READY = [r"Server is running on http://localhost"]
 
 
@@ -67,13 +71,17 @@ class ProcessManager:
             )
 
         if not self.no_ui:
-            frontend_port = int(os.environ.get("CHAT_APP_PORT", os.environ.get("PORT", "3000")))
+            frontend_port = int(
+                os.environ.get("CHAT_APP_PORT", os.environ.get("PORT", "3000"))
+            )
 
             if backend_port == frontend_port:
                 print(
                     f"ERROR: Backend and frontend are both configured to use port {backend_port}."
                 )
-                print("  Set CHAT_APP_PORT in .env to a different port (e.g., CHAT_APP_PORT=3000).")
+                print(
+                    "  Set CHAT_APP_PORT in .env to a different port (e.g., CHAT_APP_PORT=3000)."
+                )
                 sys.exit(1)
 
             if not check_port_available(frontend_port):
@@ -108,7 +116,9 @@ class ProcessManager:
                 print(f"[{name}] {line}")
 
                 # Check readiness
-                if not is_ready and any(re.search(p, line, re.IGNORECASE) for p in patterns):
+                if not is_ready and any(
+                    re.search(p, line, re.IGNORECASE) for p in patterns
+                ):
                     is_ready = True
                     if name == "backend":
                         self.backend_ready = True
@@ -146,7 +156,14 @@ class ProcessManager:
         ]:
             try:
                 subprocess.run(
-                    ["git", "clone", "--filter=blob:none", "--sparse", url, "temp-app-templates"],
+                    [
+                        "git",
+                        "clone",
+                        "--filter=blob:none",
+                        "--sparse",
+                        url,
+                        "temp-app-templates",
+                    ],
                     check=True,
                     capture_output=True,
                 )
@@ -172,11 +189,18 @@ class ProcessManager:
     def start_process(self, cmd, name, log_file, patterns, cwd=None):
         print(f"Starting {name}...")
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=cwd,
         )
 
         thread = threading.Thread(
-            target=self.monitor_process, args=(process, name, log_file, patterns), daemon=True
+            target=self.monitor_process,
+            args=(process, name, log_file, patterns),
+            daemon=True,
         )
         thread.start()
         return process
@@ -216,7 +240,9 @@ class ProcessManager:
 
         if not self.no_ui:
             if not self.clone_frontend_if_needed():
-                print("WARNING: Failed to clone frontend. Continuing with backend only.")
+                print(
+                    "WARNING: Failed to clone frontend. Continuing with backend only."
+                )
                 self.no_ui = True
             else:
                 # Set API_PROXY environment variable for frontend to connect to backend
@@ -241,7 +267,10 @@ class ProcessManager:
             if not self.no_ui:
                 # Setup and start frontend
                 frontend_dir = Path("e2e-chatbot-app-next")
-                for cmd, desc in [("npm install", "install"), ("npm run build", "build")]:
+                for cmd, desc in [
+                    ("npm install", "install"),
+                    ("npm run build", "build"),
+                ]:
                     print(f"Running npm {desc}...")
                     result = subprocess.run(
                         cmd.split(), cwd=frontend_dir, capture_output=True, text=True
@@ -262,7 +291,9 @@ class ProcessManager:
                     f"\nMonitoring processes (Backend PID: {self.backend_process.pid}, Frontend PID: {self.frontend_process.pid})\n"
                 )
             else:
-                print(f"\nMonitoring backend process (PID: {self.backend_process.pid})\n")
+                print(
+                    f"\nMonitoring backend process (PID: {self.backend_process.pid})\n"
+                )
 
             # Wait for failure
             while not self.failed.is_set():

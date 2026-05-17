@@ -62,7 +62,7 @@ def resolve_suburb_fuzzy(suburb_name: str, extra_cols: str = "") -> list[list]:
         LIMIT 1
         """,
         [
-            {"name": "name",  "value": suburb_name,        "type": "STRING"},
+            {"name": "name", "value": suburb_name, "type": "STRING"},
             {"name": "fuzzy", "value": f"%{suburb_name}%", "type": "STRING"},
         ],
     )

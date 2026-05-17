@@ -23,13 +23,19 @@ class LakebaseConfig:
     autoscaling_endpoint: Optional[str]
     autoscaling_project: Optional[str]
     autoscaling_branch: Optional[str]
-    embedding_endpoint: str = "databricks-gte-large-en"  # override via DATABRICKS_EMBEDDING_ENDPOINT
+    embedding_endpoint: str = (
+        "databricks-gte-large-en"  # override via DATABRICKS_EMBEDDING_ENDPOINT
+    )
     embedding_dims: int = 1024
     memory_schema: Optional[str] = None
 
     @property
     def description(self) -> str:
-        return self.autoscaling_endpoint or self.instance_name or f"{self.autoscaling_project}/{self.autoscaling_branch}"
+        return (
+            self.autoscaling_endpoint
+            or self.instance_name
+            or f"{self.autoscaling_project}/{self.autoscaling_branch}"
+        )
 
 
 def init_lakebase_config() -> LakebaseConfig:
@@ -62,7 +68,9 @@ def init_lakebase_config() -> LakebaseConfig:
         project = None
         branch = None
 
-    embedding_endpoint = os.getenv("DATABRICKS_EMBEDDING_ENDPOINT", "databricks-gte-large-en")
+    embedding_endpoint = os.getenv(
+        "DATABRICKS_EMBEDDING_ENDPOINT", "databricks-gte-large-en"
+    )
     memory_schema = os.getenv("LAKEBASE_AGENT_MEMORY_SCHEMA") or None
     return LakebaseConfig(
         instance_name=instance_name,
@@ -127,7 +135,9 @@ def resolve_lakebase_instance_name(
                     f"Found matching instance for hostname '{hostname}' "
                     "but instance name is not available."
                 )
-            logging.info(f"Resolved Lakebase hostname '{hostname}' to instance name '{resolved_name}'")
+            logging.info(
+                f"Resolved Lakebase hostname '{hostname}' to instance name '{resolved_name}'"
+            )
             return resolved_name
 
     raise ValueError(
@@ -180,21 +190,24 @@ def get_lakebase_access_error_message(lakebase_instance_name: str) -> str:
 @asynccontextmanager
 async def lakebase_context(config: LakebaseConfig):
     """Yield (checkpointer, store) for short-term and long-term memory."""
-    async with AsyncCheckpointSaver(
-        instance_name=config.instance_name,
-        autoscaling_endpoint=config.autoscaling_endpoint,
-        project=config.autoscaling_project,
-        branch=config.autoscaling_branch,
-        schema=config.memory_schema,
-    ) as checkpointer, AsyncDatabricksStore(
-        instance_name=config.instance_name,
-        autoscaling_endpoint=config.autoscaling_endpoint,
-        project=config.autoscaling_project,
-        branch=config.autoscaling_branch,
-        embedding_endpoint=config.embedding_endpoint,
-        embedding_dims=config.embedding_dims,
-        schema=config.memory_schema,
-    ) as store:
+    async with (
+        AsyncCheckpointSaver(
+            instance_name=config.instance_name,
+            autoscaling_endpoint=config.autoscaling_endpoint,
+            project=config.autoscaling_project,
+            branch=config.autoscaling_branch,
+            schema=config.memory_schema,
+        ) as checkpointer,
+        AsyncDatabricksStore(
+            instance_name=config.instance_name,
+            autoscaling_endpoint=config.autoscaling_endpoint,
+            project=config.autoscaling_project,
+            branch=config.autoscaling_branch,
+            embedding_endpoint=config.embedding_endpoint,
+            embedding_dims=config.embedding_dims,
+            schema=config.memory_schema,
+        ) as store,
+    ):
         yield checkpointer, store
 
 
@@ -220,7 +233,9 @@ def memory_tools():
         return f"Found {len(results)} relevant memories:\n" + "\n".join(memory_items)
 
     @tool
-    async def save_user_memory(memory_key: str, memory_data_json: str, config: RunnableConfig) -> str:
+    async def save_user_memory(
+        memory_key: str, memory_data_json: str, config: RunnableConfig
+    ) -> str:
         """Save information about the user to long-term memory."""
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
