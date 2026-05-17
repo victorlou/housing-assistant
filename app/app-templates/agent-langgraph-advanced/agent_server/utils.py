@@ -1,4 +1,3 @@
-from agent_server.databricks_clients import sp_workspace_client
 import json
 import logging
 import os

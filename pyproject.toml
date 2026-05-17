@@ -29,6 +29,7 @@ extend-exclude = [
     "data",
     "**/data/**",           # local OSM extracts, GTFS zips, parquet samples
     "**/*.parquet",
+    "**/.claude/**",        # Claude Code skill scaffolding + examples (developer tooling)
 ]
 
 # Databricks Serverless / DLT / interactive notebook runtimes inject these
@@ -51,6 +52,13 @@ builtins = [
 # legitimately appear below the file header (one per logical cell). Treating
 # this as an E402 violation fights the platform.
 "pipelines/**/notebooks/*.py" = ["E402"]
+
+# Agent-server scripts that import the agent module *after* setting up the
+# server registry (the `@invoke`/`@stream` decorators only register when the
+# module is imported, so the import is intentionally placed after the server
+# bootstrap). Same rationale as the DLT notebook exemption above.
+"app/app-templates/**/agent_server/*.py" = ["E402"]
+"app/app-templates/**/scripts/discover_tools.py" = ["F841"]  # debug var kept intentionally
 
 [tool.ruff.format]
 # Don't churn the whole codebase re-quoting strings on the first pass; let

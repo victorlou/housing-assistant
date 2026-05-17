@@ -74,12 +74,12 @@ def discover_uc_functions(w: WorkspaceClient, catalog: str = None, max_schemas: 
                                 "comment": func.comment,
                                 "routine_definition": getattr(func, "routine_definition", None),
                             })
-                    except Exception as e:
+                    except Exception:
                         # Skip schemas we can't access
                         continue
                     finally:
                         schemas_searched += 1
-            except Exception as e:
+            except Exception:
                 # Skip catalogs we can't access
                 continue
 
@@ -145,12 +145,12 @@ def discover_uc_tables(w: WorkspaceClient, catalog: str = None, schema: str = No
                                 "comment": tbl.comment,
                                 "columns": columns,
                             })
-                    except Exception as e:
+                    except Exception:
                         # Skip schemas we can't access
                         pass
                     finally:
                         schemas_searched += 1
-            except Exception as e:
+            except Exception:
                 # Skip catalogs we can't access
                 continue
 
@@ -181,7 +181,7 @@ def discover_vector_search_indexes(w: WorkspaceClient) -> List[Dict[str, Any]]:
                         "index_type": idx.index_type.value if idx.index_type else None,
                         "status": idx.status.state.value if idx.status and idx.status.state else None,
                     })
-            except Exception as e:
+            except Exception:
                 # Skip endpoints we can't access
                 continue
 

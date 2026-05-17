@@ -460,7 +460,7 @@ def setup_databricks_auth(profile_arg: str = None, host_arg: str = None) -> str:
             print_error("Databricks authentication failed")
             print_troubleshooting_auth()
             sys.exit(1)
-        print_success(f"Successfully authenticated with Databricks")
+        print_success("Successfully authenticated with Databricks")
 
     # Update .env with profile
     update_env_file("DATABRICKS_CONFIG_PROFILE", profile_name)
@@ -696,7 +696,7 @@ def create_lakebase_instance(profile_name: str) -> dict:
             print_error(
                 "Could not determine endpoint name for the created Lakebase instance.\n"
                 "  Please find the endpoint name in the Databricks UI and use:\n"
-                f"  uv run quickstart --lakebase-autoscaling-endpoint <endpoint-name>"
+                "  uv run quickstart --lakebase-autoscaling-endpoint <endpoint-name>"
             )
             sys.exit(1)
 
@@ -1644,12 +1644,12 @@ Examples:
                             f"Using database resource from app: {instance_name}"
                         )
 
-            print(f"\nTo bind this bundle to your existing app, run:")
+            print("\nTo bind this bundle to your existing app, run:")
             if bundle_key:
                 print(
                     f"  databricks bundle deployment bind {bundle_key} {app_name} --auto-approve"
                 )
-            print(f"  databricks bundle deploy")
+            print("  databricks bundle deploy")
 
         # Step 5: Get username and create MLflow experiment
         print_step("Getting Databricks username...")

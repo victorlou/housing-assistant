@@ -26,7 +26,6 @@ from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
     _get_or_create_thread_id,
-    get_user_workspace_client,
     init_mcp_client,
     process_agent_astream_events,
 )
