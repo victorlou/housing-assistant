@@ -7,11 +7,11 @@
 # MAGIC - `crime_victimisation_monthly` — long-format breakdown at grain
 # MAGIC   `(report_month, territorial_authority, area_unit, ANZSOC subdivision)`.
 # MAGIC   The escape hatch for any "show me theft vs assault" question.
-# MAGIC - `crime_at_suburb_year` — annual SA2-level rollup, allocated via the
-# MAGIC   AU2013→SA2 2018 population-weighted bridge in
+# MAGIC - `crime_at_suburb_year` — annual SA22023-level rollup, allocated via
+# MAGIC   the AU2013→SA22023 meshblock-weighted bridge in
 # MAGIC   `housing.silver.area_unit_to_suburb` (built one-off by
 # MAGIC   `local/build_area_unit_to_suburb.py`). This is what consumers join
-# MAGIC   into `gold.suburb__year`.
+# MAGIC   into `gold.suburb__year` — no SA2 vintage gap.
 # MAGIC
 # MAGIC Bronze may mix event-level rows (`victimisations = 1`) with
 # MAGIC pre-aggregated groups; silver rolls up with `SUM(victimisations)`.
@@ -69,19 +69,21 @@ def crime_victimisation_monthly():
 @dlt.table(
     name="crime_at_suburb_year",
     comment=(
-        "Annual recorded victimisations at NZ suburb (SA2 2018) grain, allocated "
-        "from AU2013-keyed police data through the population-weighted concordance "
-        "in housing.silver.area_unit_to_suburb. One row per (suburb_id, crime_year). "
-        "Allocation rule: each AU's annual victimisations are distributed across "
-        "overlapping SA2s by au_share (2013 Census population). Rounded to int. "
+        "Annual recorded victimisations at NZ suburb (SA22023) grain, allocated "
+        "from AU2013-keyed police data through the meshblock-weighted "
+        "concordance in housing.silver.area_unit_to_suburb (derived from "
+        "Stats NZ's Geographic Areas Table 2023). One row per (suburb_id, "
+        "crime_year). Allocation rule: each AU's annual victimisations are "
+        "distributed across overlapping SA22023s by au_share (proportion of "
+        "the AU's 2023 meshblocks landing in each SA2). Rounded to int. "
         "Consumed by census_2023.gold.suburb__year to surface a single crime "
         "column alongside census demographics."
     ),
     table_properties={"quality": "silver", "project": "housing-assistant"},
     schema="""
-        suburb_id STRING NOT NULL COMMENT 'Stats NZ SA2 2018 code. Joins to housing.gold.suburb.suburb_id.',
+        suburb_id STRING NOT NULL COMMENT 'Stats NZ SA22023 code. Joins to housing.gold.suburb.suburb_id directly (no vintage gap).',
         crime_year INT NOT NULL COMMENT 'Calendar year of report_month.',
-        total_victimisations INT NOT NULL COMMENT 'Sum of victimisations for this (suburb, year), allocated by AU population share.',
+        total_victimisations INT NOT NULL COMMENT 'Sum of victimisations for this (suburb, year), allocated by AU meshblock share.',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
 )

@@ -1,77 +1,83 @@
 """
-One-off build of `housing.silver.area_unit_to_suburb` from two Stats NZ sources.
+One-off build of `housing.silver.area_unit_to_suburb` from Stats NZ's
+Geographic Areas Table 2023.
 
 Police recorded-crime data is keyed by Area Unit 2013 (a retired Stats NZ
 geography) and doesn't carry an area-unit *code* in the CSV, only the name.
 Our other suburb-level data (`gold.suburb`, `gold.suburb__year`, etc.) is
 keyed by SA2 2023 codes. To make crime joinable at suburb grain we need a
-bridge.
+bridge: `AU2013_name → SA22023_code`.
 
 Building it end-to-end on Databricks would be a full pipeline. But the
-underlying source files are *static* — they're 2013 Census artifacts plus
-the AU2013 polygon attribute table, neither of which will ever change.
-So this is a one-off local build that writes the silver table directly via
-the SQL warehouse: parquet → bronze volume → CREATE OR REPLACE TABLE.
+source is *static* — Stats NZ's Geographic Areas Table 2023, a meshblock-
+level concordance of every NZ geography that won't change until the next
+census cycle. So this is a one-off local build that writes the silver
+table directly via the SQL warehouse: parquet → bronze volume →
+CREATE OR REPLACE TABLE.
 
-## Sources
+## Why this file is the right source
 
-1. **Concordance crosstab** — Stats NZ workbook
-   `2013-census-population-counts-by-sa22018-and-au2013.xlsx`. A 2,179 ×
-   1,919 matrix: rows are SA2 2018 codes, columns are AU2013 codes, cells
-   are 2013 Census usual residents at the (SA2, AU) intersection.
-   Population > 0 SA2s only.
+Earlier iterations used two separate files (a 2013 Census SA2 × AU
+population crosstab + the standalone AU2013 attribute table). That worked
+for the AU → SA2_2018 hop but left a ~27% gap on the SA2_2018 → SA2_2023
+join (Stats NZ renumbered ~30% of SA2s in the 2023 vintage update,
+considerably more than the "135 new SA2s" headline figure).
 
-2. **AU2013 attribute table** — `area-unit-2013.csv` inside the zipped
-   `statsnz-area-unit-2013-CSV.zip` from Stats NZ DataFinder layer 25743.
-   2,004 (code, name, area) tuples plus polygon WKT (we drop WKT — only
-   the name↔code dim is needed).
+The Geographic Areas Table 2023 (DataFinder layer 111243) sits at
+meshblock grain and carries every NZ geographic classification per row,
+including AU2013_code/name, SA22018_code, SA22023_code. We aggregate
+meshblocks to (AU2013, SA22023) overlaps in one pass — single bridge,
+no vintage gap, ~100% coverage.
 
-Both files were uploaded once and live in the bronze volume. They don't
-change between runs.
+## Source
+
+`geographic-areas-table-2023.csv` inside `statsnz-geographic-areas-table-
+2023-CSV.zip` from
+https://datafinder.stats.govt.nz/table/111243-geographic-areas-table-2023/.
+57,539 rows, one per 2023 meshblock. All meshblocks have AU2013/SA22023
+codes populated.
 
 ## Output
 
 `housing.silver.area_unit_to_suburb` — long-format bridge with one row per
-non-zero (au_code, sa2_code) overlap. About 4k rows total.
+(AU2013, SA22023) overlap.
 
-| column          | type   | description                                                            |
-|-----------------|--------|------------------------------------------------------------------------|
-| area_unit       | STRING | AU2013 name. Matches `silver.crime_victimisation_monthly.area_unit`.   |
-| au_code_2013    | STRING | 6-digit Stats NZ AU2013 code.                                          |
-| suburb_id       | STRING | 6-digit Stats NZ SA2 2018 code. ~94% overlap with SA2 2023.            |
-| population_2013 | INT    | 2013 Census usual residents at this (au, sa2) overlap.                 |
-| au_share        | DOUBLE | population / sum-over-au. Allocation weight for crime → SA2.           |
-| sa2_share       | DOUBLE | population / sum-over-sa2.                                             |
+| column          | type   | description                                                                |
+|-----------------|--------|----------------------------------------------------------------------------|
+| area_unit       | STRING | AU2013 name. Matches `silver.crime_victimisation_monthly.area_unit`.       |
+| au_code_2013    | STRING | 6-digit Stats NZ AU2013 code.                                              |
+| suburb_id       | STRING | 6-digit Stats NZ SA22023 code. Joins to `gold.suburb.suburb_id` directly.  |
+| meshblock_count | INT    | Number of 2023 meshblocks at this (AU, SA22023) overlap.                   |
+| au_share        | DOUBLE | meshblock_count / sum-over-AU. Allocation weight for AU metrics → SA22023. |
+| sa2_share       | DOUBLE | meshblock_count / sum-over-SA22023. Reverse-direction weight.              |
+
+## Allocation note
+
+We weight by meshblock count rather than 2013 census population. Meshblocks
+are Stats NZ's atomic units and are designed to contain a roughly uniform
+number of people (~100-200), so meshblock-count weighting is a clean proxy
+for population-share and avoids tying us to any single census year.
 
 ## Run
 
-    sdk use java 21.0.5-tem   # not strictly needed; just for env consistency
     python pipelines/police_recorded_crime/local/build_area_unit_to_suburb.py \\
-        --crosstab path/to/2013-census-population-counts-by-sa22018-and-au2013.xlsx \\
-        --au-zip   path/to/statsnz-area-unit-2013-CSV.zip
+        --source path/to/geographic-areas-table-2023.csv
 
-Defaults assume the source files sit next to this script (download them to
-`pipelines/police_recorded_crime/local/data/` for repeatable runs).
-
-Add `--dry-run` to skip the UC write and just print row counts.
+Defaults to reading the source from `local/data/`. Pass `--dry-run` to
+inspect row counts without writing to UC.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import io
 import sys
 import time
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import lru_cache
+from io import TextIOWrapper
 from pathlib import Path
-
-try:
-    import openpyxl
-except ImportError:
-    sys.exit("openpyxl required. Install via: pip install openpyxl")
 
 try:
     import pandas as pd
@@ -86,26 +92,26 @@ except ImportError:
     sys.exit("databricks-sdk required. Install via: pip install databricks-sdk")
 
 
-# ── Databricks config (mirror compute_isochrones.py) ────────────────────
+# ── Databricks config ──────────────────────────────────────────────────
 DATABRICKS_PROFILE = "hackathon"
 DATABRICKS_WAREHOUSE_NAME = "housing-assistant-dev"
 
-# Where the parquet lands on bronze and which silver table it backs.
 BRONZE_VOLUME_TARGET = (
     "/Volumes/housing/bronze/crime_files/concordance/area_unit_to_suburb.parquet"
 )
 SILVER_TABLE = "housing.silver.area_unit_to_suburb"
 
 TABLE_COMMENT = (
-    "AU2013 → SA2 2018 population-weighted concordance, with the canonical "
-    "AU2013 name attached for joins to police_recorded_crime silver. Built "
-    "one-off from two static Stats NZ files (2013 Census crosstab + AU2013 "
-    "attribute table) by pipelines/police_recorded_crime/local/"
-    "build_area_unit_to_suburb.py. Around 4k rows — one per non-zero "
-    "(AU, SA2) overlap. SA2 2023 added 135 new SA2s vs 2018; those will not "
-    "appear in this bridge and downstream rows for those SA2s receive NULL. "
-    "JOINS: area_unit = silver.crime_victimisation_monthly.area_unit (after "
-    "the trailing-dot strip applied in bronze); suburb_id = gold.suburb.suburb_id."
+    "AU2013 → SA22023 meshblock-weighted concordance, with AU2013 names "
+    "attached for joins to police_recorded_crime silver. Built one-off "
+    "from Stats NZ's Geographic Areas Table 2023 (DataFinder layer 111243) "
+    "by pipelines/police_recorded_crime/local/build_area_unit_to_suburb.py. "
+    "About 4.6k rows, one per (AU2013, SA22023) overlap. Allocation weights "
+    "(`au_share`, `sa2_share`) are derived from meshblock counts; meshblocks "
+    "are Stats NZ atomic units of ~100-200 people so the weighting is a "
+    "clean proxy for population share. JOINS: area_unit = "
+    "silver.crime_victimisation_monthly.area_unit (after the trailing-dot "
+    "strip in police bronze); suburb_id = gold.suburb.suburb_id (SA22023)."
 )
 
 COLUMN_COMMENTS = {
@@ -116,101 +122,83 @@ COLUMN_COMMENTS = {
     ),
     "au_code_2013": "6-digit Stats NZ AU2013 code.",
     "suburb_id": (
-        "6-digit Stats NZ SA2 2018 code. Joins to gold.suburb.suburb_id with "
-        "~94% coverage (135 SA2s added in the 2023 vintage have no bridge row)."
+        "6-digit Stats NZ SA22023 code. Joins to gold.suburb.suburb_id "
+        "directly — no vintage gap since the source is the 2023-vintage "
+        "Geographic Areas Table."
     ),
-    "population_2013": (
-        "2013 Census usually-resident population at the (au_code, suburb_id) "
-        "overlap. Non-zero by construction (zeros dropped during the build)."
+    "meshblock_count": (
+        "Number of 2023 meshblocks at this (AU, SA22023) overlap. The basis "
+        "for the share columns."
     ),
     "au_share": (
-        "population_2013 / SUM(population_2013) OVER (PARTITION BY au_code_2013). "
-        "Use to allocate AU-level metrics to overlapping SA2s: each SA2 "
+        "meshblock_count / SUM(meshblock_count) OVER (PARTITION BY au_code_2013). "
+        "Use to allocate AU-level metrics to overlapping SA22023s: each SA2 "
         "receives `au_share × metric_at_au`."
     ),
     "sa2_share": (
-        "population_2013 / SUM(population_2013) OVER (PARTITION BY suburb_id). "
+        "meshblock_count / SUM(meshblock_count) OVER (PARTITION BY suburb_id). "
         "Reverse-direction weight."
     ),
 }
 
 
-# ── Build helpers ───────────────────────────────────────────────────────
+# ── Build helpers ──────────────────────────────────────────────────────
 
 
-def load_au2013_dim(zip_path: Path) -> dict[str, str]:
-    """Return {au_code: au_name} for all ~2,004 area units."""
-    csv.field_size_limit(sys.maxsize)  # WKT polygons blow past the default
-    au_dim: dict[str, str] = {}
+def iter_meshblock_rows(zip_path: Path):
+    """
+    Stream rows from geographic-areas-table-2023.csv inside the zip.
+
+    Yields (au_code, au_name, sa22023_code, sa22023_name) tuples. Skips
+    rows missing any key (in practice all 57,539 rows have all four).
+    """
+    csv.field_size_limit(sys.maxsize)
     with zipfile.ZipFile(zip_path) as zf:
-        with zf.open("area-unit-2013.csv") as fh:
-            text = io.TextIOWrapper(fh, encoding="utf-8-sig")
-            for row in csv.DictReader(text):
-                au_dim[str(row["AU2013_V1_00"])] = row["AU2013_V1_00_NAME"]
-    return au_dim
+        with zf.open("geographic-areas-table-2023.csv") as fh:
+            text = TextIOWrapper(fh, encoding="utf-8-sig")
+            rdr = csv.DictReader(text)
+            for row in rdr:
+                au_code = (row.get("AU2013_code") or "").strip()
+                au_name = (row.get("AU2013_name") or "").strip()
+                sa_code = (row.get("SA22023_code") or "").strip()
+                sa_name = (row.get("SA22023_name") or "").strip()
+                if not (au_code and au_name and sa_code and sa_name):
+                    continue
+                yield au_code, au_name, sa_code, sa_name
 
 
-def iter_crosstab(xlsx_path: Path):
-    """
-    Stream the SA2 2018 × AU2013 population crosstab.
+def build_bridge(zip_path: Path) -> pd.DataFrame:
+    overlap_counts: Counter[tuple[str, str]] = Counter()
+    au_names: dict[str, str] = {}
+    sa_names: dict[str, str] = {}
+    for au_code, au_name, sa_code, sa_name in iter_meshblock_rows(zip_path):
+        overlap_counts[(au_code, sa_code)] += 1
+        au_names.setdefault(au_code, au_name)
+        sa_names.setdefault(sa_code, sa_name)
 
-    Yields (au_code_2013, sa2_code_2018, population_2013) tuples for every
-    non-zero cell. Skips title / blank / header rows.
-    """
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    ws = wb["Counts"]
-
-    # Row 1 = title, row 2 = caption, row 3 = header with AU codes,
-    # rows 4..N = SA2 rows. Col 1 is SA2 code; cols 2..M are AU codes.
-    header = next(ws.iter_rows(min_row=3, max_row=3, values_only=True))
-    au_codes = [str(c) if c is not None else None for c in header[1:]]
-
-    for row in ws.iter_rows(min_row=4, values_only=True):
-        sa2_code = row[0]
-        if sa2_code is None:
-            continue
-        sa2_code = str(sa2_code)
-        for au_code, pop in zip(au_codes, row[1:]):
-            if au_code is None or pop is None or pop == 0:
-                continue
-            yield au_code, sa2_code, int(pop)
-
-
-def build_bridge(crosstab_path: Path, au_zip_path: Path) -> pd.DataFrame:
-    au_dim = load_au2013_dim(au_zip_path)
-    print(f"AU2013 dim: {len(au_dim):,} (code, name) tuples")
-
-    triples = list(iter_crosstab(crosstab_path))
-    print(f"Non-zero overlaps: {len(triples):,}")
+    total_meshblocks = sum(overlap_counts.values())
+    print(f"Meshblocks: {total_meshblocks:,}")
+    print(f"Distinct (AU, SA22023) overlaps: {len(overlap_counts):,}")
+    print(f"Distinct AUs:       {len(au_names):,}")
+    print(f"Distinct SA22023s:  {len(sa_names):,}")
 
     au_totals: dict[str, int] = defaultdict(int)
-    sa2_totals: dict[str, int] = defaultdict(int)
-    for au, sa2, pop in triples:
-        au_totals[au] += pop
-        sa2_totals[sa2] += pop
+    sa_totals: dict[str, int] = defaultdict(int)
+    for (au, sa), count in overlap_counts.items():
+        au_totals[au] += count
+        sa_totals[sa] += count
 
-    unmatched_codes: set[str] = set()
     records: list[dict] = []
-    for au, sa2, pop in triples:
-        name = au_dim.get(au)
-        if name is None:
-            unmatched_codes.add(au)
-            continue
+    for (au, sa), count in overlap_counts.items():
         records.append(
             {
-                "area_unit": name,
+                "area_unit": au_names[au],
                 "au_code_2013": au,
-                "suburb_id": sa2,
-                "population_2013": pop,
-                "au_share": round(pop / au_totals[au], 6),
-                "sa2_share": round(pop / sa2_totals[sa2], 6),
+                "suburb_id": sa,
+                "meshblock_count": int(count),
+                "au_share": round(count / au_totals[au], 6),
+                "sa2_share": round(count / sa_totals[sa], 6),
             }
-        )
-
-    if unmatched_codes:
-        print(
-            f"  WARN: {len(unmatched_codes)} AU code(s) in crosstab not in AU "
-            f"dim: {sorted(unmatched_codes)}"
         )
 
     df = pd.DataFrame.from_records(records).astype(
@@ -218,7 +206,7 @@ def build_bridge(crosstab_path: Path, au_zip_path: Path) -> pd.DataFrame:
             "area_unit": "string",
             "au_code_2013": "string",
             "suburb_id": "string",
-            "population_2013": "int64",
+            "meshblock_count": "int64",
             "au_share": "float64",
             "sa2_share": "float64",
         }
@@ -226,7 +214,7 @@ def build_bridge(crosstab_path: Path, au_zip_path: Path) -> pd.DataFrame:
     return df.sort_values(["area_unit", "suburb_id"]).reset_index(drop=True)
 
 
-# ── Databricks I/O (mirror compute_isochrones.py) ───────────────────────
+# ── Databricks I/O ─────────────────────────────────────────────────────
 
 
 @lru_cache(maxsize=1)
@@ -275,7 +263,6 @@ def _run_sql(stmt: str) -> list[list]:
 
 
 def upload_parquet(df: pd.DataFrame, volume_path: str) -> Path:
-    """Write the DataFrame to a temp parquet file and upload to the volume."""
     local = Path(__file__).parent / "_tmp_area_unit_to_suburb.parquet"
     df.to_parquet(local, index=False)
     print(
@@ -295,7 +282,6 @@ def upload_parquet(df: pd.DataFrame, volume_path: str) -> Path:
 
 
 def refresh_silver_table(volume_path: str, table: str) -> None:
-    """CREATE OR REPLACE the silver table from the uploaded parquet, then comment."""
     print(f"Refreshing {table} from {volume_path}")
     _run_sql(
         f"CREATE OR REPLACE TABLE {table} USING DELTA AS "
@@ -313,39 +299,35 @@ def refresh_silver_table(volume_path: str, table: str) -> None:
     print(f"  ✓ {table} has {int(row_count):,} rows")
 
 
-# ── Main ────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--crosstab",
+        "--source",
         type=Path,
         default=Path(__file__).parent
         / "data"
-        / "2013-census-population-counts-by-sa22018-and-au2013.xlsx",
-    )
-    parser.add_argument(
-        "--au-zip",
-        type=Path,
-        default=Path(__file__).parent / "data" / "statsnz-area-unit-2013-CSV.zip",
+        / "statsnz-geographic-areas-table-2023-CSV.zip",
+        help="Path to the zip containing geographic-areas-table-2023.csv.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Skip the UC write; just print the row count.",
+        help="Skip the UC write; just print the row count + sample.",
     )
     args = parser.parse_args()
 
-    for p in (args.crosstab, args.au_zip):
-        if not p.is_file():
-            sys.exit(
-                f"Missing source file: {p}\n"
-                f"  Download from Stats NZ DataFinder and place under "
-                f"pipelines/police_recorded_crime/local/data/."
-            )
+    if not args.source.is_file():
+        sys.exit(
+            f"Missing source file: {args.source}\n"
+            f"  Download from "
+            f"https://datafinder.stats.govt.nz/table/111243-geographic-areas-table-2023/ "
+            f"and place under pipelines/police_recorded_crime/local/data/."
+        )
 
-    df = build_bridge(args.crosstab, args.au_zip)
+    df = build_bridge(args.source)
 
     if args.dry_run:
         print(f"\n[dry-run] would write {len(df):,} rows to {SILVER_TABLE}")

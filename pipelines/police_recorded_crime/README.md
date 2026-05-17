@@ -28,27 +28,31 @@ Police data is keyed by **Area Unit 2013**, a retired Stats NZ geography that do
 
 The bridge is built locally (one-off) from two static Stats NZ source files because they're 2013 Census artifacts that will never change. See [`local/build_area_unit_to_suburb.py`](local/build_area_unit_to_suburb.py) for the build details + source URLs.
 
-[`local/build_area_unit_to_suburb.py`](local/build_area_unit_to_suburb.py) writes the silver table directly via `parquet → bronze volume → CREATE OR REPLACE TABLE` (same auth + SQL-warehouse pattern as `compute_isochrones.py` and `compute_amenities.py`). About 4k rows. Schema after build:
+[`local/build_area_unit_to_suburb.py`](local/build_area_unit_to_suburb.py) writes the silver table directly via `parquet → bronze volume → CREATE OR REPLACE TABLE` (same auth + SQL-warehouse pattern as `compute_isochrones.py` and `compute_amenities.py`). About 4.6k rows. Schema after build:
 
 | column          | type   | description                                                                              |
 |-----------------|--------|------------------------------------------------------------------------------------------|
 | `area_unit`       | STRING | AU2013 name. Matches `police_recorded_crime_anzsoc_victimisations.area_unit` (silver). |
 | `au_code_2013`    | STRING | 6-digit AU2013 code.                                                                   |
-| `suburb_id`       | STRING | 6-digit SA2 2018 code. ~94% overlap with SA2 2023 (135 SA2s added since).              |
-| `population_2013` | INT    | 2013 Census usual residents at this (au, sa2) overlap.                                 |
-| `au_share`        | DOUBLE | population / sum-over-AU. Allocation weight: SA2 gets `au_share × victimisations`.     |
-| `sa2_share`       | DOUBLE | population / sum-over-SA2. Reverse-direction weight.                                   |
+| `suburb_id`       | STRING | 6-digit SA22023 code. Joins to `gold.suburb.suburb_id` directly — no vintage gap.      |
+| `meshblock_count` | INT    | Number of 2023 meshblocks at this (AU, SA22023) overlap.                               |
+| `au_share`        | DOUBLE | meshblock_count / sum-over-AU. Allocation weight: SA2 gets `au_share × victimisations`. |
+| `sa2_share`       | DOUBLE | meshblock_count / sum-over-SA22023. Reverse-direction weight.                          |
+
+### Why meshblock-count weighting
+
+Meshblocks are Stats NZ's atomic units, designed to contain a roughly uniform number of people (~100-200). Counting them is a clean proxy for population-share without tying the bridge to any single census year. Earlier iterations weighted by 2013 Census population but hit a 27% loss because the (SA2_2018 → SA2_2023) renumbering between vintages didn't have a published flat concordance. Sourcing directly from Stats NZ's Geographic Areas Table 2023 (a meshblock-level concordance of every NZ geography) eliminates the vintage gap entirely.
 
 ### Run once
 
-Place the two source files (see script docstring for DataFinder URLs) under `pipelines/police_recorded_crime/local/data/` then:
+Download `statsnz-geographic-areas-table-2023-CSV.zip` from [DataFinder layer 111243](https://datafinder.stats.govt.nz/table/111243-geographic-areas-table-2023/), place it under `pipelines/police_recorded_crime/local/data/`, then:
 
 ```bash
 python pipelines/police_recorded_crime/local/build_area_unit_to_suburb.py
 # add --dry-run to inspect without writing
 ```
 
-The script lands `housing.silver.area_unit_to_suburb` populated with ~4k rows, applies the table + column comments, and leaves the parquet at `dbfs:/Volumes/housing/bronze/crime_files/concordance/area_unit_to_suburb.parquet` as the source-of-truth artefact. Re-runnable if Stats NZ ever republishes either source file.
+The script lands `housing.silver.area_unit_to_suburb` populated with ~4.6k rows, applies the table + column comments, and leaves the parquet at `dbfs:/Volumes/housing/bronze/crime_files/concordance/area_unit_to_suburb.parquet` as the source-of-truth artefact. Re-runnable when Stats NZ publishes the next vintage of the table.
 
 ### Known gaps
 
@@ -98,7 +102,7 @@ databricks bundle run police_recorded_crime_silver --target dev -p hackathon --r
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations_raw` | Auto Loader CSV |
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations` | Typed rows |
 | Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month, area unit, ANZSOC subdivision — long-format breakdown escape hatch |
-| Silver | `housing.silver.area_unit_to_suburb` | One-off concordance: AU2013 name + code ↔ SA2 2018 with population-weighted shares. Built locally; see [Area-unit-to-suburb bridge](#area-unit-to-suburb-bridge-one-off). |
+| Silver | `housing.silver.area_unit_to_suburb` | One-off concordance: AU2013 name + code ↔ SA22023 with meshblock-weighted shares. Built locally; see [Area-unit-to-suburb bridge](#area-unit-to-suburb-bridge-one-off). |
 | Silver | `housing.silver.crime_at_suburb_year` | Annual victimisations per SA2, allocated from AU data via the bridge. One row per (suburb_id, crime_year). This is what `gold.suburb__year` consumes. |
 
 This bundle has **no gold layer of its own**. Crime totals are folded into `housing.gold.suburb__year` (owned by the `census_2023` pipeline) so consumers get census demographics, dwelling quality, and crime in a single SELECT at one canonical suburb/year grain. Long-format breakdowns stay in silver per the conventions doc.

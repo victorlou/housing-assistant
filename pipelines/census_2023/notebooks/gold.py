@@ -114,7 +114,7 @@ def _crime_for_census_year_df():
         dwellings_mean_rooms DOUBLE COMMENT 'Mean number of rooms per dwelling.',
         population_total INT COMMENT 'Usually-resident population count for the SA2.',
         median_age DOUBLE COMMENT 'Median age (years) of usually-resident population.',
-        total_victimisations_2023 INT COMMENT 'Recorded NZ Police victimisations for the SA2 over calendar year 2023, allocated from AU2013-keyed crime data through silver.area_unit_to_suburb (population-weighted concordance). NULL where silver.crime_at_suburb_year is not yet materialised, or for SA2 2023 codes that were added after the 2018 vintage bridge (~6% of SA2s).',
+        total_victimisations_2023 INT COMMENT 'Recorded NZ Police victimisations for the SA2 over calendar year 2023, allocated from AU2013-keyed crime data through silver.area_unit_to_suburb (meshblock-weighted concordance keyed on SA22023). NULL where silver.crime_at_suburb_year is not yet materialised; full SA22023 coverage otherwise (bridge derived from Stats NZ Geographic Areas Table 2023 so there is no vintage gap).',
         _updated_at TIMESTAMP NOT NULL COMMENT 'When this row was last refreshed.'
     """,
 )
