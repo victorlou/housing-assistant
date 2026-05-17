@@ -1,6 +1,6 @@
 """
 Extract NZ amenity POIs from clipped OSM PBFs and land them in
-`housing.gold.amenity__day__h3`.
+`housing.gold.amenity__h3`.
 
 For each regional PBF already present under `../../isochrone/local/data/`
 (the isochrone compute downloads + clips them — we reuse the same files):
@@ -13,7 +13,7 @@ For each regional PBF already present under `../../isochrone/local/data/`
      cell from (lat, lon).
   4. All regions' records are concatenated, written as a single parquet,
      uploaded to `dbfs:/Volumes/housing/bronze/amenities_files/amenity_all.parquet`,
-     and `CREATE OR REPLACE TABLE housing.gold.amenity__day__h3` materialises
+     and `CREATE OR REPLACE TABLE housing.gold.amenity__h3` materialises
      gold with `suburb_id` denormalised in via a LEFT JOIN to `gold.h3_cell`.
 
 Prerequisites — already in place if the isochrone pipeline runs from this
@@ -64,7 +64,7 @@ DATABRICKS_WAREHOUSE_NAME = "housing-assistant-dev"
 H3_RESOLUTION = 8
 
 BRONZE_VOLUME_TARGET = "/Volumes/housing/bronze/amenities_files/amenity_all.parquet"
-GOLD_TABLE = "housing.gold.amenity__day__h3"
+GOLD_TABLE = "housing.gold.amenity__h3"
 
 # Regions to extract from — one PBF per region. The glob picks the latest
 # date-stamped clip (e.g. auckland-260515.osm.pbf).

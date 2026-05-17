@@ -1,6 +1,6 @@
 # Local amenity extraction
 
-Pulls amenity POIs (supermarkets, schools, hospitals, etc.) out of the regional OSM PBFs and lands them in `housing.gold.amenity__day__h3`. Runs **outside Databricks** for the same reason as the isochrone compute: needs the `osmium` CLI tool, which is a one-shot Homebrew install.
+Pulls amenity POIs (supermarkets, schools, hospitals, etc.) out of the regional OSM PBFs and lands them in `housing.gold.amenity__h3`. Runs **outside Databricks** for the same reason as the isochrone compute: needs the `osmium` CLI tool, which is a one-shot Homebrew install.
 
 This script intentionally **reuses the PBFs that the isochrone pipeline already downloaded** (`pipelines/isochrone/local/data/<region>-*.osm.pbf`). If you've run the isochrone compute on this machine, you're already 90% set up.
 
@@ -52,7 +52,7 @@ What it does in order:
 2. Parses the GeoJSON in Python, categorises into 8 amenity types, computes a centroid for ways/relations, and an H3 res-8 cell from (lat, lon).
 3. Concatenates all regions into a single parquet (`amenity_all.parquet`).
 4. Uploads the parquet to `/Volumes/housing/bronze/amenities_files/amenity_all.parquet`.
-5. `CREATE OR REPLACE TABLE housing.gold.amenity__day__h3` materialises gold with `suburb_id` denormalised in via a LEFT JOIN against `housing.gold.h3_cell`.
+5. `CREATE OR REPLACE TABLE housing.gold.amenity__h3` materialises gold with `suburb_id` denormalised in via a LEFT JOIN against `housing.gold.h3_cell`.
 
 Expected timing on a recent MacBook:
 
@@ -69,7 +69,7 @@ After the run, in SQL:
 ```sql
 -- Headline shape
 SELECT amenity_type, COUNT(*) AS count
-FROM housing.gold.amenity__day__h3
+FROM housing.gold.amenity__h3
 GROUP BY amenity_type
 ORDER BY count DESC;
 -- Expect roughly: school (most numerous), supermarket, park, gp_clinic,
@@ -77,7 +77,7 @@ ORDER BY count DESC;
 
 -- Coverage by region (via the suburb join)
 SELECT u.region, a.amenity_type, COUNT(*) AS count
-FROM housing.gold.amenity__day__h3 a
+FROM housing.gold.amenity__h3 a
 JOIN housing.gold.suburb u ON u.suburb_id = a.suburb_id
 GROUP BY u.region, a.amenity_type
 ORDER BY u.region, count DESC;
@@ -85,7 +85,7 @@ ORDER BY u.region, count DESC;
 -- Auckland suburbs ranked by supermarket count
 SELECT u.suburb_name, COUNT(*) AS supermarkets
 FROM housing.gold.suburb u
-JOIN housing.gold.amenity__day__h3 a ON a.suburb_id = u.suburb_id
+JOIN housing.gold.amenity__h3 a ON a.suburb_id = u.suburb_id
 WHERE u.region = 'Auckland Region' AND a.amenity_type = 'supermarket'
 GROUP BY u.suburb_name ORDER BY supermarkets DESC LIMIT 15;
 ```

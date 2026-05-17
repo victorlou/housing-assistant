@@ -130,7 +130,7 @@ def suburb():
         "inside an NZ SA2, mapped to that SA2's suburb_id. This is the "
         "spine for spatial joins across the lakehouse: any fact keyed by "
         "H3 cell (gold.transit_stop.h3_cell, gold.isochrone.destination_h3 "
-        "/.origin_h3, gold.amenity__day__h3.h3_cell, future listings) "
+        "/.origin_h3, gold.amenity__h3.h3_cell, future listings) "
         "reaches its suburb name through this bridge. Standard pattern: "
         "`JOIN gold.h3_cell USING (h3_cell)` then `JOIN gold.suburb ON "
         "suburb_id`. Built via Databricks' centre-based h3_polyfillash3, "

@@ -1,6 +1,6 @@
 # amenity
 
-NZ amenity points (supermarkets, schools, hospitals, pharmacies, GP clinics, early-childhood centres, parks, libraries) extracted from OpenStreetMap and landed in `housing.gold.amenity__day__h3`. Joinable to `housing.gold.suburb` via the H3-cell bridge so the agent can answer "suburbs near a supermarket / hospital / school".
+NZ amenity points (supermarkets, schools, hospitals, pharmacies, GP clinics, early-childhood centres, parks, libraries) extracted from OpenStreetMap and landed in `housing.gold.amenity__h3`. Joinable to `housing.gold.suburb` via the H3-cell bridge so the agent can answer "suburbs near a supermarket / hospital / school".
 
 ## Why this directory uses the local-compute pattern
 
@@ -11,7 +11,7 @@ The architecture is:
 ```
    (local machine)                                       (Databricks)
    ─────────────────                                     ───────────
-   compute_amenities.py  ───── upload ─────▶ Volume      ── CREATE OR REPLACE ─▶  housing.gold.amenity__day__h3
+   compute_amenities.py  ───── upload ─────▶ Volume      ── CREATE OR REPLACE ─▶  housing.gold.amenity__h3
    osmium tags-filter +                                                            (Genie, agent read here)
    osmium export →
    pandas + h3
@@ -22,7 +22,7 @@ Refresh cadence is quarterly-ish — OSM evolves continuously but housing-releva
 ## Contract — gold table
 
 ```sql
-CREATE TABLE housing.gold.amenity__day__h3 (
+CREATE TABLE housing.gold.amenity__h3 (
   osm_id        STRING NOT NULL,   -- "node/123456" or "way/789012" — stable OSM identifier
   amenity_type  STRING NOT NULL,   -- "supermarket", "hospital", "school",
                                    -- "early_childhood", "pharmacy", "gp_clinic",
@@ -61,7 +61,7 @@ OSM coverage in NZ is good for the major cities (Auckland, Wellington, Christchu
 -- Auckland suburbs with at least one supermarket
 SELECT u.suburb_name, COUNT(*) AS supermarket_count
 FROM housing.gold.suburb u
-JOIN housing.gold.amenity__day__h3 a ON a.suburb_id = u.suburb_id
+JOIN housing.gold.amenity__h3 a ON a.suburb_id = u.suburb_id
 WHERE u.region = 'Auckland Region' AND a.amenity_type = 'supermarket'
 GROUP BY u.suburb_name ORDER BY supermarket_count DESC LIMIT 20;
 
@@ -74,9 +74,9 @@ JOIN housing.gold.isochrone i ON i.destination_h3 IN (
     )
 JOIN britomart b ON i.origin_h3 = b.h3_cell
 WHERE i.travel_minutes <= 45
-  AND EXISTS (SELECT 1 FROM housing.gold.amenity__day__h3 a
+  AND EXISTS (SELECT 1 FROM housing.gold.amenity__h3 a
               WHERE a.suburb_id = u.suburb_id AND a.amenity_type = 'supermarket')
-  AND EXISTS (SELECT 1 FROM housing.gold.amenity__day__h3 a
+  AND EXISTS (SELECT 1 FROM housing.gold.amenity__h3 a
               WHERE a.suburb_id = u.suburb_id AND a.amenity_type = 'school');
 
 -- Per-TA amenity density (parks per 10k population)
@@ -85,7 +85,7 @@ SELECT u.territorial_authority,
        COUNT(a.osm_id) AS parks,
        ROUND(10000.0 * COUNT(a.osm_id) / NULLIF(SUM(u.population_2023), 0), 2) AS parks_per_10k
 FROM housing.gold.suburb u
-LEFT JOIN housing.gold.amenity__day__h3 a
+LEFT JOIN housing.gold.amenity__h3 a
        ON a.suburb_id = u.suburb_id AND a.amenity_type = 'park'
 GROUP BY u.territorial_authority
 ORDER BY parks_per_10k DESC LIMIT 15;
