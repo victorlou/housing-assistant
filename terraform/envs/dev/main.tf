@@ -49,21 +49,43 @@ module "compute" {
 # ─────────────────────────────────────────────────────────────────────
 # Lakebase. Managed Postgres for user state, on the Autoscaling platform.
 # Scale-to-zero is enabled as a one-time post-apply step (see runbook).
+# Creates the Postgres project, app service-principal-backed role, and
+# application database. Schema migrations are managed by Drizzle ORM.
 # ─────────────────────────────────────────────────────────────────────
 module "lakebase" {
-  source       = "../../modules/lakebase"
-  project_id   = local.name_prefix
-  display_name = "Housing Assistant ${title(var.environment)}"
+  source                          = "../../modules/lakebase"
+  project_id                      = local.name_prefix
+  display_name                    = "Housing Assistant ${title(var.environment)}"
+  database_id                     = "${local.name_prefix}-db"
+  postgres_database_name          = "${replace(local.name_prefix, "-", "_")}_db"
+  app_service_principal_client_id = module.app.app_service_principal_client_id
+}
+
+# Preserve Terraform state addresses when merging the old lakebase_migration
+# module resources into the lakebase module.
+moved {
+  from = module.lakebase_migration.databricks_postgres_role.app
+  to   = module.lakebase.databricks_postgres_role.app
+}
+
+moved {
+  from = module.lakebase_migration.databricks_postgres_database.main
+  to   = module.lakebase.databricks_postgres_database.main
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# App. Databricks App and the warehouse binding it depends on.
+# App. Databricks App and the warehouse/Lakebase bindings it depends on.
+# The app resource binding grants the app's auto-created service principal
+# CAN_CONNECT_AND_CREATE on the Lakebase Autoscaling database.
 # ─────────────────────────────────────────────────────────────────────
 module "app" {
-  source       = "../../modules/app"
-  project_tag  = var.project_tag
-  app_name     = local.name_prefix
-  warehouse_id = module.compute.warehouse_id
+  source                          = "../../modules/app"
+  project_tag                     = var.project_tag
+  app_name                        = local.name_prefix
+  warehouse_id                    = module.compute.warehouse_id
+  lakebase_branch_name            = module.lakebase.production_branch_name
+  lakebase_database_resource_name = module.lakebase.database_resource_name
+
 }
 
 # ─────────────────────────────────────────────────────────────────────

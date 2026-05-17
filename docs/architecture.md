@@ -2,6 +2,8 @@
 
 This document describes how Housing Assistant is built end-to-end. It is the canonical reference for design decisions and trade-offs. If something here disagrees with code, update one or the other within the same PR.
 
+**New to the codebase?** See [docs/internal-workings/](internal-workings/) for step-by-step guides on LangGraph, MLflow, and agent design.
+
 ## Goals and non-goals
 
 **Goals.**

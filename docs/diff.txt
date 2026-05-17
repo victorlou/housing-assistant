@@ -1,0 +1,1479 @@
+diff --git a/docs/agent-backend-architecture.md b/docs/agent-backend-architecture.md
+new file mode 100644
+index 0000000..21bd3fb
+--- /dev/null
++++ b/docs/agent-backend-architecture.md
+@@ -0,0 +1,188 @@
++# Agent Backend Architecture
++
++> How the `agent-langgraph-advanced` template works end-to-end — endpoints, request/response types, LangGraph execution, and the streaming translation layer.
++
++**Template path:** `app/app-templates/agent-langgraph-advanced/`
++Advanced LangGraph template with short-term memory (checkpointer), long-term memory (store), and background task support.
++
++---
++
++## Entry Point: `agent_server/start_server.py`
++
++- Loads `.env` before anything else (auth config must be set before agent imports)
++- Instantiates `AgentServer(LongRunningAgentServer)` — a Databricks AI Bridge class that creates a FastAPI app and registers HTTP routes automatically
++- `import agent_server.agent` (line 21) is the trigger: importing the module executes `@invoke()` and `@stream()` decorators, registering the handlers with the server's internal registry
++- The FastAPI `app` object is exposed at module level for multi-worker support: `app = agent_server.app`
++
++**Routes registered (automatically by LongRunningAgentServer):**
++- `POST /responses` (alias: `POST /invocations`) — main chat endpoint
++- `GET  /responses/{id}` — background task polling/streaming resume
++
++---
++
++## How `@invoke` and `@stream` Work
++
++Both live in `agent_server/agent.py`. They don't define separate routes — they register **handlers** against the single `POST /responses` endpoint. The server dispatches based on the `stream` field in the request body:
++
++| Request has | Handler called | Response |
++|---|---|---|
++| `stream: false` (default) | `invoke_handler` (`@invoke`) | Full JSON after agent finishes |
++| `stream: true` | `stream_handler` (`@stream`) | SSE stream of events |
++| `background: true` | either, but returns `id` immediately | Client polls `GET /responses/{id}` |
++
++---
++
++## `ResponsesAgentRequest` — The Input Type
++
++Defined by MLflow (`mlflow.types.responses`). The server deserializes the HTTP POST body into this Pydantic model before calling your handler.
++
++```
++ResponsesAgentRequest
++  .input          → list of OpenAI-style messages: [{role, content}]
++  .stream         → bool: SSE or JSON?
++  .background     → bool: async execution?
++  .custom_inputs  → dict: anything non-standard (thread_id, user_id go here)
++  .context        → ChatContext with .conversation_id (fallback for thread_id)
++```
++
++**How `stream_handler` uses it (`agent.py:99`):**
++1. `_get_or_create_thread_id(request)` — checks `custom_inputs["thread_id"]`, then `context.conversation_id`, then generates a UUID7
++2. `get_user_id(request)` — reads `custom_inputs["user_id"]`
++3. `to_chat_completions_input([i.model_dump() for i in request.input])` — converts OpenAI message list → LangChain `HumanMessage`/`AIMessage` objects
++
++---
++
++## Where the Agent Is Actually Called
++
++`agent.py:118-129` inside `stream_handler`:
++
++```python
++async with lakebase_context(LAKEBASE_CONFIG) as (checkpointer, store):
++    agent = await init_agent(store=store, checkpointer=checkpointer)
++    async for event in process_agent_astream_events(
++        agent.astream(input_state, config, stream_mode=["updates", "messages"])
++    ):
++        yield event
++```
++
++- `lakebase_context` — opens a Postgres connection to Lakebase, returns `checkpointer` (short-term memory) and `store` (long-term memory)
++- `init_agent()` — builds the LangGraph ReAct agent: `ChatDatabricks` model + tools + memory wired in
++- `agent.astream(...)` — **the actual agent loop**. LangGraph runs: LLM inference → tool selection → tool execution → loop back to LLM
++- `stream_mode=["updates", "messages"]` — emits two event types:
++  - `"messages"` → raw token chunks as they stream from the LLM
++  - `"updates"` → completed node outputs (finalized tool calls, tool results, final messages)
++
++---
++
++## `process_agent_astream_events` — The Translation Layer
++
++**File:** `agent_server/utils.py:84`
++
++LangGraph speaks its own event format. The frontend expects OpenAI Responses API SSE format. This function translates in real-time.
++
++**LangGraph emits tuples:**
++```
++("messages", [AIMessageChunk(content="Hello", tool_call_chunks=[...])])
++("updates",  {"agent": {"messages": [AIMessage(...), ToolMessage(...)]}, ...})
++```
++
++**Translation table:**
++
++| LangGraph event | Scenario | → ResponsesAgentStreamEvent type |
++|---|---|---|
++| `messages` + `AIMessageChunk` text | Token streaming | `response.output_text.delta` |
++| `messages` + `AIMessageChunk` tool chunks | Tool call building | `response.function_call_arguments.delta` |
++| `updates` + `AIMessage` with `tool_calls` | Tool call finalized | `response.output_item.done` (function_call) |
++| `updates` + `ToolMessage` | Tool result returned | `response.output_item.done` (function_call_output) |
++| `updates` + `AIMessage` with `content` | Final text response | `response.output_item.done` (message) |
++
++**State machine inside the function:**
++- `in_turn` / `_start_turn()` / `_end_turn()` — tracks whether the agent is mid-response, to know when to emit `response.created` and `response.completed` bookend events
++- `active_tool_calls: dict[int, dict]` — accumulates streaming tool call chunks by index before finalizing
++- `active_text_item_id` — tracks the current streaming text item so delta events share the same `item_id`
++
++**ID handling:** Streaming responses use a fake placeholder ID (`resp_placeholder_xxx`) because the real `response_id` is only known by `LongRunningAgentServer`. `AgentServer.transform_stream_event()` calls `replace_fake_id()` to swap it in.
++
++---
++
++## `ResponsesAgentResponse` — The Non-Streaming Return
++
++When `stream: false`, `invoke_handler` runs `stream_handler` internally and collects only `response.output_item.done` events:
++
++```python
++outputs = [event.item async for event in stream_handler(request)
++           if event.type == "response.output_item.done"]
++return ResponsesAgentResponse(output=outputs, custom_outputs=custom_outputs)
++```
++
++```
++ResponsesAgentResponse
++  .output          → list of completed output items (messages, tool calls, tool outputs)
++  .custom_outputs  → dict: carries thread_id / user_id back to client for session reuse
++```
++
++---
++
++## Memory System
++
++| Type | Class | ID field | Scope |
++|---|---|---|---|
++| Short-term | `AsyncCheckpointSaver` (Lakebase) | `thread_id` | Within a conversation session |
++| Long-term | `AsyncDatabricksStore` (Lakebase) | `user_id` | Across all sessions for a user |
++
++Both IDs come from `custom_inputs` in the request. The client must send the same `thread_id` on every turn to maintain conversation continuity.
++
++---
++
++## Complete Data Flow
++
++```
++Frontend POST /responses
++  { input: [{role:"user", content:"..."}], stream:true,
++    custom_inputs: {thread_id:"abc", user_id:"email@zuru.com"} }
++        │
++        ▼
++LongRunningAgentServer → deserializes → ResponsesAgentRequest
++        │ (stream:true)
++        ▼
++stream_handler(request)               [agent.py:98]
++  ├── extract thread_id, user_id
++  ├── build LangGraph config with checkpointer + store
++  ├── init_agent() → LangGraph ReAct agent
++  └── agent.astream(messages, config)   ← AGENT LOOP
++            │
++            ▼
++     process_agent_astream_events()     [utils.py:84]
++       ├── "messages" events → token deltas → response.output_text.delta
++       ├── "updates" tool calls → response.output_item.done (function_call)
++       └── "updates" tool results → response.output_item.done (function_call_output)
++        │
++        ▼
++SSE stream to frontend:
++  response.created → response.output_text.delta (×N) → response.output_item.done → response.completed → [DONE]
++```
++
++---
++
++## Key Files
++
++| File | Purpose |
++|---|---|
++| `agent_server/start_server.py` | Server entry point, `AgentServer`, lifespan (Lakebase setup) |
++| `agent_server/agent.py` | `@invoke` + `@stream` handlers, `init_agent()`, LangGraph wiring |
++| `agent_server/utils.py` | `process_agent_astream_events()`, thread_id extraction, MCP client init |
++| `agent_server/utils_memory.py` | Long-term memory tools, Lakebase config + context manager |
++| `agent_server/prompts.py` | System prompt |
++| `databricks.yml` | Bundle config, resource permissions for tools |
++
++---
++
++## Frontend Integration Notes
++
++When calling from the housing assistant chat UI:
++
++- Pass `thread_id` per chat session (generate once on session start, reuse every turn)
++- Pass `user_id` as the logged-in user's identifier (e.g. email)
++- Use `stream: true` for chat UX — users see tokens appear as the agent responds
++- For long-running housing searches, consider `background: true` + polling `GET /responses/{id}`
++- Read `custom_outputs.thread_id` from the first response and store it if you let the server generate it
+diff --git a/docs/agent-tool-extension-guide.md b/docs/agent-tool-extension-guide.md
+new file mode 100644
+index 0000000..721e5e3
+--- /dev/null
++++ b/docs/agent-tool-extension-guide.md
+@@ -0,0 +1,308 @@
++# Agent Tool Extension Guide
++
++How to add a new tool to the Housing Assistant agent, implement an existing stub, and wire everything into the LangGraph agent server. The agent's LLM decides which tool to call based on the tool's docstring — you write the data logic; the agent handles routing.
++
++---
++
++## Architecture Overview
++
++```
++User message
++     │
++     ▼
++LangGraph ReAct loop  (agent_server/agent.py)
++     │
++     ├─ LLM reads tool docstrings → decides which tool(s) to call
++     │
++     └─ tool function executes → result returned to LLM → LLM formulates answer
++```
++
++**Your job as a tool author:**
++- Write a Python function with a clear docstring (the LLM reads this to decide when to call it)
++- Query the right Unity Catalog table or Lakebase table
++- Return a clean, readable string or dict (the LLM reads the result)
++
++You never write routing logic. The LLM handles that.
++
++---
++
++## Tool Structure
++
++Every tool is a Python function decorated with `@tool` from `langchain_core.tools`:
++
++```python
++from langchain_core.tools import tool
++
++@tool
++def score_affordability(suburb: str, household_income: int) -> float:
++    """
++    Score suburb affordability (0.0 = unaffordable, 1.0 = very affordable).
++
++    Logic: rent ≤ 30% of weekly income = 1.0; score decreases linearly beyond that.
++
++    Args:
++        suburb: Suburb name (e.g. "Onehunga")
++        household_income: Annual household income in NZD
++
++    Returns:
++        Affordability score between 0.0 and 1.0
++    """
++    # ... implementation
++```
++
++The **docstring is critical** — it's what the LLM reads to know:
++- When to call this tool (Examples section helps)
++- What arguments to pass
++- What the return value means
++
++---
++
++## How Tools Get the WorkspaceClient
++
++All tools use the **service principal** `WorkspaceClient` — initialized once at module level in `agent_server/agent.py` as `sp_workspace_client`. Tools import it from there via a shared singleton module.
++
++**`agent_server/databricks_clients.py`** (create this file once):
++```python
++from databricks.sdk import WorkspaceClient
++sp_workspace_client = WorkspaceClient()   # reads DATABRICKS_CONFIG_PROFILE / env vars
++```
++
++Then `agent_server/agent.py` and all tool files import from the same place — one initialization, no duplication:
++```python
++from agent_server.databricks_clients import sp_workspace_client
++```
++
++## Querying Unity Catalog from a Tool
++
++### Statement Execution API (standard pattern for tools)
++
++Fast, no Spark cluster overhead. Uses the SQL warehouse set in `DATABRICKS_WAREHOUSE_ID`.
++
++```python
++import os
++from agent_server.databricks_clients import sp_workspace_client
++
++WAREHOUSE_ID = os.getenv("DATABRICKS_WAREHOUSE_ID")
++UC_CATALOG = os.getenv("HOUSING_CATALOG", "housing")    # "workspace" for dev
++UC_SCHEMA = os.getenv("HOUSING_SCHEMA", "gold")         # "test" for dev
++
++def _execute(sql: str, params: list[dict] | None = None) -> list[list]:
++    result = sp_workspace_client.statement_execution.execute_statement(
++        warehouse_id=WAREHOUSE_ID,
++        statement=sql,
++        parameters=params or [],
++        catalog=UC_CATALOG,
++        schema=UC_SCHEMA,
++        wait_timeout="30s",
++    )
++    return [list(r) for r in (result.result.data_array or [])]
++```
++
++### DatabricksSession (for bulk reads / DataFrame operations)
++
++Use only if you need DataFrame-level operations (large aggregations, multi-table joins). `databricks-connect` is already in `requirements.txt`.
++
++```python
++from databricks.connect import DatabricksSession
++
++spark = DatabricksSession.builder.getOrCreate()
++df = spark.table(f"{UC_CATALOG}.{UC_SCHEMA}.rent__month__suburb").filter(...)
++```
++
++---
++
++## Environment Variables for Schema Targeting
++
++Add these to `agent-langgraph-advanced/.env` to switch between test and prod data:
++
++```bash
++# Production (default)
++HOUSING_CATALOG=housing
++HOUSING_SCHEMA=gold
++
++# Development — switch both to hit workspace.test.* seeded by generate_test_data.py
++# HOUSING_CATALOG=workspace
++# HOUSING_SCHEMA=test
++
++DATABRICKS_WAREHOUSE_ID=abc123def456   # find in Databricks UI → SQL Warehouses
++```
++
++The same tool code hits `workspace.test.*` locally and `housing.gold.*` in production with no code changes — just env var swap.
++
++---
++
++## Implementing a Tool
++
++Write new tools directly in `agent_server/` — the `agents/` directory at the project root is no longer used. Recommended locations:
++
++- One-off tool: define the `@tool` function directly at the top of `agent_server/agent.py`
++- Larger tool (needs helpers, its own imports): create `agent_server/tools/<name>.py` and import from there
++
++### Example: implementing `compute_isochrone`
++
++`agent_server/tools/compute_isochrone.py`:
++
++```python
++import os
++from langchain_core.tools import tool
++from agent_server.databricks_clients import sp_workspace_client
++
++WAREHOUSE_ID = os.getenv("DATABRICKS_WAREHOUSE_ID")
++CATALOG = os.getenv("HOUSING_CATALOG", "housing")    # "workspace" for dev
++SCHEMA = os.getenv("HOUSING_SCHEMA", "gold")         # "test" for dev
++
++@tool
++def compute_isochrone(origin_h3: str, mode: str, minutes: int) -> list[str]:
++    """
++    Return H3 cells reachable from origin_h3 within the given travel time.
++
++    Use when the user asks about commute distance, travel time to work,
++    or what's accessible within N minutes.
++
++    Args:
++        origin_h3: H3 res-8 cell ID for the origin (e.g. "8928308291bfffff")
++        mode: Travel mode — "transit", "drive", or "walk"
++        minutes: Maximum travel time in minutes
++
++    Returns:
++        List of reachable H3 cell IDs
++    """
++    sql = f"""
++        SELECT h3_destinations
++        FROM {CATALOG}.{SCHEMA}.isochrone
++        WHERE h3_origin = :h3_origin
++          AND mode = :mode
++          AND minutes_bucket = (
++            SELECT MIN(minutes_bucket)
++            FROM {CATALOG}.{SCHEMA}.isochrone
++            WHERE h3_origin = :h3_origin
++              AND mode = :mode
++              AND minutes_bucket >= :minutes
++          )
++        LIMIT 1
++    """
++    rows = _execute(sql, [
++        {"name": "h3_origin", "value": origin_h3, "type": "STRING"},
++        {"name": "mode", "value": mode, "type": "STRING"},
++        {"name": "minutes", "value": str(minutes), "type": "INT"},
++    ])
++    if not rows:
++        return []
++    return rows[0][0] or []   # h3_destinations is ARRAY<STRING>
++
++
++def _execute(sql: str, params: list[dict]) -> list[list]:
++    result = sp_workspace_client.statement_execution.execute_statement(
++        warehouse_id=WAREHOUSE_ID,
++        statement=sql,
++        parameters=params,
++        wait_timeout="30s",
++    )
++    return [list(r) for r in (result.result.data_array or [])]
++```
++
++---
++
++## Wiring a Tool into the Agent
++
++### Step 1 — Write the tool function
++
++Create `agent_server/tools/<name>.py` (or add the function directly in `agent_server/agent.py` for small tools).
++
++### Step 2 — Import in `agent_server/agent.py`
++
++```python
++# agent_server/agent.py — add import at the top
++from agent_server.tools.compute_isochrone import compute_isochrone
++from agent_server.tools.score_affordability import score_affordability
++from agent_server.tools.lookup_hazards import lookup_hazards
++```
++
++### Step 3 — Add to the tools list
++
++At `agent_server/agent.py:64`, extend the tools list:
++
++```python
++async def init_agent(store, workspace_client=None, checkpointer=None):
++    tools = [
++        get_current_time,
++        compute_isochrone,        # ← add here
++        score_affordability,      # ← add here
++        lookup_hazards,           # ← add here
++    ] + memory_tools()
++```
++
++### Step 4 — Confirm the system prompt covers the tool
++
++`agent_server/prompts.py` already lists all six tools with descriptions. If you add a new tool, add a bullet in the `## Your tools` section:
++
++```python
++SYSTEM_PROMPT = """...
++### Data and analysis tools
++- **your_new_tool(arg1, arg2)** — Short description of when the agent should call this.
++...
++"""
++```
++
++### Step 5 — Test locally
++
++```bash
++uv run start-app   # starts the FastAPI server on localhost:8000
++
++# In another terminal:
++curl -s -X POST http://localhost:8000/responses \
++  -H "Content-Type: application/json" \
++  -d '{
++    "input": [{"role": "user", "content": "What is the flood risk in Onehunga?"}],
++    "stream": false,
++    "custom_inputs": {"user_id": "test@example.com", "thread_id": "test-123"}
++  }' | jq '.output[].content'
++```
++
++Check that the agent calls `lookup_hazards` and returns a result from the seeded test data.
++
++---
++
++## Adding a Brand-New Tool
++
++Example: a tool that geocodes a suburb name to H3.
++
++1. Create `agent_server/tools/suburb_to_h3.py` with `@tool def suburb_to_h3(suburb_name: str) -> str | None`
++2. Query `{CATALOG}.{SCHEMA}.suburb` for `h3_centroid` where `suburb_name = :suburb` (reads from `workspace.test` during dev, `housing.gold` in prod)
++3. Wire it in (Steps 2–4 above)
++4. Update the system prompt so the LLM knows when to call it
++5. Add an example in the docstring (e.g. "Use this before calling compute_isochrone when the user gives a suburb name instead of an H3 cell")
++
++No routing code needed — the LLM reads the docstring and decides.
++
++---
++
++## Table Name Quick Reference
++
++| Prod table (`housing.gold.*`) | Test table (`workspace.test.*`) | Old stub name (wrong — ignore) |
++|---|---|---|
++| `housing.gold.suburb` | `workspace.test.suburb` | `dim_suburb` |
++| `housing.gold.hazard` | `workspace.test.hazard` | `dim_hazard` |
++| `housing.gold.isochrone` | `workspace.test.isochrone` | `fact_isochrone` |
++| `housing.gold.rent__month__suburb` | `workspace.test.rent__month__suburb` | `fact_rent_by_suburb_month` |
++| `housing.gold.income__year__suburb` | `workspace.test.income__year__suburb` | — |
++| `housing.gold.school` | `workspace.test.school` | — |
++
++Full column definitions: [`lakehouse-gold-schema.md`](lakehouse-gold-schema.md)
++
++---
++
++## Testing Against Synthetic Data
++
++Before running against real `housing.gold.*`:
++
++1. Set `HOUSING_CATALOG=workspace` and `HOUSING_SCHEMA=test` in `agent-langgraph-advanced/.env`
++2. Seed the test tables: `uv run python scripts/generate_test_data.py --write --serverless`
++3. Start the agent: `uv run start-app`
++4. Test with a suburb from the seed data (e.g. "Onehunga", "Mt Albert", "Sandringham")
++
++For production deployment, revert to `HOUSING_CATALOG=housing` and `HOUSING_SCHEMA=gold`.
++
++---
++
++**Author:** Naineel Soyantar | **Last Updated:** 2026-05-15
+diff --git a/docs/architecture.md b/docs/architecture.md
+index feb5af2..86d97be 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -2,6 +2,8 @@
+ 
+ This document describes how Housing Assistant is built end-to-end. It is the canonical reference for design decisions and trade-offs. If something here disagrees with code, update one or the other within the same PR.
+ 
++**New to the codebase?** See [docs/internal-workings/](internal-workings/) for step-by-step guides on LangGraph, MLflow, and agent design.
++
+ ## Goals and non-goals
+ 
+ **Goals.**
+diff --git a/docs/database-schema-migrations.md b/docs/database-schema-migrations.md
+new file mode 100644
+index 0000000..66176b0
+--- /dev/null
++++ b/docs/database-schema-migrations.md
+@@ -0,0 +1,531 @@
++# 05: Database Schema & Migrations
++
++Lakebase schema changes are managed with Drizzle ORM. Knowing which schema to edit — and how to generate/apply migrations — is essential before writing any data-layer code.
++
++---
++
++## Overview: Drizzle-Managed Schemas
++
++| | Chat UI | Housing Domain |
++|---|---|---|
++| **Database** | Lakebase (Postgres) | Lakebase (Postgres) |
++| **Schema** | `ai_chatbot` | `public` |
++| **Migration tool** | Drizzle ORM (`drizzle-kit`) | Drizzle ORM (`drizzle-kit`) |
++| **Language** | TypeScript | TypeScript |
++| **Location** | `e2e-chatbot-app-next/packages/db/src/schema.ts` | `e2e-chatbot-app-next/packages/db/src/schema-housing.ts` |
++| **Who changes it** | Frontend / chat concerns | Housing domain / agent concerns |
++
++Terraform provisions Lakebase infrastructure only: project, app service-principal-backed Postgres role, and application database. It does not run schema DDL.
++
++---
++
++## Chat UI — Drizzle ORM
++
++### What it stores
++
++Tables in the `ai_chatbot` Postgres schema:
++
++| Table | Purpose |
++|---|---|
++| `User` | Registered chat users (id, email) |
++| `Chat` | Chat sessions (id, title, userId, visibility, lastContext) |
++| `Message` | Individual messages (id, chatId, role, parts, attachments, traceId) |
++| `Vote` | Thumbs up/down per message (chatId, messageId, isUpvoted) |
++
++### Key files
++
++| File | Purpose |
++|---|---|
++| `packages/db/src/schema.ts` | **Source of truth** — Drizzle ORM table definitions |
++| `packages/db/src/queries.ts` | Query helpers (saveChat, getChatById, saveMessages, etc.) |
++| `packages/db/src/connection.ts` | DB connection setup |
++| `packages/db/migrations/` | Applied SQL migration files (auto-generated) |
++| `packages/db/migrations/meta/_journal.json` | Drizzle migration journal |
++| `drizzle.config.ts` | Drizzle config (dialect, schema path, migrations path) |
++
++### Applied migrations (in order)
++
++| File | What it did |
++|---|---|
++| `0000_robust_madelyne_pryor.sql` | Created `Chat`, `Message`, `User` tables |
++| `0001_add_trace_id.sql` | Added `traceId` column to `Message` (MLflow trace linkage) |
++| `0002_polite_red_hulk.sql` | Created `Vote` table |
++
++### How to add a new table (Drizzle)
++
++1. **Edit `schema.ts`** — define your table using Drizzle's schema builder:
++
++```typescript
++// packages/db/src/schema.ts
++import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
++
++export const PropertyAlert = pgTable('PropertyAlert', {
++  id: text('id').primaryKey().notNull(),
++  chatId: text('chatId')
++    .notNull()
++    .references(() => Chat.id),
++  suburb: text('suburb').notNull(),
++  createdAt: timestamp('createdAt').notNull(),
++});
++```
++
++2. **Generate the migration:**
++
++```bash
++cd e2e-chatbot-app-next
++npx drizzle-kit generate
++# Creates packages/db/migrations/000X_<auto-name>.sql
++```
++
++3. **Apply the migration:**
++
++```bash
++npx drizzle-kit migrate
++```
++
++4. **Export from `packages/db/src/index.ts`** if other packages need to import it.
++
++### How to add a column to an existing table
++
++Same flow — edit `schema.ts`, then `drizzle-kit generate` + `drizzle-kit migrate`. Drizzle diffs the schema and generates only the `ALTER TABLE` needed.
++
++### Resetting the database (dev only)
++
++```bash
++cd e2e-chatbot-app-next
++npx tsx scripts/reset-database.ts
++# Drops the ai_chatbot schema and drizzle migration tracking, then re-applies from scratch
++```
++
++---
++
++## Housing Domain — Drizzle ORM
++
++### What it stores
++
++Tables in the `public` Postgres schema:
++
++| Table | Purpose |
++|---|---|
++| `users` | Registered app users (user_id, email, display_name) |
++| `user_constraints` | Preferences per user (budget, household, commute, pets) |
++| `saved_searches` | Named search queries with JSONB query params |
++| `alerts` | Notification rules tied to searches |
++| `conversation_turns` | Full per-session message history (role, content, tool_calls) |
++
++These are described in detail in [`04-lakebase-auth-state.md`](04-lakebase-auth-state.md).
++
++### Key files
++
++| File | Purpose |
++|---|---|
++| `packages/db/src/schema-housing.ts` | **Source of truth** — housing-domain Drizzle table definitions |
++| `packages/db/migrations/` | Applied SQL migration files generated by Drizzle |
++| `packages/db/migrations/meta/_journal.json` | Drizzle migration journal |
++| `drizzle.config.ts` | Drizzle config, including both chat and housing schema files |
++
++### How to add a new table (Drizzle)
++
++1. **Edit `packages/db/src/schema-housing.ts`** — add your Drizzle table definition:
++
++```typescript
++import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
++
++export const propertyListings = pgTable(
++  'property_listings',
++  {
++    listing_id: text('listing_id').primaryKey(),
++    suburb: text('suburb').notNull(),
++    price_weekly: integer('price_weekly'),
++    bedrooms: integer('bedrooms'),
++    source_url: text('source_url'),
++    scraped_at: timestamp('scraped_at', { withTimezone: true }).defaultNow(),
++  },
++  (table) => [index('idx_property_listings_suburb').on(table.suburb)],
++);
++```
++
++2. **Generate and apply the migration:**
++
++```bash
++cd e2e-chatbot-app-next
++npx drizzle-kit generate
++npx drizzle-kit migrate
++```
++
++### How to add a column to an existing table
++
++Edit `packages/db/src/schema-housing.ts`, then generate and apply a Drizzle migration:
++
++```bash
++cd e2e-chatbot-app-next
++npx drizzle-kit generate
++npx drizzle-kit migrate
++```
++
++---
++
++## Which System to Use
++
++| Scenario | System |
++|---|---|
++| Storing chat messages, votes, session state | Drizzle (`ai_chatbot` schema) |
++| Storing user profiles, search preferences, alerts | Drizzle (`public` schema via `schema-housing.ts`) |
++| Caching property listings or suburb data | Drizzle (`public` schema via `schema-housing.ts`) |
++| Adding a field to the chat UI data model | Drizzle |
++| Adding a new housing-domain entity | Drizzle |
++
++---
++
++## ER Diagram (Both Systems)
++
++```mermaid
++erDiagram
++    %% --- Chat UI (ai_chatbot schema) ---
++    User ||--o{ Chat : "owns"
++    Chat ||--o{ Message : "contains"
++    Chat ||--o{ Vote : "receives"
++    Message ||--o{ Vote : "rated by"
++
++    User {
++        text id PK
++        text email
++    }
++    Chat {
++        text id PK
++        text userId FK
++        text title
++        text visibility
++        timestamp createdAt
++        text lastContext
++    }
++    Message {
++        text id PK
++        text chatId FK
++        text role
++        jsonb parts
++        jsonb attachments
++        text traceId
++        timestamp createdAt
++    }
++    Vote {
++        text chatId FK
++        text messageId FK
++        boolean isUpvoted
++    }
++
++    %% --- Housing Domain (public schema) ---
++    users ||--o{ user_constraints : "has"
++    users ||--o{ saved_searches : "has"
++    users ||--o{ alerts : "has"
++    users ||--o{ conversation_turns : "has"
++    saved_searches ||--o{ alerts : "triggers"
++
++    users {
++        text user_id PK
++        text email
++        text display_name
++        timestamp created_at
++        timestamp updated_at
++    }
++    user_constraints {
++        text constraint_id PK
++        text user_id FK
++        text name
++        boolean is_default
++        int budget_weekly_max
++        int household_size
++        boolean has_pets
++        text work_location
++        text preferred_modes
++        int max_commute_mins
++        timestamp updated_at
++    }
++    saved_searches {
++        text search_id PK
++        text user_id FK
++        text name
++        jsonb query_json
++        timestamp created_at
++    }
++    alerts {
++        text alert_id PK
++        text user_id FK
++        text search_id FK
++        jsonb threshold_json
++        text channel
++        text channel_target
++        boolean is_active
++        timestamp last_fired_at
++        timestamp created_at
++    }
++    conversation_turns {
++        text turn_id PK
++        text user_id FK
++        text session_id
++        text role
++        text content
++        jsonb tool_calls
++        timestamp created_at
++    }
++```
++
++---
++
++## Connection Details
++
++Both systems connect to Lakebase (Databricks-managed Postgres). Connection config comes from environment variables or Terraform-supplied values:
++
++```
++LAKEBASE_HOST       — Postgres hostname
++LAKEBASE_USER       — Service principal user
++LAKEBASE_PASSWORD   — From Databricks secrets scope
++LAKEBASE_DATABASE   — "housing" (domain) or as configured for chat UI
++```
++
++See [`04-lakebase-auth-state.md`](04-lakebase-auth-state.md) for the full auth + grants setup.
++
++---
++
++## Adding a Cross-Cutting Feature: Alerts Walkthrough
++
++Alerts touch every layer of the stack. Use this as the canonical example for any feature that needs DB persistence, an API, agent awareness, and a UI surface.
++
++The `alerts` table already exists in the housing-domain schema — no migration needed. The work is wiring it up across all layers.
++
++---
++
++### Layer 1 — Database (housing domain, `public` schema)
++
++**Table already defined in:** `packages/db/src/schema-housing.ts`
++
++```sql
++CREATE TABLE IF NOT EXISTS alerts (
++  alert_id       TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
++  user_id        TEXT        NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
++  search_id      TEXT        REFERENCES saved_searches (search_id) ON DELETE SET NULL,
++  threshold_json JSONB,          -- e.g. {"max_rent_weekly": 750}
++  channel        TEXT        NOT NULL CHECK (channel IN ('email', 'webhook')),
++  channel_target TEXT        NOT NULL,   -- email address or webhook URL
++  is_active      BOOLEAN     NOT NULL DEFAULT TRUE,
++  last_fired_at  TIMESTAMPTZ,
++  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++```
++
++If you need to add a column (e.g. `name TEXT`), update `packages/db/src/schema-housing.ts`, then generate and apply a Drizzle migration.
++
++**No action needed for the alerts table itself.**
++
++---
++
++### Layer 2 — DB Queries layer (TypeScript)
++
++**File:** `e2e-chatbot-app-next/packages/db/src/queries.ts`
++
++Add four functions after the existing `getVotesByChatId()` at line 497, following the same `ensureDb()` + `isDatabaseAvailable()` pattern used by every other function in that file:
++
++```typescript
++// After line 497 in queries.ts
++
++export async function saveAlert({
++  userId,
++  searchId,
++  thresholdJson,
++  channel,
++  channelTarget,
++}: {
++  userId: string;
++  searchId?: string;
++  thresholdJson: Record<string, unknown>;
++  channel: 'email' | 'webhook';
++  channelTarget: string;
++}) {
++  const db = await ensureDb();
++  if (!isDatabaseAvailable(db)) return;
++  // INSERT into the housing-domain Lakebase, not the ai_chatbot schema —
++  // use the lakebase connection, not the Drizzle db instance here
++}
++
++export async function getAlertsByUserId({ userId }: { userId: string }) { ... }
++export async function deleteAlertById({ alertId }: { alertId: string }) { ... }
++export async function updateAlertById({
++  alertId,
++  isActive,
++  lastFiredAt,
++}: {
++  alertId: string;
++  isActive?: boolean;
++  lastFiredAt?: Date;
++}) { ... }
++```
++
++> **Note:** The `alerts` table lives in the housing-domain Lakebase (System 2), not in the `ai_chatbot` Drizzle schema. These query functions need to use the Lakebase psycopg2/postgres connection, not the Drizzle ORM `db` instance. Use the same Lakebase connection helper already used by `utils_memory.py` on the backend, or create a parallel connection utility in the TS layer.
++
++---
++
++### Layer 3 — API route (Express backend)
++
++**Create new file:** `e2e-chatbot-app-next/server/src/routes/alerts.ts`
++
++Model it after `server/src/routes/feedback.ts` (the closest parallel — it handles per-user state with auth middleware):
++
++```typescript
++// server/src/routes/alerts.ts
++import { Router } from 'express';
++import { authMiddleware, requireAuth } from '../middleware/auth';
++import { saveAlert, getAlertsByUserId, deleteAlertById, updateAlertById } from '@repo/db';
++
++const router = Router();
++router.use(authMiddleware);
++
++// GET /api/alerts — list all alerts for the current user
++router.get('/', requireAuth, async (req, res) => { ... });
++
++// POST /api/alerts — create a new alert
++router.post('/', requireAuth, async (req, res) => { ... });
++
++// PATCH /api/alerts/:alertId — toggle active / update threshold
++router.patch('/:alertId', requireAuth, async (req, res) => { ... });
++
++// DELETE /api/alerts/:alertId — delete an alert
++router.delete('/:alertId', requireAuth, async (req, res) => { ... });
++
++export { router as alertsRouter };
++```
++
++**Register the router in:** `server/src/index.ts` at line 59:
++
++```typescript
++import { alertsRouter } from './routes/alerts';
++// ...
++app.use('/api/alerts', alertsRouter);
++```
++
++---
++
++### Layer 4 — Backend agent (LangGraph)
++
++**File:** `app/app-templates/agent-langgraph-advanced/agent_server/agent.py`
++
++Add a new `@tool` function and include it in the tool list at line 64:
++
++```python
++# agent_server/agent.py
++
++@tool
++def create_alert(
++    threshold_json: dict,
++    channel: str,
++    channel_target: str,
++    search_id: str | None = None,
++) -> str:
++    """
++    Save a housing alert for the current user. Call this when the user says
++    'notify me when', 'alert me if', or 'let me know when rent drops below X'.
++
++    Args:
++        threshold_json: Conditions to trigger the alert, e.g. {"max_rent_weekly": 700}
++        channel: Delivery channel — "email" or "webhook"
++        channel_target: Email address or webhook URL
++        search_id: Optional — link to an existing saved search
++    """
++    # Call the housing-domain Lakebase via psycopg2 to INSERT into alerts
++    ...
++    return f"Alert set. You'll be notified via {channel} when conditions are met."
++
++
++@tool
++def list_alerts() -> str:
++    """Return the current user's active alerts."""
++    ...
++
++
++# Line 64 — update the tool list:
++tools = [get_current_time, create_alert, list_alerts] + memory_tools()
++```
++
++**File:** `app/app-templates/agent-langgraph-advanced/agent_server/prompts.py`
++
++Append to `SYSTEM_PROMPT` to tell the agent when to invoke the alert tools:
++
++```python
++SYSTEM_PROMPT = """
++...existing prompt...
++
++## Alerts
++When the user expresses a desire to be notified about housing conditions (e.g. "tell me
++if rent drops", "alert me when a 3-bedroom under $700 appears"), call `create_alert`
++with the relevant threshold and their preferred channel. Always confirm the channel_target
++(email or webhook URL) before creating the alert. Call `list_alerts` if the user asks
++to see their existing alerts.
++"""
++```
++
++---
++
++### Layer 5 — Frontend UI
++
++Two surfaces to add:
++
++**1. Sidebar alerts panel** — `e2e-chatbot-app-next/client/src/components/app-sidebar.tsx`
++
++The sidebar already has a chat history section (lines 97–101). Add an "Alerts" section below it following the same pattern:
++
++```tsx
++// app-sidebar.tsx — after the existing chat history section
++<SidebarGroup>
++  <SidebarGroupLabel>Alerts</SidebarGroupLabel>
++  <AlertsList />   {/* new component — fetches GET /api/alerts */}
++</SidebarGroup>
++```
++
++**2. "Create alert" action on messages** — `e2e-chatbot-app-next/client/src/components/message-actions.tsx`
++
++Lines 15–196 show the existing copy/feedback buttons. Add a bell icon button that opens an alert creation dialog:
++
++```tsx
++// message-actions.tsx — add alongside existing action buttons
++<Button variant="ghost" size="icon" onClick={() => setAlertDialogOpen(true)}>
++  <BellIcon />
++</Button>
++<AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
++  {/* form: threshold, channel, channel_target → POST /api/alerts */}
++</AlertDialog>
++```
++
++The `AlertDialog` Radix primitive is already imported in the codebase (`components/ui/alert-dialog.tsx`) — no new dependency needed.
++
++---
++
++### Complete checklist
++
++```
++DB schema
++  [ ] alerts table already exists — no migration needed
++  [ ] Add column if needed in schema-housing.ts, then generate/apply a Drizzle migration
++
++DB queries (packages/db/src/queries.ts)
++  [ ] saveAlert()
++  [ ] getAlertsByUserId()
++  [ ] deleteAlertById()
++  [ ] updateAlertById()
++
++API routes
++  [ ] Create server/src/routes/alerts.ts
++  [ ] Register in server/src/index.ts (line 59)
++
++Agent
++  [ ] Add create_alert @tool to agent_server/agent.py (line 64)
++  [ ] Add list_alerts @tool to agent_server/agent.py (line 64)
++  [ ] Update SYSTEM_PROMPT in agent_server/prompts.py
++
++Frontend
++  [ ] AlertsList component — fetches GET /api/alerts, renders in sidebar
++  [ ] Alert creation dialog — triggered from message-actions.tsx, POSTs to /api/alerts
++  [ ] Alert toggle/delete — PATCH / DELETE from the sidebar list
++```
++
++---
++
++**Author**: Naineel Soyantar | **Last Updated**: 2026-05-14
+diff --git a/docs/lakehouse-gold-schema.md b/docs/lakehouse-gold-schema.md
+new file mode 100644
+index 0000000..0ee2d65
+--- /dev/null
++++ b/docs/lakehouse-gold-schema.md
+@@ -0,0 +1,230 @@
++# Lakehouse Gold Schema
++
++Column-level definitions for all `housing.gold.*` tables that the agent tools consume. Use this as the contract when writing pipelines, building Genie semantic layers, or implementing tool functions.
++
++> **Test data:** The seed script (`app/app-templates/agent-langgraph-advanced/scripts/generate_test_data.py`) writes synthetic data to `workspace.test.*` — the `workspace` catalog, `test` schema. Never touches `housing.gold.*` in production.
++
++---
++
++## Naming Convention
++
++- **Dimension tables** (stable reference data): entity name only — `suburb`, `school`, `hazard`
++- **Fact / aggregated tables** (time-series measures): `<entity>__<time_grain>__<breakdowns>` — `rent__month__suburb`, `income__year__suburb`
++
++---
++
++## Table: `suburb`
++
++Canonical suburb dimension. H3 cells at resolution 8 (~0.75 km² each). One row per `(suburb_name, territorial_authority)` pair.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `suburb_name` | STRING | N | Canonical suburb name (e.g. `"Onehunga"`) |
++| `territorial_authority` | STRING | N | Containing TA (e.g. `"Auckland City"`) |
++| `region` | STRING | N | Region (e.g. `"Auckland Region"`) |
++| `h3_cells` | ARRAY\<STRING\> | N | List of H3 res-8 cell IDs covering the suburb |
++| `h3_centroid` | STRING | Y | H3 cell closest to suburb centroid (for isochrone origin) |
++| `area_km2` | DOUBLE | Y | Approximate area in km² |
++| `population_2021` | INTEGER | Y | Stats NZ 2021 census population |
++| `median_age` | DOUBLE | Y | Median age from 2021 census |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(suburb_name, territorial_authority)`
++
++**Sample rows:**
++
++| suburb_name | territorial_authority | region | h3_centroid |
++|---|---|---|---|
++| Onehunga | Auckland City | Auckland Region | 8928308291bfffff |
++| Mt Albert | Auckland City | Auckland Region | 892830808cbffff |
++| Sandringham | Auckland City | Auckland Region | 892830808d3ffff |
++| Newton | Auckland City | Auckland Region | 89283080dcbffff |
++| Glen Eden | Waitākere Ranges | Auckland Region | 8928308065bffff |
++
++---
++
++## Table: `hazard`
++
++Natural hazard risk per H3 res-8 cell. Sourced from LINZ coastal/flood zones and EQC liquefaction maps.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `h3_cell` | STRING | N | H3 res-8 cell ID |
++| `flood_risk` | STRING | N | `"low"`, `"medium"`, or `"high"` |
++| `coastal_risk` | STRING | N | `"low"`, `"medium"`, or `"high"` |
++| `liquefaction_risk` | STRING | N | `"low"`, `"medium"`, or `"high"` |
++| `flood_zone_name` | STRING | Y | Source zone label (e.g. `"100yr floodplain"`) |
++| `source` | STRING | Y | Data source (e.g. `"LINZ"`, `"Auckland Council"`) |
++| `effective_date` | DATE | Y | Date hazard classification was applied |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `h3_cell`
++
++**Used by tool:** `lookup_hazards(suburb)` — joins to `suburb.h3_cells` to aggregate per-suburb risk (worst-case cell wins).
++
++**Aggregation rule:** if any cell in the suburb is `"high"`, return `"high"`; else if any is `"medium"`, return `"medium"`; else `"low"`.
++
++---
++
++## Table: `isochrone`
++
++Pre-computed travel-time reachability. Each row describes which H3 cells are reachable from `h3_origin` via `mode` within `minutes_bucket` minutes. Generated offline from GTFS feeds (transit) and OSRM (drive/walk).
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `h3_origin` | STRING | N | Origin H3 res-8 cell |
++| `mode` | STRING | N | `"transit"`, `"drive"`, or `"walk"` |
++| `minutes_bucket` | INTEGER | N | Upper bound: `10`, `20`, `30`, `45`, or `60` |
++| `h3_destinations` | ARRAY\<STRING\> | N | H3 cells reachable within this time bucket |
++| `destination_count` | INTEGER | N | `len(h3_destinations)` (pre-computed for fast filtering) |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(h3_origin, mode, minutes_bucket)`
++
++**Partitioned by:** `mode`
++
++**Used by tool:** `compute_isochrone(origin_h3, mode, minutes)` — returns `h3_destinations` for matching `(h3_origin, mode, minutes_bucket >= minutes)`.
++
++**Query pattern:**
++```sql
++SELECT h3_destinations
++FROM housing.gold.isochrone
++WHERE h3_origin = :origin_h3
++  AND mode = :mode
++  AND minutes_bucket = (
++    SELECT MIN(minutes_bucket) FROM housing.gold.isochrone
++    WHERE h3_origin = :origin_h3 AND mode = :mode AND minutes_bucket >= :minutes
++  )
++```
++
++---
++
++## Table: `rent__month__suburb`
++
++Monthly median rent by suburb and dwelling type. Sourced from MBIE rental bond data.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `suburb_name` | STRING | N | Canonical suburb name |
++| `territorial_authority` | STRING | N | Containing TA |
++| `month` | DATE | N | First day of month (e.g. `2024-01-01`) |
++| `dwelling_type` | STRING | N | `"all"`, `"house"`, `"apartment"`, or `"townhouse"` |
++| `median_rent_weekly` | INTEGER | Y | Median weekly rent in NZD |
++| `p25_rent_weekly` | INTEGER | Y | 25th percentile weekly rent |
++| `p75_rent_weekly` | INTEGER | Y | 75th percentile weekly rent |
++| `sample_size` | INTEGER | Y | Number of bonds in period |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(suburb_name, territorial_authority, month, dwelling_type)`
++
++**Partitioned by:** `month` (year-month)
++
++**Used by tool:** `score_affordability(suburb, household_income)` — fetches `median_rent_weekly` for the most recent month and `dwelling_type = 'all'`.
++
++---
++
++## Table: `income__year__suburb`
++
++Annual household income statistics by suburb. Sourced from Stats NZ census and annual income survey.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `suburb_name` | STRING | N | Canonical suburb name |
++| `territorial_authority` | STRING | N | Containing TA |
++| `year` | INTEGER | N | Reference year (e.g. `2023`) |
++| `median_household_income_annual` | INTEGER | Y | Median annual household income NZD |
++| `income_decile` | INTEGER | Y | National income decile 1–10 (1 = lowest) |
++| `sample_size` | INTEGER | Y | Number of households in sample |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(suburb_name, territorial_authority, year)`
++
++**Used by tool:** `score_affordability(suburb, household_income)` — used as fallback when the user hasn't provided their own income (the system prompt instructs the agent to use suburb median income as baseline).
++
++---
++
++## Table: `school`
++
++School dimension. Sourced from Education Counts NZ.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `school_id` | STRING | N | Ministry of Education school ID |
++| `school_name` | STRING | N | Official school name |
++| `suburb_name` | STRING | Y | Nearest suburb |
++| `territorial_authority` | STRING | Y | Containing TA |
++| `h3_cell` | STRING | Y | H3 res-8 cell of school location |
++| `school_type` | STRING | Y | `"primary"`, `"intermediate"`, `"secondary"`, `"composite"` |
++| `year_levels` | STRING | Y | Year levels offered (e.g. `"1-6"`, `"7-10"`, `"1-13"`) |
++| `eqi_score` | INTEGER | Y | Equity Index score (formerly decile; higher = more affluent intake) |
++| `roll_2023` | INTEGER | Y | 2023 roll count |
++| `latitude` | DOUBLE | Y | WGS84 latitude |
++| `longitude` | DOUBLE | Y | WGS84 longitude |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `school_id`
++
++**Used by:** `query_genie` (via Genie semantic layer) — not queried directly by agent tools.
++
++---
++
++## Table: `crime__month__area_unit`
++
++Monthly crime incident counts by area unit and category. Sourced from NZ Police.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `area_unit_name` | STRING | N | NZ area unit name (finer than suburb) |
++| `territorial_authority` | STRING | N | Containing TA |
++| `month` | DATE | N | First day of month |
++| `category` | STRING | N | Crime category (e.g. `"theft"`, `"assault"`, `"burglary"`) |
++| `incidents` | INTEGER | N | Incident count |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(area_unit_name, month, category)`
++
++**Used by:** `query_genie` only.
++
++---
++
++## Table: `house_price__month__territorial_authority`
++
++Monthly house price index by TA and dwelling type. Sourced from Stats NZ HPI.
++
++| Column | Type | Nullable | Description |
++|---|---|---|---|
++| `territorial_authority` | STRING | N | TA name |
++| `month` | DATE | N | First day of month |
++| `dwelling_type` | STRING | N | `"all"`, `"house"`, `"apartment"` |
++| `hpi_index` | DOUBLE | Y | House Price Index (base 1000 = 2010-Q1) |
++| `yoy_change_pct` | DOUBLE | Y | Year-on-year % change |
++| `_updated_at` | TIMESTAMP | N | Row last refreshed |
++
++**Primary key:** `(territorial_authority, month, dwelling_type)`
++
++**Used by:** `query_genie` only — primarily for council planner queries ("which TAs saw rent grow > 8% while income grew < 3%?").
++
++---
++
++## Tool → Table Cross-Reference
++
++| Tool | Tables read | Join key |
++|---|---|---|
++| `lookup_hazards(suburb)` | `suburb` → `hazard` | `suburb.h3_cells` ↔ `hazard.h3_cell` |
++| `compute_isochrone(origin_h3, mode, minutes)` | `isochrone` | `h3_origin`, `mode`, `minutes_bucket` |
++| `score_affordability(suburb, household_income)` | `rent__month__suburb`, `income__year__suburb` | `suburb_name` |
++| `query_genie(question)` | all tables (via Genie semantic layer) | — |
++| `save_user_profile` | Lakebase `user_constraints` | `user_id` |
++| `set_alert` | Lakebase `saved_searches`, `alerts` | `user_id` |
++
++---
++
++## Delta Format Notes
++
++- All gold tables are Delta Lake format in Unity Catalog
++- Catalog: `housing`, schema: `gold`
++- Tables are managed (storage under UC-controlled path)
++- Partitioning: fact tables partition by `month`; dimension tables are unpartitioned
++- Optimize/ZORDER hints: `rent__month__suburb` → ZORDER by `suburb_name`; `isochrone` → ZORDER by `h3_origin`
++
++**Author:** Naineel Soyantar | **Last Updated:** 2026-05-15
+diff --git a/docs/lakehouse-seed-data.md b/docs/lakehouse-seed-data.md
+new file mode 100644
+index 0000000..6c1d199
+--- /dev/null
++++ b/docs/lakehouse-seed-data.md
+@@ -0,0 +1,179 @@
++# Lakehouse Seed Data & SP Client Guide
++
++How to write synthetic test data into the `workspace.test` Unity Catalog schema using the same service principal credentials the agent server already uses. This lets you develop and test agent tools against realistic NZ data without touching `housing.gold`.
++
++---
++
++## Two Databricks Clients — When to Use Each
++
++The agent server uses two distinct clients sourced from the same credentials:
++
++| Client | Import | Auth source | Use for |
++|---|---|---|---|
++| `WorkspaceClient` | `from databricks.sdk import WorkspaceClient` | `DATABRICKS_CONFIG_PROFILE` or env vars | REST APIs: Genie queries, statement execution (SQL reads), app management |
++| `DatabricksSession` | `from databricks.connect import DatabricksSession` | `DATABRICKS_CONFIG_PROFILE` or env vars | Spark SQL: reading/writing Delta tables, ETL, seed scripts |
++
++Both read from the same `~/.databrickscfg` profile set by `DATABRICKS_CONFIG_PROFILE` (or from `DATABRICKS_HOST` + `DATABRICKS_TOKEN` env vars).
++
++### WorkspaceClient — already in agent_server
++
++```python
++# agent_server/agent.py:41
++sp_workspace_client = WorkspaceClient()   # reads profile from env/config
++```
++
++Use this inside tool functions for lightweight SQL reads via the Statement Execution API:
++
++```python
++from databricks.sdk import WorkspaceClient
++
++client = WorkspaceClient()
++result = client.statement_execution.execute_statement(
++    warehouse_id="your-warehouse-id",          # set DATABRICKS_WAREHOUSE_ID env var
++    statement="SELECT * FROM housing.gold.rent__month__suburb WHERE suburb_name = :suburb",
++    parameters=[{"name": "suburb", "value": "Onehunga", "type": "STRING"}],
++    catalog="housing",
++    schema="gold",
++    wait_timeout="30s",
++)
++rows = [list(r) for r in result.result.data_array]
++```
++
++### DatabricksSession — for seed scripts and pipelines
++
++```python
++import os
++from databricks.connect import DatabricksSession
++
++spark = (
++    DatabricksSession.builder
++    .profile(os.getenv("DATABRICKS_CONFIG_PROFILE", "DEFAULT"))
++    .serverless(True)          # or .clusterId("abc123") for an existing cluster
++    .getOrCreate()
++)
++
++df = spark.createDataFrame(rows, schema=spark_schema)
++df.write.format("delta").mode("overwrite").saveAsTable("workspace.test.suburb")
++```
++
++---
++
++## Test Namespace: `workspace.test`
++
++All seed data is written to `workspace.test.*` — the built-in `workspace` Unity Catalog, `test` schema. Column definitions mirror `housing.gold.*` exactly so tool code can switch between them with a single env var change.
++
++### Why `workspace.test` and not `housing.test`?
++
++- `housing` catalog requires explicit grants from the catalog owner; `workspace` catalog allows self-service schema creation for SP principals
++- Keeps test data entirely separate from production data lineage
++- Easier to wipe without risking Genie or dashboard dependencies
++
++### Schema mirrors gold exactly
++
++The seed script creates tables with the same column names and types as documented in [`lakehouse-gold-schema.md`](lakehouse-gold-schema.md). Tools switch between test and prod via `HOUSING_CATALOG` + `HOUSING_SCHEMA` env vars (see [agent-tool-extension-guide.md](agent-tool-extension-guide.md)).
++
++---
++
++## Running the Seed Script
++
++**Script location:** `app/app-templates/agent-langgraph-advanced/scripts/generate_test_data.py`
++
++### Prerequisites
++
++1. `.env` in `agent-langgraph-advanced/` configured with working Databricks credentials
++2. `databricks-connect` installed (`uv add databricks-connect` in the template virtualenv)
++3. SP must have `CREATE SCHEMA` on `workspace` catalog **or** `workspace.test` must already exist
++4. Compute available: serverless (easiest) or an existing cluster
++
++### Dry-run first (no remote writes)
++
++```bash
++cd app/app-templates/agent-langgraph-advanced
++uv run python scripts/generate_test_data.py
++```
++
++Prints the row counts for each table and exits — no Databricks connection made.
++
++### Write with serverless compute (recommended)
++
++```bash
++uv run python scripts/generate_test_data.py --write --serverless
++```
++
++### Write with an existing cluster
++
++```bash
++uv run python scripts/generate_test_data.py --write --cluster-id <CLUSTER_ID>
++```
++
++### All flags
++
++| Flag | Env var alternative | Purpose |
++|---|---|---|
++| `--write` | — | Required to actually write; omit for dry-run |
++| `--serverless` | `DATABRICKS_SERVERLESS=true` | Use serverless Databricks Connect compute |
++| `--cluster-id ID` | `DATABRICKS_CLUSTER_ID=ID` | Use a specific running cluster |
++| `--profile NAME` | `DATABRICKS_CONFIG_PROFILE=NAME` | Databricks auth profile (default: `DEFAULT`) |
++| `--reset` | — | Drop `workspace.test` before seeding (requires `--write`) |
++
++The script is idempotent — `mode("overwrite")` means re-running replaces data cleanly.
++
++### Expected output
++
++```
++[generate_test_data] DRY RUN — no data will be written.
++[generate_test_data] Would write the following to workspace.test.*:
++
++  workspace.test.suburb                            15 rows
++  workspace.test.hazard                            45 rows
++  workspace.test.isochrone                        225 rows
++  workspace.test.rent__month__suburb            1,440 rows
++  workspace.test.income__year__suburb              30 rows
++  workspace.test.school                            15 rows
++
++[generate_test_data] Re-run with --write to execute.
++```
++
++### Verify in Unity Catalog Explorer
++
++After `--write`, open the Databricks UI → Catalog → `workspace` → `test` and check each table has rows.
++
++---
++
++## Permissions Needed for the SP
++
++```sql
++-- Run once as a workspace admin or catalog owner
++
++-- Allow SP to create the test schema (workspace catalog is usually open to workspace users)
++GRANT CREATE SCHEMA ON CATALOG workspace TO `sp-housing-app`;
++
++-- Allow SP to read and write test tables
++GRANT ALL PRIVILEGES ON SCHEMA workspace.test TO `sp-housing-app`;
++
++-- Allow SP to read gold tables in production
++GRANT SELECT ON SCHEMA housing.gold TO `sp-housing-app`;
++```
++
++> The SP gets no write permissions on `housing.gold` — read-only for production data.
++
++---
++
++## Resetting Test Data
++
++```bash
++# Drop and recreate from scratch
++uv run python scripts/generate_test_data.py --write --serverless --reset
++```
++
++Or from the Databricks SQL console:
++
++```sql
++DROP SCHEMA IF EXISTS workspace.test CASCADE;
++```
++
++Then re-run the seed script.
++
++---
++
++**Author:** Naineel Soyantar | **Last Updated:** 2026-05-15

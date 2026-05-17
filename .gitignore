@@ -30,8 +30,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+
+# Below lib - interferes with our chatbot lib
+# lib/
+# lib64/
 parts/
 sdist/
 var/
@@ -122,6 +124,16 @@ service-account*.json
 logs/
 tmp/
 .tmp/
+
+# ─────────────────────────────────────────────────────────────────────
+#  Internal working notes — not for version control
+# ─────────────────────────────────────────────────────────────────────
+internal-workings/
+
+# Claude worktrees
+.claude/worktrees
+
+app/app-templates/agent-langgraph-advanced/data_source
 
 # Local LINZ WFS fetch output (notebooks/linz_fetch_wfs.py default)
 out/
