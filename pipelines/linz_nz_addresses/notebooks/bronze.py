@@ -3,7 +3,7 @@
 # MAGIC # LINZ NZ Addresses — bronze layer
 # MAGIC
 # MAGIC Auto Loader over JSONL landings at
-# MAGIC `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/<run_date>/linz_nz_addresses.jsonl`.
+# MAGIC `/Volumes/housing/bronze/linz_nz_addresses_files/nz_addresses/<run_date>/linz_nz_addresses.jsonl`.
 # MAGIC
 # MAGIC - `linz_nz_addresses_raw` — GeoJSON Feature rows as landed.
 # MAGIC - `linz_nz_addresses` — flattened address attributes with provenance.
@@ -15,7 +15,7 @@ from pyspark.sql import functions as F
 
 # COMMAND ----------
 
-VOLUME_ROOT = "/Volumes/housing/bronze/addresses_files/linz_nz_addresses"
+VOLUME_ROOT = "/Volumes/housing/bronze/linz_nz_addresses_files/nz_addresses"
 
 # COMMAND ----------
 
@@ -35,7 +35,7 @@ def linz_nz_addresses_raw():
             "_run_date",
             F.regexp_extract(
                 F.col("_metadata.file_path"),
-                r"/linz_nz_addresses/([0-9]{4}-[0-9]{2}-[0-9]{2})/",
+                r"/nz_addresses/([0-9]{4}-[0-9]{2}-[0-9]{2})/",
                 1,
             ),
         )

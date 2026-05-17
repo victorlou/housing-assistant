@@ -45,7 +45,7 @@ jobs:
           python-version: "3.12"
       - name: Install ruff
         if: steps.pyfiles.outputs.count != '0'
-        run: pip install "ruff==0.12.1"
+        run: pip install ruff
       - name: Lint
         if: steps.pyfiles.outputs.count != '0'
         run: ruff check .

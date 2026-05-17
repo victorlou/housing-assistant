@@ -11,12 +11,34 @@ sources:
     cadence: per_census
     ingestion_pipeline: pipelines/census_2023
     target_tables:
+      - housing.silver.census_sa2_metric
+      - housing.silver.census_sa2_features
       - housing.gold.income__year__suburb
-      - housing.gold.suburb
+      - housing.gold.tenure__year__suburb
+      - housing.gold.rent__year__suburb
+      - housing.gold.crowding__year__suburb
+      - housing.gold.dwelling__year__suburb
+      - housing.gold.census_metric__year__sa2
     tier: 1
     notes: |
-      2023 Census totals by topic for households and dwellings by SA2 via ArcGIS
-      FeatureServer; bronze JSONL → DLT bronze/silver/gold. NZDep is a separate ingest.
+      2023 Census households, dwellings, and individuals by SA2 via ArcGIS FeatureServer.
+      Enriches housing.gold.suburb (places). NZDep is a separate ingest. TA-level census
+      summaries also exist in housing_indicators (HUD).
+
+  - name: places
+    publisher: Stats NZ
+    licence: CC-BY-4.0
+    url: https://datafinder.stats.govt.nz/
+    auth: api-key
+    cadence: quarterly
+    ingestion_pipeline: pipelines/places
+    target_tables:
+      - housing.gold.suburb
+      - housing.gold.h3_cell
+    tier: 1
+    notes: |
+      SA2 2023 polygons and canonical suburb dimension; census demographics joined from
+      housing.silver.census_sa2_features after census_2023_ingest.
 
   - name: linz_nz_addresses
     publisher: Toitū Te Whenua LINZ
@@ -41,12 +63,12 @@ sources:
     cadence: monthly
     ingestion_pipeline: pipelines/police_recorded_crime
     target_tables:
-      - housing.bronze.police_anzsoc_victimisations
+      - housing.bronze.police_recorded_crime_anzsoc_victimisations
       - housing.silver.crime_victimisation_monthly
       - housing.gold.crime__month__anzsoc_subdivision
     tier: 1
     notes: |
-      Manual Tableau CSV to crime_files; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
+      Manual Tableau CSV to police_recorded_crime_files; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
       Current export is ANZSOC-by-month (no geography). crime__month__area_unit needs Time and Place export.
 # Sources will be added as they are wired up. Schema:
 #

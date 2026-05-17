@@ -74,7 +74,7 @@ resources:
     census_2023_ingest:
       name: census_2023_ingest
       description: |
-        Fetch 2023 Census SA2 households and dwellings from Stats NZ ArcGIS,
+        Fetch 2023 Census SA2 households, dwellings, and individuals from Stats NZ ArcGIS,
         then bronze → silver → gold. See ./README.md.
 
       tags:
@@ -102,20 +102,28 @@ resources:
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              layer_key: households_sa2
+              feed_source: households_sa2
               retention_days: "365"
 
         - task_key: fetch_dwellings_sa2
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              layer_key: dwellings_sa2
+              feed_source: dwellings_sa2
+              retention_days: "365"
+
+        - task_key: fetch_individuals_sa2
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: individuals_sa2
               retention_days: "365"
 
         - task_key: transform_bronze
           depends_on:
             - task_key: fetch_households_sa2
             - task_key: fetch_dwellings_sa2
+            - task_key: fetch_individuals_sa2
           run_if: ALL_DONE
           pipeline_task:
             pipeline_id: ${resources.pipelines.census_2023_bronze.id}

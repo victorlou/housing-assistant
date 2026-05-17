@@ -3,7 +3,7 @@
 # MAGIC # Census 2023 bronze layer
 # MAGIC
 # MAGIC Auto Loader streams over GeoJSON Feature JSONL landed at
-# MAGIC `/Volumes/housing/bronze/census_files/<dataset>/<run_date>/*.jsonl`.
+# MAGIC `/Volumes/housing/bronze/census_2023_files/<dataset>/<run_date>/*.jsonl`.
 
 # COMMAND ----------
 
@@ -12,7 +12,7 @@ from pyspark.sql import functions as F
 
 # COMMAND ----------
 
-VOLUME_ROOT = "/Volumes/housing/bronze/census_files"
+VOLUME_ROOT = "/Volumes/housing/bronze/census_2023_files"
 
 
 def _stream_census_jsonl(dataset_subdir: str, dataset_name: str):
@@ -66,7 +66,6 @@ def _make_bronze_table(table_name: str, dataset_subdir: str, dataset_name: str) 
         table_properties={
             "quality": "bronze",
             "project": "housing-assistant",
-            "source": "census_2023",
         },
     )
     def _bronze_table():
@@ -74,7 +73,8 @@ def _make_bronze_table(table_name: str, dataset_subdir: str, dataset_name: str) 
 
 
 for _table, _subdir, _dataset in [
-    ("census_households_sa2", "census_2023_households_sa2", "households_sa2"),
-    ("census_dwellings_sa2", "census_2023_dwellings_sa2", "dwellings_sa2"),
+    ("census_2023_households_sa2", "census_2023_households_sa2", "households_sa2"),
+    ("census_2023_dwellings_sa2", "census_2023_dwellings_sa2", "dwellings_sa2"),
+    ("census_2023_individuals_sa2", "census_2023_individuals_sa2", "individuals_sa2"),
 ]:
     _make_bronze_table(_table, _subdir, _dataset)

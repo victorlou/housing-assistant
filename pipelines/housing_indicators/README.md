@@ -214,7 +214,19 @@ Even with TA-name normalisation applied, two areas have no HUD data and will ret
 
 Both are real data gaps, not bugs.
 
+## Relationship to census_2023
+
+[`pipelines/census_2023`](../census_2023/) ingests **SA2-level** 2023 Census metrics from Stats NZ ArcGIS and enriches `housing.gold.suburb` via `housing.silver.census_sa2_features`. This bundle (HUD) remains the source for **territorial-authority** housing-market indicators plus **TA-level** census summaries (themes `Census Tenure`, `Census Crowding`, `Census Housing Deprivation`, `Rent Proportion`).
+
+| Question grain | Use |
+|----------------|-----|
+| Suburb / SA2 demographics | `housing.gold.suburb`, `housing.gold.income__year__suburb`, other `*__year__suburb` census marts |
+| TA affordability, sales, rent | `housing.gold.affordability__quarter__ta`, `house_price__month__ta`, etc. |
+| TA census % (quick join on `ta_name`) | `housing.gold.housing_indicator__month__ta` |
+
+Median household income at SA2 is **not** in HUD; use census marts. HUD uses income only inside affordability ratios.
+
 ## Coming next
 
 - **Automated URL fetch.** HUD's download URL is predictable (`/assets/Uploads/Documents/LHS-data-download-<Month>-<Year>.xlsx`). If `hud.govt.nz` doesn't Cloudflare-block Databricks egress (RBNZ does, HUD probably doesn't), this becomes one of the few NZ open-data sources we can poll automatically.
-- **More pivoted views as need emerges.** MSD (housing register), Census Tenure, Census Crowding — easy follow-ups.
+- **More pivoted views as need emerges.** MSD (housing register) — easy follow-up; census tenure/crowding at TA are largely superseded by SA2 census marts for suburb questions.

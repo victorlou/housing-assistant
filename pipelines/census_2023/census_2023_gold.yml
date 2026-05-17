@@ -1,0 +1,102 @@
+# Curated 2023 Census SA2 metrics for silver features and gold marts.
+# Field names verified against Stats NZ ArcGIS FeatureServer aliases (May 2026).
+census_year: 2023
+
+metrics:
+  households_total:
+    dataset: households_sa2
+    field_name: VAR_4_3
+  households_crowded:
+    dataset: households_sa2
+    field_name: VAR_4_48
+  households_crowding_total_stated:
+    dataset: households_sa2
+    field_name: VAR_4_57
+  tenure_owned:
+    dataset: households_sa2
+    field_name: VAR_4_184
+  tenure_not_owned:
+    dataset: households_sa2
+    field_name: VAR_4_185
+  tenure_total_stated:
+    dataset: households_sa2
+    field_name: VAR_4_189
+  households_income_stated:
+    dataset: households_sa2
+    field_name: VAR_4_224
+  median_household_income:
+    dataset: households_sa2
+    field_name: VAR_4_225
+  median_weekly_rent:
+    dataset: households_sa2
+    field_name: VAR_4_261
+  renting_households_total:
+    dataset: households_sa2
+    field_name: VAR_4_259
+  renting_households_stated:
+    dataset: households_sa2
+    field_name: VAR_4_260
+  dwellings_always_damp:
+    dataset: dwellings_sa2
+    field_name: VAR_3_29
+  dwellings_sometimes_damp:
+    dataset: dwellings_sa2
+    field_name: VAR_3_30
+  dwellings_damp_total_stated:
+    dataset: dwellings_sa2
+    field_name: VAR_3_34
+  dwellings_mould_a4_always:
+    dataset: dwellings_sa2
+    field_name: VAR_3_41
+  dwellings_mould_total_stated:
+    dataset: dwellings_sa2
+    field_name: VAR_3_46
+  dwellings_no_heating:
+    dataset: dwellings_sa2
+    field_name: VAR_3_135
+  dwellings_mean_rooms:
+    dataset: dwellings_sa2
+    field_name: VAR_3_215
+  population_total:
+    dataset: individuals_sa2
+    field_name: VAR_1_3
+  median_age:
+    dataset: individuals_sa2
+    field_name: VAR_1_69
+
+marts:
+  income__year__suburb:
+    - median_household_income
+    - households_total
+    - households_income_stated
+  tenure__year__suburb:
+    - tenure_owned
+    - tenure_not_owned
+    - tenure_total_stated
+  rent__year__suburb:
+    - median_weekly_rent
+    - renting_households_total
+    - renting_households_stated
+  crowding__year__suburb:
+    - households_crowded
+    - households_crowding_total_stated
+  dwelling__year__suburb:
+    - dwellings_always_damp
+    - dwellings_sometimes_damp
+    - dwellings_damp_total_stated
+    - dwellings_mould_a4_always
+    - dwellings_mould_total_stated
+    - dwellings_no_heating
+    - dwellings_mean_rooms
+
+suburb_enrichment:
+  - median_household_income
+  - households_total
+  - tenure_owned
+  - tenure_not_owned
+  - tenure_total_stated
+  - median_weekly_rent
+  - households_crowded
+  - households_crowding_total_stated
+  - population_total
+  - median_age

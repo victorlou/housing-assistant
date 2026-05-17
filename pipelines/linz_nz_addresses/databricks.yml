@@ -19,8 +19,8 @@ permissions:
 
 resources:
   pipelines:
-    linz_bronze:
-      name: linz_bronze
+    linz_nz_addresses_bronze:
+      name: linz_nz_addresses_bronze
       catalog: housing
       schema: bronze
       serverless: true
@@ -36,8 +36,8 @@ resources:
         - notebook:
             path: ./notebooks/bronze.py
 
-    linz_silver:
-      name: linz_silver
+    linz_nz_addresses_silver:
+      name: linz_nz_addresses_silver
       catalog: housing
       schema: silver
       serverless: true
@@ -53,8 +53,8 @@ resources:
         - notebook:
             path: ./notebooks/silver.py
 
-    linz_gold:
-      name: linz_gold
+    linz_nz_addresses_gold:
+      name: linz_nz_addresses_gold
       catalog: housing
       schema: gold
       serverless: true
@@ -97,31 +97,33 @@ resources:
           - ${var.notification_email}
 
       tasks:
-        - task_key: fetch
+        - task_key: fetch_nz_addresses
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
+              feed_source: nz_addresses
               retention_days: "90"
-              secret_scope: "housing-assistant"
-              secret_key: "linz_api_key"
+              auth_secret_scope: housing-assistant
+              auth_secret_key: linz_api_key
 
         - task_key: transform_bronze
           depends_on:
-            - task_key: fetch
+            - task_key: fetch_nz_addresses
+          run_if: ALL_DONE
           pipeline_task:
-            pipeline_id: ${resources.pipelines.linz_bronze.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_bronze.id}
 
         - task_key: transform_silver
           depends_on:
             - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.linz_silver.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_silver.id}
 
         - task_key: transform_gold
           depends_on:
             - task_key: transform_silver
           pipeline_task:
-            pipeline_id: ${resources.pipelines.linz_gold.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_gold.id}
 
 targets:
   dev:

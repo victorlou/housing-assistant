@@ -3,11 +3,11 @@
 # MAGIC # LINZ NZ Addresses WFS fetch
 # MAGIC
 # MAGIC Scheduled job: pages LINZ LDS WFS (NZ Addresses), writes JSONL under the
-# MAGIC `addresses_files` bronze volume (date-stamped folder), skips when
+# MAGIC `linz_nz_addresses_files` bronze volume (date-stamped folder), skips when
 # MAGIC `content_hash` matches the last successful run, prunes landings older than
 # MAGIC retention, and logs to `housing.bronze.ingest_runs`.
 # MAGIC
-# MAGIC Same operational pattern as `gtfs_auckland_transport/notebooks/fetch.py`.
+# MAGIC Same operational pattern as `pipelines/gtfs/notebooks/fetch.py`.
 # MAGIC API key: Databricks secret (widgets) or `LINZ_API_KEY` env on the cluster.
 
 # COMMAND ----------
@@ -52,9 +52,7 @@ from linz_fetch_wfs import fetch_to_jsonl_hashed
 
 # COMMAND ----------
 
-SOURCE_NAME = "linz_nz_addresses"
-BRONZE_VOLUME = "/Volumes/housing/bronze/addresses_files"
-SOURCE_SUBDIR = "linz_nz_addresses"
+BRONZE_VOLUME = "/Volumes/housing/bronze/linz_nz_addresses_files"
 OUTPUT_FILENAME = "linz_nz_addresses.jsonl"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 
@@ -69,15 +67,18 @@ WFS_MAX_RETRIES = 5
 WFS_RETRY_BACKOFF_SECONDS = 3.0
 
 # Job parameters (overridable via DAB base_parameters or in the workspace UI), same idea as GTFS widgets.
+dbutils.widgets.text("feed_source", "nz_addresses", "Feed source name")
 dbutils.widgets.text("retention_days", "90", "Retention (days)")
-dbutils.widgets.text(
-    "secret_scope", "", "Secret scope for LINZ API key (optional if env LINZ_API_KEY)"
-)
-dbutils.widgets.text("secret_key", "linz_api_key", "Secret key name")
+dbutils.widgets.text("auth_secret_scope", "", "Auth secret scope (optional)")
+dbutils.widgets.text("auth_secret_key", "linz_api_key", "Auth secret key (optional)")
 
+feed_source = dbutils.widgets.get("feed_source").strip()
 retention_days = int(dbutils.widgets.get("retention_days"))
-secret_scope = (dbutils.widgets.get("secret_scope") or "").strip()
-secret_key = (dbutils.widgets.get("secret_key") or "linz_api_key").strip()
+auth_secret_scope = (dbutils.widgets.get("auth_secret_scope") or "").strip()
+auth_secret_key = (dbutils.widgets.get("auth_secret_key") or "linz_api_key").strip()
+
+SOURCE_NAME = f"linz_nz_addresses_{feed_source}"
+SOURCE_SUBDIR = feed_source
 
 # COMMAND ----------
 # MAGIC %md
@@ -192,13 +193,13 @@ def last_successful_content_hash() -> str | None:
 
 
 def resolve_linz_api_key() -> str:
-    if secret_scope:
-        return dbutils.secrets.get(secret_scope, secret_key).strip()
+    if auth_secret_scope:
+        return dbutils.secrets.get(auth_secret_scope, auth_secret_key).strip()
     got = os.environ.get("LINZ_API_KEY")
     if got:
         return got.strip()
     raise RuntimeError(
-        "LINZ API key not configured: set widgets secret_scope + secret_key, "
+        "LINZ API key not configured: set widgets auth_secret_scope + auth_secret_key, "
         "or set LINZ_API_KEY on the cluster/job."
     )
 

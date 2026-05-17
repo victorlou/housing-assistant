@@ -61,32 +61,6 @@ Conventions:
 - Never commit `terraform.tfvars` or `.terraform/` directories. Both are in `.gitignore`.
 - Remote state lives in an S3 bucket configured in `backend.tf`.
 
-## LINZ NZ Addresses (WFS)
-
-1. Put the LINZ Data Service API key on the job or cluster: Databricks secret (`secret_scope` / `secret_key` notebook widgets, recommended) or `LINZ_API_KEY` on the job/cluster. For optional local CLI runs, export `LINZ_API_KEY` in your shell.
-2. Deploy the LINZ bundle (`pipelines/linz_nz_addresses/`): `databricks bundle deploy --target dev`. This deploys the **ingest job** (`linz_nz_addresses_ingest`) and the **DLT** pipeline.
-3. Run `databricks bundle run linz_nz_addresses_ingest --target dev` (or wait for the schedule). Landings go to `/Volumes/housing/bronze/addresses_files/linz_nz_addresses/YYYY-MM-DD/` (same `housing` catalog convention as the GTFS ingest job).
-4. For ad-hoc local fetch only: `python -m ingestion.linz_wfs --output ./out` (install `requests` and `PyYAML` first), then `databricks fs cp` into the same volume prefix if you are not using the job.
-
-Further reading: [`pipelines/linz_nz_addresses/README.md`](../pipelines/linz_nz_addresses/README.md) and [LINZ LDS API notes](linz-lds-apis.md).
-
-## NZ Police recorded crime (manual CSV)
-
-No scheduled fetch yet. Land a Tableau **Full Data** export, then run DLT.
-
-1. Upload CSV to the bronze volume (date-stamped folder):
-
-   ```powershell
-   $date = Get-Date -Format "yyyy-MM-dd"
-   databricks fs cp "$env:USERPROFILE\Downloads\ANZSOC_Full Data_data.csv" `
-     "dbfs:/Volumes/housing/bronze/crime_files/police_recorded_crime/$date/anzsoc_victimisations.csv" `
-     --overwrite -p hackathon
-   ```
-
-2. Deploy and run: `cd pipelines/police_recorded_crime`, `databricks bundle deploy --target dev -p hackathon`, then `databricks bundle run police_recorded_crime_ingest --target dev -p hackathon` (bronze → silver → gold).
-
-Further reading: [`.devnotes/police/databricks-plan.md`](../.devnotes/police/databricks-plan.md) and [`pipelines/police_recorded_crime/README.md`](../pipelines/police_recorded_crime/README.md).
-
 ## Working on pipelines
 
 Pipelines are Lakeflow Declarative Pipelines defined in `pipelines/`. Each source has its own subfolder.

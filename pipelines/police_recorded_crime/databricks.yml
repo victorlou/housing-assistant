@@ -19,8 +19,8 @@ permissions:
 
 resources:
   pipelines:
-    police_bronze:
-      name: police_bronze
+    police_recorded_crime_bronze:
+      name: police_recorded_crime_bronze
       catalog: housing
       schema: bronze
       serverless: true
@@ -36,8 +36,8 @@ resources:
         - notebook:
             path: ./notebooks/bronze.py
 
-    police_silver:
-      name: police_silver
+    police_recorded_crime_silver:
+      name: police_recorded_crime_silver
       catalog: housing
       schema: silver
       serverless: true
@@ -53,8 +53,8 @@ resources:
         - notebook:
             path: ./notebooks/silver.py
 
-    police_gold:
-      name: police_gold
+    police_recorded_crime_gold:
+      name: police_recorded_crime_gold
       catalog: housing
       schema: gold
       serverless: true
@@ -75,7 +75,7 @@ resources:
       name: police_recorded_crime_ingest
       description: |
         Bronze → silver → gold for NZ Police ANZSOC victimisation CSV landings.
-        Upload CSV to crime_files volume before running (no automated fetch yet).
+        Upload CSV to police_recorded_crime_files volume before running (no automated fetch yet).
         See ./README.md.
 
       tags:
@@ -101,19 +101,19 @@ resources:
       tasks:
         - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.police_bronze.id}
+            pipeline_id: ${resources.pipelines.police_recorded_crime_bronze.id}
 
         - task_key: transform_silver
           depends_on:
             - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.police_silver.id}
+            pipeline_id: ${resources.pipelines.police_recorded_crime_silver.id}
 
         - task_key: transform_gold
           depends_on:
             - task_key: transform_silver
           pipeline_task:
-            pipeline_id: ${resources.pipelines.police_gold.id}
+            pipeline_id: ${resources.pipelines.police_recorded_crime_gold.id}
 
 targets:
   dev:

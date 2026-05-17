@@ -26,6 +26,11 @@ LAYERS: dict[str, dict[str, Any]] = {
         "layer_id": 1,
         "file_stem": "census_2023_dwellings_sa2",
     },
+    "individuals_sa2": {
+        "service": "2023_Census_totals_by_topic_for_individuals_by_SA2",
+        "layer_id": 1,
+        "file_stem": "census_2023_individuals_sa2",
+    },
 }
 
 
@@ -101,16 +106,16 @@ def iter_arcgis_features(
 
 
 def fetch_layer_to_jsonl_hashed(
-    layer_key: str,
+    feed_source: str,
     output_path: Path,
     *,
     return_geometry: bool = True,
     session: requests.Session | None = None,
 ) -> tuple[int, str]:
     """Write features as JSONL; return (count, sha256 hex)."""
-    if layer_key not in LAYERS:
-        raise ValueError(f"Unknown layer_key {layer_key!r}; expected one of {list(LAYERS)}")
-    spec = LAYERS[layer_key]
+    if feed_source not in LAYERS:
+        raise ValueError(f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}")
+    spec = LAYERS[feed_source]
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     total = 0
@@ -132,15 +137,15 @@ def fetch_layer_to_jsonl_hashed(
 
 
 def fetch_layer_field_dictionary_csv(
-    layer_key: str,
+    feed_source: str,
     output_path: Path,
     *,
     session: requests.Session | None = None,
 ) -> int:
     """Write ArcGIS field name → alias map for VAR_* columns; return field count."""
-    if layer_key not in LAYERS:
-        raise ValueError(f"Unknown layer_key {layer_key!r}; expected one of {list(LAYERS)}")
-    spec = LAYERS[layer_key]
+    if feed_source not in LAYERS:
+        raise ValueError(f"Unknown feed_source {feed_source!r}; expected one of {list(LAYERS)}")
+    spec = LAYERS[feed_source]
     sess = session or requests.Session()
     resp = sess.get(
         layer_metadata_url(spec["service"], int(spec["layer_id"])),

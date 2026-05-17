@@ -41,7 +41,7 @@ BRONZE = "housing.bronze"
 @dlt.expect("has_subdivision", "anzsoc_subdivision_cd IS NOT NULL")
 @dlt.expect("positive_count", "victimisation_count > 0")
 def crime_victimisation_monthly():
-    bronze = spark.read.table(f"{BRONZE}.police_anzsoc_victimisations")
+    bronze = spark.read.table(f"{BRONZE}.police_recorded_crime_anzsoc_victimisations")
     return bronze.groupBy(
         "report_month",
         "anzsoc_division",

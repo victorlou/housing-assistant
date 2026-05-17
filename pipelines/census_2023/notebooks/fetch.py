@@ -48,21 +48,21 @@ from census_fetch_arcgis import (
 
 # COMMAND ----------
 
-BRONZE_VOLUME = "/Volumes/housing/bronze/census_files"
+BRONZE_VOLUME = "/Volumes/housing/bronze/census_2023_files"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 
 dbutils.widgets.dropdown(
-    "layer_key",
+    "feed_source",
     "households_sa2",
     list(LAYERS.keys()),
     "ArcGIS layer preset",
 )
 dbutils.widgets.text("retention_days", "365", "Retention (days)")
 
-layer_key = dbutils.widgets.get("layer_key").strip()
+feed_source = dbutils.widgets.get("feed_source").strip()
 retention_days = int(dbutils.widgets.get("retention_days"))
-spec = LAYERS[layer_key]
-SOURCE_NAME = spec["file_stem"]
+spec = LAYERS[feed_source]
+SOURCE_NAME = f"census_2023_{feed_source}"
 SOURCE_SUBDIR = spec["file_stem"]
 OUTPUT_FILENAME = f"{spec['file_stem']}.jsonl"
 SOURCE_URL = f"arcgis://{spec['service']}/FeatureServer/{spec['layer_id']}"
@@ -194,12 +194,12 @@ started_at = datetime.now(UTC)
 t0 = time.time()
 
 try:
-    print(f"[{run_id}] Fetching {layer_key} from ArcGIS")
+    print(f"[{run_id}] Fetching {feed_source} from ArcGIS")
     tmp_path = Path(tempfile.gettempdir()) / f"{SOURCE_NAME}_{run_id}.jsonl"
     tmp_dict_path = Path(tempfile.gettempdir()) / f"{FIELD_DICTIONARY_FILENAME}_{run_id}"
     try:
-        feature_count, content_hash = fetch_layer_to_jsonl_hashed(layer_key, tmp_path)
-        field_count = fetch_layer_field_dictionary_csv(layer_key, tmp_dict_path)
+        feature_count, content_hash = fetch_layer_to_jsonl_hashed(feed_source, tmp_path)
+        field_count = fetch_layer_field_dictionary_csv(feed_source, tmp_dict_path)
         print(f"[{run_id}] staged field dictionary ({field_count} fields)")
     except Exception:
         if tmp_path.is_file():

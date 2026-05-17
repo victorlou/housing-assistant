@@ -16,6 +16,10 @@ arcgis:
       service: 2023_Census_totals_by_topic_for_dwellings_by_SA2
       layer_id: 1
       file_stem: census_2023_dwellings_sa2
+    individuals_sa2:
+      service: 2023_Census_totals_by_topic_for_individuals_by_SA2
+      layer_id: 1
+      file_stem: census_2023_individuals_sa2
 landing:
-  bronze_volume: /Volumes/housing/bronze/census_files
+  bronze_volume: /Volumes/housing/bronze/census_2023_files
   retention_days: 365

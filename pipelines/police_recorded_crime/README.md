@@ -8,10 +8,10 @@ Tableau **Full Data** export: ANZSOC offence codes, `Year Month`, `Victimisation
 
 ## Prerequisites
 
-Unity Catalog volume `housing.bronze.crime_files` must exist (Terraform seeds it in `terraform/modules/catalog`). If missing:
+Unity Catalog volume `housing.bronze.police_recorded_crime_files` must exist (Terraform seeds it in `terraform/modules/catalog`). If missing:
 
 ```sql
-CREATE VOLUME IF NOT EXISTS housing.bronze.crime_files
+CREATE VOLUME IF NOT EXISTS housing.bronze.police_recorded_crime_files
   COMMENT 'NZ Police crime statistics CSV landings';
 ```
 
@@ -20,7 +20,7 @@ CREATE VOLUME IF NOT EXISTS housing.bronze.crime_files
 ```powershell
 $date = Get-Date -Format "yyyy-MM-dd"
 databricks fs cp "$env:USERPROFILE\Downloads\ANZSOC_Full Data_data.csv" `
-  "dbfs:/Volumes/housing/bronze/crime_files/police_recorded_crime/$date/anzsoc_victimisations.csv" `
+  "dbfs:/Volumes/housing/bronze/police_recorded_crime_files/anzsoc_victimisations/$date/anzsoc_victimisations.csv" `
   --overwrite -p hackathon
 ```
 
@@ -41,17 +41,17 @@ databricks bundle run police_recorded_crime_ingest --target dev -p hackathon
 Or run pipelines individually:
 
 ```bash
-databricks bundle run police_bronze --target dev -p hackathon
-databricks bundle run police_silver --target dev -p hackathon
-databricks bundle run police_gold --target dev -p hackathon
+databricks bundle run police_recorded_crime_bronze --target dev -p hackathon
+databricks bundle run police_recorded_crime_silver --target dev -p hackathon
+databricks bundle run police_recorded_crime_gold --target dev -p hackathon
 ```
 
 ## Tables
 
 | Layer | Table | Role |
 |-------|-------|------|
-| Bronze | `housing.bronze.police_anzsoc_victimisations_raw` | Auto Loader CSV |
-| Bronze | `housing.bronze.police_anzsoc_victimisations` | Typed rows |
+| Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations_raw` | Auto Loader CSV |
+| Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations` | Typed rows |
 | Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month + ANZSOC subdivision |
 | Gold | `housing.gold.crime__month__anzsoc_subdivision` | Genie-ready national mart |
 
@@ -60,7 +60,7 @@ databricks bundle run police_gold --target dev -p hackathon
 ## Verify
 
 ```sql
-SELECT COUNT(*) FROM housing.bronze.police_anzsoc_victimisations;
+SELECT COUNT(*) FROM housing.bronze.police_recorded_crime_anzsoc_victimisations;
 SELECT COUNT(*) FROM housing.silver.crime_victimisation_monthly;
 SELECT COUNT(*) FROM housing.gold.crime__month__anzsoc_subdivision;
 

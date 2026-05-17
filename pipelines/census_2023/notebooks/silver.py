@@ -3,11 +3,13 @@
 # MAGIC # Census 2023 silver layer
 # MAGIC
 # MAGIC - `census_field_dictionary` — ArcGIS field aliases from the bronze volume landing.
-# MAGIC - `census_sa2_area` — latest SA2 snapshot with centroid H3 cell.
+# MAGIC - `census_sa2_area` — latest SA2 snapshot with centroid H3 cell (census QA only).
 # MAGIC - `census_sa2_metric` — long-format census counts/medians unpivoted from `VAR_*`.
+# MAGIC - `census_sa2_features` — wide curated metrics from `census_2023_gold.yml`.
 
 # COMMAND ----------
 
+import sys
 from pathlib import Path
 
 import dlt
@@ -15,12 +17,30 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, IntegerType
 from pyspark.sql.window import Window
 
+
+def _bundle_files_root() -> Path:
+    try:
+        return Path(__file__).resolve().parent.parent
+    except NameError:
+        nb = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+        return Path("/Workspace" + nb).resolve().parent.parent
+
+
+_bundle_root = _bundle_files_root()
+if str(_bundle_root) not in sys.path:
+    sys.path.insert(0, str(_bundle_root))
+
+from census_gold_lib import all_feature_export_keys, census_year, load_gold_manifest, pivot_manifest_metrics
+
 BRONZE = "housing.bronze"
-VOLUME_ROOT = "/Volumes/housing/bronze/census_files"
+VOLUME_ROOT = "/Volumes/housing/bronze/census_2023_files"
+_MANIFEST = load_gold_manifest()
+_CENSUS_YEAR = census_year(_MANIFEST)
 
 _DATASET_SUBDIRS = (
     ("census_2023_households_sa2", "households_sa2"),
     ("census_2023_dwellings_sa2", "dwellings_sa2"),
+    ("census_2023_individuals_sa2", "individuals_sa2"),
 )
 
 
@@ -41,9 +61,14 @@ def _latest_field_dictionary_path(dataset_subdir: str) -> Path:
 def _load_field_dictionary():
     frames = []
     for subdir, name in _DATASET_SUBDIRS:
-        path = _latest_field_dictionary_path(subdir)
+        try:
+            path = _latest_field_dictionary_path(subdir)
+        except FileNotFoundError:
+            continue
         df = spark.read.option("header", True).csv(str(path)).withColumn("dataset", F.lit(name))
         frames.append(df)
+    if not frames:
+        raise FileNotFoundError("No census field dictionary CSVs under census_2023_files volume")
     combined = frames[0]
     for df in frames[1:]:
         combined = combined.unionByName(df)
@@ -80,8 +105,20 @@ def census_field_dictionary():
     return _load_field_dictionary()
 
 
-def _latest_bronze(table_name: str):
+def _resolve_bronze_table(dataset: str) -> str:
+    """Prefer census_2023_* tables; fall back to legacy census_* names in UC."""
+    for name in (f"census_2023_{dataset}", f"census_{dataset}"):
+        if spark.catalog.tableExists(f"{BRONZE}.{name}"):
+            return name
+    raise ValueError(
+        f"No bronze census table for {dataset!r}; "
+        f"expected census_2023_{dataset} or census_{dataset} in {BRONZE}"
+    )
+
+
+def _latest_bronze(dataset: str):
     """Keep the latest landing per SA2 code."""
+    table_name = _resolve_bronze_table(dataset)
     df = spark.read.table(f"{BRONZE}.{table_name}")
     return (
         df.withColumn("_run_date", F.col("_run_date").cast("date"))
@@ -94,18 +131,26 @@ def _latest_bronze(table_name: str):
     )
 
 
+def _land_area_sq_km(df):
+    """Bronze may expose land area under different names depending on deploy/schema evolution."""
+    candidates = [c for c in ("land_area_sq_km", "LAND_AREA_SQ_KM", "AREA_SQ_KM") if c in df.columns]
+    if not candidates:
+        return F.lit(None).cast(DoubleType()).alias("land_area_sq_km")
+    return F.coalesce(*[F.col(c) for c in candidates]).alias("land_area_sq_km")
+
+
 @dlt.table(
     name="census_sa2_area",
     comment="SA2 areas from the latest households bronze landing with H3 centroid cell.",
     table_properties={"quality": "silver", "project": "housing-assistant"},
 )
 def census_sa2_area():
-    hh = _latest_bronze("census_households_sa2")
+    hh = _latest_bronze("households_sa2")
     return hh.select(
         F.col("sa2_code"),
         F.col("sa2_name"),
         F.col("sa2_name_ascii"),
-        F.coalesce(F.col("land_area_sq_km"), F.col("AREA_SQ_KM")).alias("land_area_sq_km"),
+        _land_area_sq_km(hh),
         F.col("_run_date").alias("source_run_date"),
         F.expr(
             "h3_longlatash3("
@@ -116,11 +161,11 @@ def census_sa2_area():
     )
 
 
-def _unpivot_metrics(bronze_table: str, dataset: str):
-    df = _latest_bronze(bronze_table)
+def _unpivot_metrics(dataset: str):
+    df = _latest_bronze(dataset)
     var_cols = [c for c in df.columns if c.startswith("VAR_")]
     if not var_cols:
-        raise ValueError(f"No VAR_* columns found in {bronze_table}")
+        raise ValueError(f"No VAR_* columns found in {dataset}")
 
     stack_parts = []
     for col in var_cols:
@@ -152,9 +197,17 @@ def _unpivot_metrics(bronze_table: str, dataset: str):
     table_properties={"quality": "silver", "project": "housing-assistant"},
 )
 def census_sa2_metric():
-    hh = _unpivot_metrics("census_households_sa2", "households_sa2")
-    dw = _unpivot_metrics("census_dwellings_sa2", "dwellings_sa2")
-    metrics = hh.unionByName(dw)
+    parts = [
+        _unpivot_metrics("households_sa2"),
+        _unpivot_metrics("dwellings_sa2"),
+    ]
+    if spark.catalog.tableExists(f"{BRONZE}.census_2023_individuals_sa2") or spark.catalog.tableExists(
+        f"{BRONZE}.census_individuals_sa2"
+    ):
+        parts.append(_unpivot_metrics("individuals_sa2"))
+    metrics = parts[0]
+    for part in parts[1:]:
+        metrics = metrics.unionByName(part)
     dictionary = dlt.read("census_field_dictionary")
     return metrics.join(
         dictionary.select(
@@ -169,4 +222,32 @@ def census_sa2_metric():
         ),
         on=["dataset", "field_name"],
         how="left",
+    )
+
+
+@dlt.table(
+    name="census_sa2_features",
+    comment="Wide curated 2023 Census metrics per SA2 from census_2023_gold.yml.",
+    table_properties={"quality": "silver", "project": "housing-assistant"},
+)
+def census_sa2_features():
+    metrics = dlt.read("census_sa2_metric")
+    wide = pivot_manifest_metrics(metrics, all_feature_export_keys(_MANIFEST), _MANIFEST)
+    return (
+        wide.withColumn("census_year", F.lit(_CENSUS_YEAR))
+        .withColumn(
+            "owner_occupier_pct",
+            F.when(
+                F.col("tenure_total_stated") > 0,
+                F.col("tenure_owned") / F.col("tenure_total_stated"),
+            ),
+        )
+        .withColumn(
+            "percent_crowded",
+            F.when(
+                F.col("households_crowding_total_stated") > 0,
+                F.col("households_crowded") / F.col("households_crowding_total_stated"),
+            ),
+        )
+        .withColumn("_updated_at", F.current_timestamp())
     )

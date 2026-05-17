@@ -3,10 +3,10 @@
 # MAGIC # Police recorded crime — bronze layer
 # MAGIC
 # MAGIC Auto Loader over manually uploaded Tableau CSV exports at
-# MAGIC `/Volumes/housing/bronze/crime_files/police_recorded_crime/<date>/anzsoc_victimisations.csv`.
+# MAGIC `/Volumes/housing/bronze/police_recorded_crime_files/anzsoc_victimisations/<date>/anzsoc_victimisations.csv`.
 # MAGIC
-# MAGIC - `police_anzsoc_victimisations_raw` — CSV headers preserved (column mapping).
-# MAGIC - `police_anzsoc_victimisations` — typed columns + `report_month`.
+# MAGIC - `police_recorded_crime_anzsoc_victimisations_raw` — CSV headers preserved (column mapping).
+# MAGIC - `police_recorded_crime_anzsoc_victimisations` — typed columns + `report_month`.
 
 # COMMAND ----------
 
@@ -15,13 +15,13 @@ from pyspark.sql import functions as F
 
 # COMMAND ----------
 
-VOLUME_ROOT = "/Volumes/housing/bronze/crime_files/police_recorded_crime"
+VOLUME_ROOT = "/Volumes/housing/bronze/police_recorded_crime_files/anzsoc_victimisations"
 
 # COMMAND ----------
 
 
 @dlt.table(
-    name="police_anzsoc_victimisations_raw",
+    name="police_recorded_crime_anzsoc_victimisations_raw",
     comment="Raw NZ Police ANZSOC victimisation CSV rows (manual Tableau export).",
     table_properties={
         "quality": "bronze",
@@ -29,7 +29,7 @@ VOLUME_ROOT = "/Volumes/housing/bronze/crime_files/police_recorded_crime"
         "delta.columnMapping.mode": "name",
     },
 )
-def police_anzsoc_victimisations_raw():
+def police_recorded_crime_anzsoc_victimisations_raw():
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "csv")
@@ -45,7 +45,7 @@ def police_anzsoc_victimisations_raw():
 
 
 @dlt.table(
-    name="police_anzsoc_victimisations",
+    name="police_recorded_crime_anzsoc_victimisations",
     comment="Typed NZ Police ANZSOC victimisations by offence subdivision and report month.",
     table_properties={
         "quality": "bronze",
@@ -54,8 +54,8 @@ def police_anzsoc_victimisations_raw():
 )
 @dlt.expect("has_report_month", "report_month IS NOT NULL")
 @dlt.expect("positive_victimisations", "victimisations >= 0")
-def police_anzsoc_victimisations():
-    raw = dlt.read_stream("police_anzsoc_victimisations_raw")
+def police_recorded_crime_anzsoc_victimisations():
+    raw = dlt.read_stream("police_recorded_crime_anzsoc_victimisations_raw")
     return raw.select(
         F.trim(F.col("ANZSOC Division")).alias("anzsoc_division"),
         F.trim(F.col("Year Month")).alias("year_month"),
