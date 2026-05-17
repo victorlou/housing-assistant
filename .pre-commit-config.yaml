@@ -1,7 +1,0 @@
-# Matches .github/workflows/ci.yml (ruff check + ruff format --check).
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.1
-    hooks:
-      - id: ruff
-      - id: ruff-format
