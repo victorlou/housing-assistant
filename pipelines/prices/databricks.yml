@@ -80,7 +80,7 @@ resources:
       description: |
         Monthly fetch of NZ house price data, currently sourced from the RBNZ
         M10 Housing statistical series (regional HPI + median price, quarterly).
-        Produces housing.gold.house_price__quarter__region.
+        Produces housing.gold.region__quarter.
         See ./README.md.
 
       tags:

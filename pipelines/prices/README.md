@@ -35,7 +35,7 @@ The free regional/TA sources are all PDFs (REINZ Monthly Property Report being t
 ## Contract — gold table
 
 ```sql
-CREATE TABLE housing.gold.house_price__quarter__region (
+CREATE TABLE housing.gold.region__quarter (
   region                            STRING NOT NULL,   -- "New Zealand" today; "Auckland Region" etc. when regional sources land
   quarter                           DATE   NOT NULL,   -- first day of quarter (2024-01-01 = Q1 2024)
   quarter_label                     STRING NOT NULL,   -- "2024-Q1"
@@ -70,7 +70,7 @@ Hash-dedup against `housing.bronze.ingest_runs` (`source = 'prices_rbnz_hpi'`) �
 
 - `bronze.py` defines `prices_rbnz_hpi_raw` — streaming Auto Loader over the CSV with provenance columns attached.
 - `silver.py` types the columns and produces `housing.silver.house_price_index`.
-- `gold.py` computes `hpi_yoy_pct` via a 4-quarter `LAG` window and materialises `housing.gold.house_price__quarter__region`.
+- `gold.py` computes `hpi_yoy_pct` via a 4-quarter `LAG` window and materialises `housing.gold.region__quarter`.
 
 ## Identity model
 
@@ -130,18 +130,18 @@ WHERE source LIKE 'prices_%' ORDER BY fetched_at DESC LIMIT 5;
 
 -- Most recent quarter's reading
 SELECT *
-FROM housing.gold.house_price__quarter__region
-WHERE quarter = (SELECT MAX(quarter) FROM housing.gold.house_price__quarter__region);
+FROM housing.gold.region__quarter
+WHERE quarter = (SELECT MAX(quarter) FROM housing.gold.region__quarter);
 
 -- Full HPI time series with YoY
 SELECT quarter_label, hpi, hpi_yoy_pct
-FROM housing.gold.house_price__quarter__region
+FROM housing.gold.region__quarter
 WHERE region = 'New Zealand'
 ORDER BY quarter DESC LIMIT 20;
 
 -- Cooled vs hot quarters (largest YoY drops + rises)
 SELECT quarter_label, hpi, hpi_yoy_pct
-FROM housing.gold.house_price__quarter__region
+FROM housing.gold.region__quarter
 WHERE region = 'New Zealand' AND hpi_yoy_pct IS NOT NULL
 ORDER BY ABS(hpi_yoy_pct) DESC LIMIT 10;
 ```
@@ -153,6 +153,6 @@ ORDER BY ABS(hpi_yoy_pct) DESC LIMIT 10;
 
 ## Coming next
 
-- **REINZ Monthly Property Report PDF parser** (regional HPI + TA median sale price). Same manual-upload pattern as today's RBNZ M10, but parses PDF instead of XLSX. Adds rows to `gold.house_price__quarter__region` for individual regions, and a new `gold.house_price__month__ta` for TA-level median prices.
+- **REINZ Monthly Property Report PDF parser** (regional HPI + TA median sale price). Same manual-upload pattern as today's RBNZ M10, but parses PDF instead of XLSX. Adds rows to `gold.region__quarter` for individual regions, and feeds the existing `gold.ta__month` for TA-level median prices.
 - **Trade Me Property Price Index** as an alternative TA-level source (monthly press release, free).
 - **Paid REINZ Statistics Platform** if we ever get a membership — straight TA-level HPI via XLSX/API, removes the PDF-parsing fragility.

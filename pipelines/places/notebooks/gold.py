@@ -69,9 +69,9 @@ H3_RESOLUTION = 8
         "those non-residential polygons; for exhaustive geographic queries, "
         "keep them. JOINS: connects to housing.gold.h3_cell via suburb_id "
         "(the spatial bridge from any H3-keyed fact); connects to "
-        "housing.gold.house_price__month__ta and other TA-level facts via "
-        "territorial_authority (Stats NZ canonical names); connects to "
-        "housing.gold.house_price__quarter__region via region."
+        "housing.gold.ta__month and housing.gold.ta__quarter via "
+        "territorial_authority = ta_name (Stats NZ canonical names); "
+        "connects to housing.gold.region__quarter via region."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     partition_cols=["region"],
