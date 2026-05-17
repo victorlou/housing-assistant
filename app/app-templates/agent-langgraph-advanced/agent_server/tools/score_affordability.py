@@ -5,6 +5,7 @@ from langchain_core.tools import tool
 
 from agent_server.tools.utils import CATALOG as _CATALOG
 from agent_server.tools.utils import SCHEMA as _SCHEMA
+from agent_server.tools.utils import build_in_params as _build_in_params
 from agent_server.tools.utils import execute_statement as _execute
 from agent_server.tools.utils import resolve_suburb_fuzzy as _resolve
 
@@ -21,6 +22,10 @@ def score_affordability(
     Call this on each suburb returned by compute_isochrone to filter candidates by budget,
     or directly when the user asks if a specific suburb is affordable. The tool is also
     the primary source of rent figures for planner affordability analysis.
+
+    When a colloquial name matches multiple Stats NZ SA2 areas (e.g. "Henderson" covers
+    Henderson East and Henderson West), rent and income figures are population-weighted
+    across all matched SA2s to give a single representative answer.
 
     Trigger phrases: "can I afford X", "how much is rent in Y", "is Y within my budget",
     "compare rent across these suburbs", "affordability analysis", "rent-to-income ratio".
@@ -43,57 +48,60 @@ def score_affordability(
 
     Returns:
         Dict with:
-          - suburb: suburb name
-          - median_rent_weekly: census median weekly rent for the suburb (NZD)
+          - suburb: suburb name (or colloquial name when multiple SA2s were merged)
+          - matched_areas: list of SA2 names included in the calculation
+          - median_rent_weekly: population-weighted median weekly rent (NZD)
           - annual_rent: weekly × 52 (NZD)
-          - household_income_annual: income used (user-provided or suburb median, NZD)
+          - household_income_annual: income used (user-provided or weighted suburb median, NZD)
           - income_source: "user_provided" or "suburb_median"
-          - income_decile: 1–10 ranking (only present when income_source = "suburb_median")
+          - income_decile: population-weighted 1–10 ranking (only when income_source = "suburb_median")
           - rent_to_income_pct: rent as a percentage of annual income (e.g. 38.5)
           - affordability_band: "affordable", "moderate stress", or "housing stressed"
-          - data_year: census year of the suburb-level rent data (e.g. 2023)
-          - ta_median_rent_nzd: most recent monthly median rent at TA level (NZD) — more
-                                current than census data but coarser geography. For Auckland
-                                suburbs this is uniform across all 633 Auckland SA2s (post-
-                                supercity amalgamation — one TA covers the whole region).
-          - ta_data_month: date of the TA-level rent observation (cite this for currency)
+          - data_year: census year of the suburb-level rent data
+          - ta_median_rent_nzd: most recent monthly median rent at TA level (NZD)
+          - ta_data_month: date of the TA-level rent observation
           - error: present only if rent or income data is missing for this suburb
     """
-    # Step 1: resolve suburb → suburb_id and territorial_authority (fuzzy: exact first, ILIKE fallback)
     suburb_rows = _resolve(suburb_name, ", territorial_authority")
     if not suburb_rows:
         return {"suburb": suburb_name, "error": f"Suburb '{suburb_name}' not found."}
-    suburb_id, matched_name, ta_name = (
-        suburb_rows[0][0],
-        suburb_rows[0][1],
-        suburb_rows[0][2],
-    )
 
-    # Step 2: suburb-level census rent (primary — most granular)
+    suburb_ids = [row[0] for row in suburb_rows]
+    matched_names = [row[1] for row in suburb_rows]
+    # Use TA from the most-populous match (first row after population-desc ordering)
+    ta_name = suburb_rows[0][2]
+    display_name = matched_names[0] if len(suburb_ids) == 1 else suburb_name
+
+    id_placeholders, id_params = _build_in_params(suburb_ids, "sid")
+
+    # Fetch rent + population for all matched SA2s (latest census year per suburb)
     rent_rows = _execute(
         f"""
-        SELECT median_weekly_rent, census_year
-        FROM {_CATALOG}.{_SCHEMA}.suburb__year
-        WHERE suburb_id = :suburb_id
-          AND census_year = (
-            SELECT MAX(census_year)
-            FROM {_CATALOG}.{_SCHEMA}.suburb__year
-            WHERE suburb_id = :suburb_id
+        SELECT sy.suburb_id, sy.median_weekly_rent, sy.census_year,
+               COALESCE(s.population_2023, 1) AS pop
+        FROM {_CATALOG}.{_SCHEMA}.suburb__year sy
+        JOIN {_CATALOG}.{_SCHEMA}.suburb s ON sy.suburb_id = s.suburb_id
+        WHERE sy.suburb_id IN ({id_placeholders})
+          AND sy.census_year = (
+            SELECT MAX(sy2.census_year)
+            FROM {_CATALOG}.{_SCHEMA}.suburb__year sy2
+            WHERE sy2.suburb_id = sy.suburb_id
           )
-        LIMIT 1
         """,
-        [{"name": "suburb_id", "value": suburb_id, "type": "STRING"}],
+        id_params,
     )
     if not rent_rows:
         return {
-            "suburb": matched_name,
-            "error": f"No rent data found for '{matched_name}'.",
+            "suburb": display_name,
+            "error": f"No rent data found for '{display_name}'.",
         }
-    weekly_rent = float(rent_rows[0][0])
-    data_year = int(rent_rows[0][1])
 
-    # Step 3: TA-level monthly rent (supplement — more current, coarser geography).
-    # Filter median_rent_nzd IS NOT NULL — ta__month rows for HPI/sales-only months have NULL rent.
+    # Population-weighted average rent
+    total_pop = sum(float(r[3]) for r in rent_rows)
+    weighted_rent = sum(float(r[1]) * float(r[3]) for r in rent_rows) / total_pop
+    data_year = int(max(r[2] for r in rent_rows))
+
+    # TA-level monthly rent (coarser but more current)
     ta_rent_rows = _execute(
         f"""
         SELECT median_rent_nzd, date
@@ -121,7 +129,7 @@ def score_affordability(
         else None
     )
 
-    # Step 4: income — user-provided or suburb median with computed decile
+    # Income — user-provided or population-weighted suburb median with decile
     income_source = "user_provided"
     income_decile = None
 
@@ -136,24 +144,31 @@ def score_affordability(
                 SELECT MAX(census_year) FROM {_CATALOG}.{_SCHEMA}.suburb__year
               )
             )
-            SELECT median_household_income, income_decile
-            FROM ranked
-            WHERE suburb_id = :suburb_id
+            SELECT r.suburb_id, r.median_household_income, r.income_decile,
+                   COALESCE(s.population_2023, 1) AS pop
+            FROM ranked r
+            JOIN {_CATALOG}.{_SCHEMA}.suburb s ON r.suburb_id = s.suburb_id
+            WHERE r.suburb_id IN ({id_placeholders})
             """,
-            [{"name": "suburb_id", "value": suburb_id, "type": "STRING"}],
+            id_params,
         )
         if not income_rows:
             return {
-                "suburb": matched_name,
-                "median_rent_weekly": int(weekly_rent),
+                "suburb": display_name,
+                "matched_areas": matched_names,
+                "median_rent_weekly": int(round(weighted_rent)),
                 "data_year": data_year,
-                "error": f"No income data found for '{matched_name}'. Provide a household_income value.",
+                "error": f"No income data found for '{display_name}'. Provide a household_income value.",
             }
-        household_income = float(income_rows[0][0])
-        income_decile = income_rows[0][1]
+        inc_pop = sum(float(r[3]) for r in income_rows)
+        household_income = sum(float(r[1]) * float(r[3]) for r in income_rows) / inc_pop
+        # Population-weighted decile (round to nearest integer)
+        income_decile = int(round(
+            sum(float(r[2]) * float(r[3]) for r in income_rows) / inc_pop
+        ))
         income_source = "suburb_median"
 
-    annual_rent = weekly_rent * 52
+    annual_rent = weighted_rent * 52
     ratio = annual_rent / household_income if household_income > 0 else None
     pct = round(ratio * 100, 1) if ratio is not None else None
 
@@ -167,10 +182,11 @@ def score_affordability(
         band = "housing stressed"
 
     result: dict = {
-        "suburb": matched_name,
-        "median_rent_weekly": int(weekly_rent),
-        "annual_rent": int(annual_rent),
-        "household_income_annual": int(household_income),
+        "suburb": display_name,
+        "matched_areas": matched_names,
+        "median_rent_weekly": int(round(weighted_rent)),
+        "annual_rent": int(round(annual_rent)),
+        "household_income_annual": int(round(household_income)),
         "income_source": income_source,
         "rent_to_income_pct": pct,
         "affordability_band": band,

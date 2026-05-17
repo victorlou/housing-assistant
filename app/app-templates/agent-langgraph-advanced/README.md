@@ -421,6 +421,59 @@ This template uses [Databricks Asset Bundles (DABs)](https://docs.databricks.com
 
 > **`app.yaml` vs `databricks.yml`**: `app.yaml` is used when deploying via `databricks apps deploy` (manual path). When deploying via DABs (`databricks bundle deploy`), the `config:` section in `databricks.yml` takes precedence. If you change environment variables or the start command, update `databricks.yml` — that's what DABs reads.
 
+### Quick deploy (TL;DR)
+
+```bash
+# 1. Validate config
+databricks bundle validate
+
+# 2. Upload code + configure resources
+databricks bundle deploy
+
+# 3. Start (or restart) the app
+databricks bundle run agent_langgraph_advanced
+```
+
+For re-deploys after code changes, both steps 2 and 3 are required — `bundle deploy` only uploads files, `bundle run` is what actually restarts the app:
+
+```bash
+databricks bundle deploy && databricks bundle run agent_langgraph_advanced
+```
+
+### Deploy targets
+
+| Target | App name | Command |
+|--------|----------|---------|
+| `dev` (default) | `housing-assistant-dev` | `databricks bundle deploy` |
+| `prod` | `agent-langgraph-advanced` | `databricks bundle deploy -t prod` |
+
+To run the prod app after deploying:
+
+```bash
+databricks bundle run agent_langgraph_advanced -t prod
+```
+
+### Resources configured in `databricks.yml`
+
+All resources are pre-wired — no manual setup required after deploy:
+
+| Resource | Type | Purpose |
+|----------|------|---------|
+| `experiment` | MLflow experiment (`1855383292840058`) | Agent tracing |
+| `postgres` | Autoscaling Lakebase branch | Agent short-term + long-term memory |
+| `app_db` | Autoscaling Lakebase branch | Chat app history |
+| `warehouse_secret` | Secret (`housing-assistant/WAREHOUSE_ID`) | SQL warehouse auth |
+| `sql_warehouse` | SQL warehouse (`f21913d784edd9ad`) | Direct SQL queries |
+| `genie-space` | Genie space | Suburban Demographics and Housing Risks data |
+
+> **Autoscaling Lakebase note:** The `postgres` resource uses an autoscaling branch, which is not yet fully supported as a DAB resource dependency. After each `databricks bundle deploy`, verify the postgres resource is still attached to the app via the Databricks UI or API. If it was overwritten, re-add it manually before running `bundle run`.
+
+### Viewing logs
+
+```bash
+databricks apps logs housing-assistant-dev --follow
+```
+
 Ensure you have the [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/tutorial) installed and configured.
 
 1. **Run the pre-flight check**

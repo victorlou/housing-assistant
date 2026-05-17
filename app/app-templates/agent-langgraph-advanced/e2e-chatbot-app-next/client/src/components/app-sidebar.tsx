@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
+import { Home, Bookmark, SlidersHorizontal } from 'lucide-react';
 
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
@@ -7,6 +8,8 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -38,7 +41,7 @@ export function AppSidebar({
       collapsible="icon"
       className="group-data-[side=left]:border-r-0"
     >
-      {/* ── Header: app title + collapse toggle ────────────────────────── */}
+      {/* ── Header: Kāinga brand + collapse toggle ───────────────────── */}
       <SidebarHeader
         className={cn(
           'h-[44px] flex-row items-center gap-2 px-2 py-0',
@@ -49,10 +52,11 @@ export function AppSidebar({
           <Link
             to="/"
             onClick={() => setOpenMobile(false)}
-            className="flex items-center overflow-hidden px-1"
+            className="flex items-center gap-2 overflow-hidden px-1"
           >
-            <span className="text-base font-semibold text-foreground">
-              Chatbot
+            <Home className="size-4 text-primary shrink-0" />
+            <span className="font-semibold text-foreground tracking-tight">
+              Kāinga
             </span>
           </Link>
         )}
@@ -69,8 +73,8 @@ export function AppSidebar({
         </Action>
       </SidebarHeader>
 
-      {/* ── Nav: New Chat item ───────────────────────────────────────────── */}
-      <div className="px-2 pt-2">
+      {/* ── Nav: New Chat + quick links ──────────────────────────────── */}
+      <div className="px-2 pt-2 flex flex-col gap-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <Tooltip>
@@ -93,14 +97,58 @@ export function AppSidebar({
             </Tooltip>
           </SidebarMenuItem>
         </SidebarMenu>
+
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton
+                  type="button"
+                  className="h-8 p-1 md:p-2 cursor-pointer"
+                  onClick={() => {
+                    setOpenMobile(false);
+                    navigate('/saved');
+                  }}
+                >
+                  <Bookmark className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    Saved Searches
+                  </span>
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>Saved Searches</TooltipContent>
+            </Tooltip>
+          </SidebarMenuItem>
+
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton
+                  type="button"
+                  className="h-8 p-1 md:p-2 cursor-pointer"
+                  onClick={() => {
+                    setOpenMobile(false);
+                    navigate('/constraints');
+                  }}
+                >
+                  <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    My Constraints
+                  </span>
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>My Constraints</TooltipContent>
+            </Tooltip>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </div>
 
-      {/* ── Chat history ────────────────────────────────────────────────── */}
+      {/* ── Chat history ────────────────────────────────────────────── */}
       <SidebarContent>
         {effectiveOpen && <SidebarHistory user={user} />}
       </SidebarContent>
 
-      {/* ── User nav ────────────────────────────────────────────────────── */}
+      {/* ── User nav ────────────────────────────────────────────────── */}
       <SidebarFooter>
         {user && (
           <SidebarUserNav user={user} preferredUsername={preferredUsername} />

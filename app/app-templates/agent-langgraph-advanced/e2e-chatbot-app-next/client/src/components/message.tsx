@@ -8,6 +8,7 @@ import {
   ToolContent,
   ToolInput,
   ToolOutput,
+  TOOL_LABELS,
   type ToolState,
 } from './elements/tool';
 import {
@@ -38,6 +39,10 @@ import { MessageOAuthError } from './message-oauth-error';
 import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
 import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
+import { Brain } from 'lucide-react';
+import { VisualizationModalTrigger } from './elements/visualization-modal';
+
+const MEMORY_TOOLS = ['get_user_memory', 'save_user_memory', 'delete_user_memory'];
 
 const PurePreviewMessage = ({
   message,
@@ -253,6 +258,42 @@ const PurePreviewMessage = ({
                 }
                 return state;
               })();
+
+              // render_visualization — intercept and open Mermaid modal
+              if (toolName === 'render_visualization') {
+                if (state === 'input-available' || state === 'output-available') {
+                  const vizInput = input as {
+                    title: string;
+                    mermaid_code: string;
+                    description: string;
+                  };
+                  return (
+                    <VisualizationModalTrigger
+                      key={toolCallId}
+                      title={vizInput.title ?? ''}
+                      mermaidCode={vizInput.mermaid_code ?? ''}
+                      description={vizInput.description ?? ''}
+                    />
+                  );
+                }
+                return null;
+              }
+
+              // suggest_saved_search — invisible until Pillar 6
+              if (toolName === 'suggest_saved_search') return null;
+
+              // Memory tools — distinct violet card (full MemoryTool component added in Pillar 5)
+              if (MEMORY_TOOLS.includes(toolName)) {
+                return (
+                  <div
+                    key={toolCallId}
+                    className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-700 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                  >
+                    <Brain className="size-4 shrink-0" />
+                    <span>{TOOL_LABELS[toolName] ?? toolName}</span>
+                  </div>
+                );
+              }
 
               // Render MCP tool calls with special styling
               if (isMcpApproval) {

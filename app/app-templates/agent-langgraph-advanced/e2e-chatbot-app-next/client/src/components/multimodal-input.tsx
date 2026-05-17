@@ -329,16 +329,6 @@ function PureMultimodalInput({
       <p className="-mt-2 text-center text-sm text-muted-foreground">
         Always review the accuracy of responses.
       </p>
-
-      {messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 && (
-          <SuggestedActions
-            sendMessage={sendMessage}
-            chatId={chatId}
-            selectedVisibilityType={selectedVisibilityType}
-          />
-        )}
     </div>
   );
 }

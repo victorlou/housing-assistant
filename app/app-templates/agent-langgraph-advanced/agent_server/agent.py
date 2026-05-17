@@ -21,7 +21,6 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
-from agent_server.tools.find_affordable_suburbs import find_affordable_suburbs
 from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
@@ -52,6 +51,14 @@ def get_current_time() -> str:
     return datetime.now().isoformat()
 
 
+@tool
+def render_visualization(title: str, mermaid_code: str, description: str) -> dict:
+    """Trigger a Mermaid diagram modal on the frontend. Call this after presenting
+    multi-suburb comparisons, affordability decision trees, or hazard matrices to give
+    users a visual summary. Returns immediately — the frontend handles rendering."""
+    return {"status": "rendered"}
+
+
 class StatefulAgentState(TypedDict, total=False):
     messages: Annotated[Sequence[AnyMessage], add_messages]
     custom_inputs: dict[str, Any]
@@ -64,10 +71,10 @@ async def init_agent(
 ):
     tools = [
         get_current_time,
-        find_affordable_suburbs,
         compute_isochrone,
         score_affordability,
         lookup_hazards,
+        render_visualization,
     ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     mcp_client = init_mcp_client(sp_workspace_client)

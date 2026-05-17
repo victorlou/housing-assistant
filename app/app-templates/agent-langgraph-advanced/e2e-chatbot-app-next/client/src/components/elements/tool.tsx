@@ -60,7 +60,7 @@ export const ToolStatusBadge = ({ state, className }: ToolStatusBadgeProps) => {
   return (
     <Badge
       className={cn(
-        'flex items-center gap-1 rounded-full border-0 font-medium text-xs',
+        'flex items-center gap-1 rounded-full border-0 font-medium text-xs transition-colors duration-200',
         variants[state],
         className,
       )}
@@ -159,6 +159,17 @@ export const ToolOutput = ({
   );
 };
 
+// Human-readable labels for known tools
+export const TOOL_LABELS: Record<string, string> = {
+  compute_isochrone:       'Calculating commute times…',
+  score_affordability:     'Analysing affordability…',
+  lookup_hazards:          'Checking hazard risks…',
+  get_user_memory:         'Recalling your preferences…',
+  save_user_memory:        'Saving preference…',
+  delete_user_memory:      'Removing preference…',
+  get_current_time:        'Checking current time…',
+};
+
 // Standard tool components (non-MCP)
 export const Tool = ToolContainer;
 
@@ -185,7 +196,9 @@ export const ToolHeader = ({
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium text-sm">{type}</span>
+        <span className="truncate font-medium text-sm">
+          {TOOL_LABELS[type as string] ?? type}
+        </span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ToolStatusBadge state={state} />

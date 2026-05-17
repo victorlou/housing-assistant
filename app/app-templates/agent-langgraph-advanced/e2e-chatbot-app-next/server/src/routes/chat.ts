@@ -579,17 +579,30 @@ async function generateTitleFromUserMessage({
     ),
   };
 
+  const userText = truncatedMessage.parts
+    .filter((p) => p.type === 'text')
+    .map((p) => (p as { type: 'text'; text: string }).text)
+    .join(' ')
+    .trim();
+
   const { text: title } = await generateText({
     model,
-    system: `\n
-    - you will generate a short title based on the first message a user begins a conversation with
-    - ensure it is not more than 80 characters long
-    - the title should be a summary of the user's message
-    - do not use quotes or colons. do not include other expository content ("I'll help...")`,
-    prompt: JSON.stringify(truncatedMessage),
+    system: `You generate short chat titles. Output only the title — no explanation, no punctuation at the end, no quotes, no markdown.
+- 4 to 7 words
+- Plain English, capture the specific topic (place names, dollar amounts, hazard type)
+- Write like a human labels a folder
+
+Good examples: Suburbs near Newmarket under 650, Flood risk in Takanini, Avondale vs New Lynn affordability, Henderson low income suburbs`,
+    prompt: userText || truncatedMessage.parts.map((p) => (p as any).text ?? '').join(' '),
   });
 
-  return title;
+  return title
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\*+/g, '')
+    .replace(/#+\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function truncatePreserveWords(input: string, maxLength: number): string {
