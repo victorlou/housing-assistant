@@ -1,5 +1,5 @@
 bundle:
-  name: prices
+  name: census_2023
 
 variables:
   jobs_service_principal_id:
@@ -8,10 +8,6 @@ variables:
     description: Account-level admin group whose members can deploy and manage this bundle.
   notification_email:
     description: Email to alert on job failure.
-
-  # The RBNZ M10 XLSX sits behind Cloudflare bot management — automated
-  # download from any Python HTTP client gets 403'd. We manually upload the
-  # file to the bronze volume; fetch.py reads from there. See README.
 
 permissions:
   - level: CAN_MANAGE
@@ -23,8 +19,8 @@ permissions:
 
 resources:
   pipelines:
-    prices_bronze:
-      name: prices_bronze
+    census_2023_bronze:
+      name: census_2023_bronze
       catalog: housing
       schema: bronze
       serverless: true
@@ -34,15 +30,15 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: census_2023
         layer: bronze
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/bronze.py
 
-    prices_silver:
-      name: prices_silver
+    census_2023_silver:
+      name: census_2023_silver
       catalog: housing
       schema: silver
       serverless: true
@@ -52,15 +48,15 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: census_2023
         layer: silver
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/silver.py
 
-    prices_gold:
-      name: prices_gold
+    census_2023_gold:
+      name: census_2023_gold
       catalog: housing
       schema: gold
       serverless: true
@@ -70,7 +66,7 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: census_2023
         layer: gold
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
@@ -78,62 +74,79 @@ resources:
             path: ./notebooks/gold.py
 
   jobs:
-    prices_ingest:
-      name: prices_ingest
+    census_2023_ingest:
+      name: census_2023_ingest
       description: |
-        Monthly fetch of NZ house price data, currently sourced from the RBNZ
-        M10 Housing statistical series (regional HPI + median price, quarterly).
-        Produces housing.gold.region__quarter.
-        See ./README.md.
+        Fetch 2023 Census SA2 households, dwellings, and individuals from Stats NZ ArcGIS,
+        then bronze → silver → gold. See ./README.md.
 
       tags:
         project: housing-assistant
-        source: prices
+        source: census_2023
 
       run_as:
         service_principal_name: ${var.jobs_service_principal_id}
 
+      # Census is a static snapshot; run on demand or un-pause for annual refresh.
       schedule:
-        # 10th of every month, 04:00 Pacific/Auckland. RBNZ publishes
-        # quarterly HPI ~4 months after the reference quarter — monthly polling
-        # mostly hash-skips and catches publication promptly when it happens.
-        quartz_cron_expression: "0 0 4 10 * ?"
+        quartz_cron_expression: "0 0 5 1 3 ?"
         timezone_id: Pacific/Auckland
-        pause_status: UNPAUSED
+        pause_status: PAUSED
 
       max_concurrent_runs: 1
-      timeout_seconds: 3600
+      timeout_seconds: 10800
 
       email_notifications:
         on_failure:
           - ${var.notification_email}
 
       tasks:
-        - task_key: fetch_rbnz_hpi
+        - task_key: fetch_households_sa2
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              dataset: rbnz_hpi
+              feed_source: households_sa2
+              retention_days: "365"
+
+        - task_key: fetch_dwellings_sa2
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: dwellings_sa2
+              retention_days: "365"
+
+        # `individuals_sa2` supplies population + median age, which both
+        # `gold.suburb__year` (population_total, median_age) and
+        # `places.gold.suburb` (population_2023, median_age_2023) consume.
+        # Without it, those columns silently age out the moment the bundle
+        # is un-paused.
+        - task_key: fetch_individuals_sa2
+          notebook_task:
+            notebook_path: ./notebooks/fetch.py
+            base_parameters:
+              feed_source: individuals_sa2
               retention_days: "365"
 
         - task_key: transform_bronze
           depends_on:
-            - task_key: fetch_rbnz_hpi
+            - task_key: fetch_households_sa2
+            - task_key: fetch_dwellings_sa2
+            - task_key: fetch_individuals_sa2
           run_if: ALL_DONE
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_bronze.id}
+            pipeline_id: ${resources.pipelines.census_2023_bronze.id}
 
         - task_key: transform_silver
           depends_on:
             - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_silver.id}
+            pipeline_id: ${resources.pipelines.census_2023_silver.id}
 
         - task_key: transform_gold
           depends_on:
             - task_key: transform_silver
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_gold.id}
+            pipeline_id: ${resources.pipelines.census_2023_gold.id}
 
 targets:
   dev:

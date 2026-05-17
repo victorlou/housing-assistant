@@ -1,6 +1,6 @@
 # Open data sources
 
-This is the canonical catalogue of open data sources Housing Assistant uses. Every source listed here should also appear in `data/sources.yaml` in machine-readable form, used by ingestion pipelines.
+This is the canonical catalogue of open data sources Housing Assistant uses. Each source has a corresponding pipeline under `pipelines/`.
 
 ## Selection criteria
 
@@ -24,10 +24,10 @@ We deliberately avoid:
 | Source | Publisher | What it gives us | Cadence | Target gold table |
 |---|---|---|---|---|
 | **Tenancy Bond data** | MBIE Tenancy Services | Rent paid, dwelling type, location for every bond lodged. The single most important source. | Monthly | `rent__month__suburb` |
-| **Census 2023 income / dwellings** | Stats NZ | Median household income, deprivation index, dwelling tenure by SA1/SA2. | Per census (2023) | `income__year__suburb`, `suburb` |
+| **Census 2023 income / dwellings / individuals** | Stats NZ | Median income, tenure, rent, crowding, dwelling quality, population by SA2. | Per census (2023) | `suburb__year` (wide-at-grain); enriches `gold.suburb` (places) with a current-snapshot subset |
 | **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `house_price__month__territorial_authority` |
 | **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `isochrone` |
-| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `crime__month__area_unit` |
+| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `suburb__year` (annual total, allocated via AU2013→SA2 bridge); long-format silver for ANZSOC breakdown |
 
 ### Tier 2. Second wave
 
@@ -68,18 +68,3 @@ A canonical lookup table `silver.place_lookup` maps every variant of a place nam
 ## Licensing
 
 All Tier 1 and 2 sources are CC-BY, CC-BY-SA, or in the public domain by virtue of being NZ government data. Attribution is rolled up into a single `docs/attributions.md` file (TODO). We do not redistribute raw third-party data; we only publish derived aggregates and explanations.
-
-## What lives in `data/sources.yaml`
-
-For each source above, the YAML file holds:
-
-- `name`, `publisher`, `licence`
-- `url` (download endpoint or API base)
-- `auth` (none / api-key / etc.)
-- `cadence`
-- `ingestion_pipeline` (path to the pipeline that ingests it)
-- `target_tables` (list)
-- `tier` (1, 2, 3)
-- `notes` (any quirks)
-
-The ingestion pipelines parse this YAML to know what to fetch.

@@ -60,9 +60,8 @@ htmlcov/
 .tox/
 .nox/
 
-# uv
+# uv (lockfile is local; optional cache dir)
 uv.lock
-!uv.lock
 .uv/
 
 # ─────────────────────────────────────────────────────────────────────
@@ -97,12 +96,15 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Local dev notes (directory and all nested files)
+.devnotes/
+.devnotes/**
+
 # ─────────────────────────────────────────────────────────────────────
 #  Secrets, never commit
 # ─────────────────────────────────────────────────────────────────────
 .env
 .env.*
-!.env.example
 *.pem
 *.key
 # Anchored to root so it doesn't match terraform/modules/secrets/
@@ -132,3 +134,6 @@ internal-workings/
 .claude/worktrees
 
 app/app-templates/agent-langgraph-advanced/data_source
+
+# Local LINZ WFS fetch output (notebooks/linz_fetch_wfs.py default)
+out/
