@@ -20,17 +20,17 @@ transform_bronze  →  transform_silver  →  transform_gold
 1. **fetch_*** — page ArcGIS FeatureServer → JSONL + field-dictionary CSV on `/Volumes/housing/bronze/census_2023_files/<dataset>/<date>/`.
 2. **transform_bronze** — Auto Loader → `housing.bronze.census_2023_*_sa2`.
 3. **transform_silver** — long `census_sa2_metric`, wide `census_sa2_features` (manifest: `census_2023_gold.yml`).
-4. **transform_gold** — Genie-ready marts below.
+4. **transform_gold** — Genie-ready wide table below.
 
 ## Gold tables
 
+Following [`docs/conventions.md`](../../docs/conventions.md) (`<spatial_dim>__<time_grain>`): one wide table at SA2 + census-year grain.
+
 | Table | Contents |
 |-------|----------|
-| `housing.gold.income__year__suburb` | Median household income, household counts by SA2 |
-| `housing.gold.tenure__year__suburb` | Tenure counts + owner-occupier % |
-| `housing.gold.rent__year__suburb` | Median weekly rent (renting households) |
-| `housing.gold.dwelling__year__suburb` | Crowding, dampness, mould, heating, mean rooms |
-| `housing.gold.census_metric__year__sa2` | Long curated metrics for open-ended queries |
+| `housing.gold.suburb__year` | Every curated 2023 Census metric per SA2 — income, tenure, rent, crowding, dwelling quality, demographics. One row per `(suburb_id, census_year)`. |
+
+For long-format / open-ended Genie queries (any HUD theme, any field) use `housing.silver.census_sa2_metric` directly — it's the unpivoted escape hatch and stays in silver per the conventions doc.
 
 NZDep2023 is **not** in this bundle (SA1 / separate ADE tables).
 
@@ -72,12 +72,23 @@ ORDER BY fetched_at DESC;
 SELECT COUNT(*) FROM housing.silver.census_sa2_metric;
 SELECT COUNT(*) FROM housing.silver.census_sa2_features;
 
-SELECT census_year, COUNT(*), COUNT(median_household_income)
-FROM housing.gold.income__year__suburb
+-- One row per (suburb_id, census_year); expect ~2,395 SA2s for census_year = 2023.
+SELECT census_year,
+       COUNT(*)                          AS suburbs,
+       COUNT(median_household_income)    AS with_income,
+       COUNT(median_weekly_rent)         AS with_rent,
+       COUNT(percent_crowded)            AS with_crowding
+FROM housing.gold.suburb__year
 GROUP BY census_year;
 
-SELECT COUNT(*) FROM housing.gold.tenure__year__suburb;
-SELECT COUNT(*) FROM housing.gold.census_metric__year__sa2;
+-- Top 10 most expensive renting suburbs in 2023
+SELECT suburb_name, median_weekly_rent
+FROM housing.gold.suburb__year
+WHERE census_year = 2023 AND median_weekly_rent IS NOT NULL
+ORDER BY median_weekly_rent DESC LIMIT 10;
+
+-- Long-format escape hatch for any HUD metric not pivoted into the wide table
+SELECT COUNT(*) FROM housing.silver.census_sa2_metric;
 ```
 
 ## Configuration

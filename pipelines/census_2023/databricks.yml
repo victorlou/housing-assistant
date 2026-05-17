@@ -113,9 +113,10 @@ resources:
               retention_days: "365"
 
         # `individuals_sa2` supplies population + median age, which both
-        # `gold.census_metric__year__sa2` and `places.gold.suburb` consume
-        # (population_2023, median_age_2023). Without it, those columns
-        # silently age out the moment the bundle is un-paused.
+        # `gold.suburb__year` (population_total, median_age) and
+        # `places.gold.suburb` (population_2023, median_age_2023) consume.
+        # Without it, those columns silently age out the moment the bundle
+        # is un-paused.
         - task_key: fetch_individuals_sa2
           notebook_task:
             notebook_path: ./notebooks/fetch.py

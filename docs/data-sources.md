@@ -24,10 +24,10 @@ We deliberately avoid:
 | Source | Publisher | What it gives us | Cadence | Target gold table |
 |---|---|---|---|---|
 | **Tenancy Bond data** | MBIE Tenancy Services | Rent paid, dwelling type, location for every bond lodged. The single most important source. | Monthly | `rent__month__suburb` |
-| **Census 2023 income / dwellings / individuals** | Stats NZ | Median income, tenure, rent, crowding, dwelling quality, population by SA2. | Per census (2023) | `income__year__suburb`, `tenure__year__suburb`, …; enriches `gold.suburb` (places) |
+| **Census 2023 income / dwellings / individuals** | Stats NZ | Median income, tenure, rent, crowding, dwelling quality, population by SA2. | Per census (2023) | `suburb__year` (wide-at-grain); enriches `gold.suburb` (places) with a current-snapshot subset |
 | **NZ.Stat HPI / REINZ Monthly Property Report** | Stats NZ / REINZ | House price index by territorial authority and dwelling type. | Monthly | `house_price__month__territorial_authority` |
 | **Auckland Transport GTFS** | Auckland Transport | Real transit network for ~1.7M people. Powers isochrones for the Auckland demo. | Weekly | `isochrone` |
-| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `crime__month__area_unit` |
+| **Police recorded crime statistics** | NZ Police | Recorded crime by category and area unit, monthly. | Monthly | `area_unit__month` (total) + long-format silver for ANZSOC breakdown |
 
 ### Tier 2. Second wave
 
