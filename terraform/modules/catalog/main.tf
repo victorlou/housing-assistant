@@ -7,16 +7,16 @@ locals {
   # structure + a `_source` column. Add a new volume here only when the new
   # ingestion actually exists — we don't pre-provision speculative volumes.
   bronze_volumes = [
-    "gtfs_files",                    # NZ transit feeds (AT, Metlink, BUSIT, Metroinfo)
-    "osm_files",                     # OpenStreetMap PBF for the isochrone routing engine
-    "places_files",                  # Stats NZ SA2 polygons (+ future school zones, amenity points)
-    "census_2023_files",             # 2023 Census SA2 ArcGIS landings
-    "linz_nz_addresses_files",       # LINZ NZ Addresses WFS JSONL
-    "crime_files",                   # NZ Police Tableau CSV landings (police_recorded_crime/)
-    "prices_files",                  # RBNZ HPI (NZ-aggregate price index time series)
-    "housing_indicators_files",      # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
-    "flood_files",                   # Regional flood hazard ArcGIS JSONL landings
-    "amenities_files",               # Amenity POIs (supermarkets, schools, hospitals, parks) extracted from OSM
+    "gtfs_files",               # NZ transit feeds (AT, Metlink, BUSIT, Metroinfo)
+    "osm_files",                # OpenStreetMap PBF for the isochrone routing engine
+    "places_files",             # Stats NZ SA2 polygons (+ future school zones, amenity points)
+    "census_2023_files",        # 2023 Census SA2 ArcGIS landings
+    "linz_nz_addresses_files",  # LINZ NZ Addresses WFS JSONL
+    "crime_files",              # NZ Police Tableau CSV landings (police_recorded_crime/)
+    "prices_files",             # RBNZ HPI (NZ-aggregate price index time series)
+    "housing_indicators_files", # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
+    "flood_files",              # Regional flood hazard ArcGIS JSONL landings
+    "amenities_files",          # Amenity POIs (supermarkets, schools, hospitals, parks) extracted from OSM
   ]
 }
 
