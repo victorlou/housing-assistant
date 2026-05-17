@@ -1,0 +1,882 @@
+{
+  "datasets": [
+    {
+      "name": "ds_suburb_sarah",
+      "displayName": "Suburb Comparison (rent, flood, amenities, transit, safety)",
+      "query": "WITH suburb_hazard AS (\n  SELECT\n    hc.suburb_id,\n    BOOL_OR(hz.in_flood_plain)              AS any_flood_plain,\n    BOOL_OR(hz.in_coastal_inundation_1_aep) AS any_coastal\n  FROM housing.gold.h3_cell hc\n  JOIN housing.gold.hazard hz ON hz.h3_cell = hc.h3_cell\n  GROUP BY hc.suburb_id\n),\nsuburb_amenity AS (\n  SELECT\n    suburb_id,\n    COUNT(CASE WHEN amenity_type IN ('school','early_childhood') THEN 1 END) AS education_count,\n    COUNT(CASE WHEN amenity_type = 'supermarket'                 THEN 1 END) AS supermarket_count,\n    COUNT(CASE WHEN amenity_type = 'park'                        THEN 1 END) AS park_count,\n    COUNT(CASE WHEN amenity_type IN ('hospital','pharmacy','gp_clinic') THEN 1 END) AS health_count\n  FROM housing.gold.amenity__h3\n  GROUP BY suburb_id\n),\nsuburb_transit AS (\n  SELECT\n    hc.suburb_id,\n    COUNT(DISTINCT ts.stop_id) AS transit_stops\n  FROM housing.gold.transit_stop ts\n  JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell\n  GROUP BY hc.suburb_id\n),\nta_crime AS (\n  SELECT\n    territorial_authority,\n    ROUND(AVG(total_victimisations), 1) AS avg_monthly_victimisations\n  FROM housing.gold.area_unit__month\n  GROUP BY territorial_authority\n)\nSELECT\n  s.suburb_id,\n  s.suburb_name,\n  s.territorial_authority,\n  s.region,\n  s.population_2023,\n  sy.median_weekly_rent,\n  sy.median_household_income,\n  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n  sy.owner_occupier_pct,\n  sy.percent_crowded,\n  sy.dwellings_no_heating,\n  ROUND(sy.dwellings_always_damp * 100.0 / NULLIF(sy.dwellings_damp_total_stated, 0), 1) AS pct_always_damp,\n  COALESCE(sh.any_flood_plain, FALSE)  AS flood_plain,\n  COALESCE(sh.any_coastal, FALSE)      AS coastal_risk,\n  COALESCE(sa.education_count, 0)      AS education_nearby,\n  COALESCE(sa.supermarket_count, 0)    AS supermarkets_nearby,\n  COALESCE(sa.park_count, 0)           AS parks_nearby,\n  COALESCE(sa.health_count, 0)         AS health_nearby,\n  COALESCE(st.transit_stops, 0)        AS transit_stops,\n  tc.avg_monthly_victimisations        AS ta_avg_monthly_crime\nFROM housing.gold.suburb s\nLEFT JOIN housing.gold.suburb__year sy\n  ON sy.suburb_id = s.suburb_id AND sy.census_year = 2023\nLEFT JOIN suburb_hazard sh ON sh.suburb_id = s.suburb_id\nLEFT JOIN suburb_amenity sa ON sa.suburb_id = s.suburb_id\nLEFT JOIN suburb_transit st ON st.suburb_id = s.suburb_id\nLEFT JOIN ta_crime tc ON tc.territorial_authority = s.territorial_authority\nWHERE s.population_2023 > 500\nORDER BY s.territorial_authority, s.suburb_name"
+    },
+    {
+      "name": "ds_amenities_map",
+      "displayName": "Amenities Map (lat/lon points)",
+      "query": "SELECT\n  osm_id,\n  amenity_type,\n  name,\n  lat,\n  lon,\n  suburb_id\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')"
+    },
+    {
+      "name": "ds_transit_map",
+      "displayName": "Transit Stops Map (lat/lon points)",
+      "query": "SELECT\n  ts.stop_id,\n  ts.stop_name,\n  ts.stop_lat,\n  ts.stop_lon,\n  ts.feed_source,\n  hc.suburb_id\nFROM housing.gold.transit_stop ts\nLEFT JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell"
+    }
+  ],
+  "pages": [
+    {
+      "name": "p_finder",
+      "displayName": "Suburb Finder",
+      "layout": [
+        {
+          "position": { "x": 0, "y": 0, "width": 6, "height": 1 },
+          "widget": {
+            "name": "w_p1_title",
+            "textbox_spec": "# Suburb Finder — Where Can I Live?\nFilter by area and budget to compare suburbs on rent, flood risk, schools, transit, and safety."
+          }
+        },
+        {
+          "position": { "x": 0, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p1_f_region",
+            "queries": [
+              {
+                "name": "q_region",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`region`", "name": "region" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "region_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Region", "fieldName": "region", "queryName": "q_region" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Region" }
+            }
+          }
+        },
+        {
+          "position": { "x": 2, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p1_f_ta",
+            "queries": [
+              {
+                "name": "q_ta",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "ta_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Territorial Authority", "fieldName": "territorial_authority", "queryName": "q_ta" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: TA" }
+            }
+          }
+        },
+        {
+          "position": { "x": 4, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p1_f_flood",
+            "queries": [
+              {
+                "name": "q_flood",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`flood_plain`", "name": "flood_plain" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "flood_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Flood Plain Risk", "fieldName": "flood_plain", "queryName": "q_flood" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Flood Risk (false = safe)" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 2, "width": 6, "height": 9 },
+          "widget": {
+            "name": "w_p1_tbl_suburbs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",           "name": "suburb_name" },
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "`region`",                "name": "region" },
+                    { "expression": "`median_weekly_rent`",    "name": "median_weekly_rent" },
+                    { "expression": "`flood_plain`",           "name": "flood_plain" },
+                    { "expression": "`coastal_risk`",          "name": "coastal_risk" },
+                    { "expression": "`education_nearby`",      "name": "education_nearby" },
+                    { "expression": "`supermarkets_nearby`",   "name": "supermarkets_nearby" },
+                    { "expression": "`transit_stops`",         "name": "transit_stops" },
+                    { "expression": "`ta_avg_monthly_crime`",  "name": "ta_avg_monthly_crime" },
+                    { "expression": "`population_2023`",       "name": "population_2023" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "table",
+              "version": 2,
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  { "fieldName": "suburb_name",           "title": "Suburb",              "type": "string",  "visible": true, "order": 0, "alignContent": "left" },
+                  { "fieldName": "territorial_authority", "title": "TA",                  "type": "string",  "visible": true, "order": 1, "alignContent": "left" },
+                  { "fieldName": "median_weekly_rent",    "title": "Median Wkly Rent ($)","type": "float",   "visible": true, "order": 2, "alignContent": "right" },
+                  { "fieldName": "flood_plain",           "title": "Flood Risk",          "type": "boolean", "visible": true, "order": 3, "alignContent": "left" },
+                  { "fieldName": "coastal_risk",          "title": "Coastal Risk",        "type": "boolean", "visible": true, "order": 4, "alignContent": "left" },
+                  { "fieldName": "education_nearby",      "title": "Schools Nearby",      "type": "integer", "visible": true, "order": 5, "alignContent": "right" },
+                  { "fieldName": "supermarkets_nearby",   "title": "Supermarkets",        "type": "integer", "visible": true, "order": 6, "alignContent": "right" },
+                  { "fieldName": "transit_stops",         "title": "Transit Stops",       "type": "integer", "visible": true, "order": 7, "alignContent": "right" },
+                  { "fieldName": "ta_avg_monthly_crime",  "title": "TA Avg Crime/mth",    "type": "float",   "visible": true, "order": 8, "alignContent": "right" },
+                  { "fieldName": "population_2023",       "title": "Population",          "type": "integer", "visible": true, "order": 9, "alignContent": "right" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Suburb Comparison — Sort by any column" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 11, "width": 6, "height": 6 },
+          "widget": {
+            "name": "w_p1_bar_rent",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",        "name": "suburb_name" },
+                    { "expression": "`median_weekly_rent`", "name": "median_weekly_rent" },
+                    { "expression": "`flood_plain`",        "name": "flood_plain" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": {
+                  "displayName": "Suburb",
+                  "fieldName": "suburb_name",
+                  "scale": { "type": "categorical" },
+                  "axis": { "title": "Suburb" }
+                },
+                "y": {
+                  "displayName": "Median Weekly Rent (NZD)",
+                  "fieldName": "median_weekly_rent",
+                  "scale": { "type": "quantitative" },
+                  "axis": { "title": "Median Weekly Rent — 2023 Census (NZD)" }
+                },
+                "color": {
+                  "displayName": "Flood Risk",
+                  "fieldName": "flood_plain",
+                  "scale": { "type": "categorical" }
+                },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Median Weekly Rent by Suburb — coloured by Flood Risk" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "p_rent",
+      "displayName": "Rent & Housing Quality",
+      "layout": [
+        {
+          "position": { "x": 0, "y": 0, "width": 6, "height": 1 },
+          "widget": {
+            "name": "w_p2_title",
+            "textbox_spec": "## Rent & Housing Quality by Suburb\n*Rent data from 2023 Census. Rent-to-income = annual rent ÷ median household income. Lower = more affordable.*"
+          }
+        },
+        {
+          "position": { "x": 0, "y": 1, "width": 3, "height": 1 },
+          "widget": {
+            "name": "w_p2_f_ta",
+            "queries": [
+              {
+                "name": "q_p2_ta",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "ta_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Territorial Authority", "fieldName": "territorial_authority", "queryName": "q_p2_ta" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: TA" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 1, "width": 3, "height": 1 },
+          "widget": {
+            "name": "w_p2_f_region",
+            "queries": [
+              {
+                "name": "q_p2_region",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`region`", "name": "region" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "region_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Region", "fieldName": "region", "queryName": "q_p2_region" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Region" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 2, "width": 3, "height": 6 },
+          "widget": {
+            "name": "w_p2_bar_rent",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",        "name": "suburb_name" },
+                    { "expression": "`median_weekly_rent`", "name": "median_weekly_rent" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "Median Weekly Rent ($)", "fieldName": "median_weekly_rent", "scale": { "type": "quantitative" }, "axis": { "title": "Median Weekly Rent (NZD)" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Median Weekly Rent by Suburb" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 2, "width": 3, "height": 6 },
+          "widget": {
+            "name": "w_p2_bar_rti",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",         "name": "suburb_name" },
+                    { "expression": "`rent_to_income_pct`",  "name": "rent_to_income_pct" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "Rent-to-Income %", "fieldName": "rent_to_income_pct", "scale": { "type": "quantitative" }, "axis": { "title": "Annual Rent as % of Household Income" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Rent-to-Income % by Suburb (lower = more affordable)" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 8, "width": 3, "height": 5 },
+          "widget": {
+            "name": "w_p2_bar_crowd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",     "name": "suburb_name" },
+                    { "expression": "`percent_crowded`", "name": "percent_crowded" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "% Crowded Households", "fieldName": "percent_crowded", "scale": { "type": "quantitative" }, "axis": { "title": "% Crowded Households" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Crowded Households % (lower = better)" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 8, "width": 3, "height": 5 },
+          "widget": {
+            "name": "w_p2_bar_damp",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",     "name": "suburb_name" },
+                    { "expression": "`pct_always_damp`", "name": "pct_always_damp" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "% Always Damp", "fieldName": "pct_always_damp", "scale": { "type": "quantitative" }, "axis": { "title": "% of Dwellings Always Damp" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Damp Dwellings % (lower = better)" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "p_risk",
+      "displayName": "Flood & Safety",
+      "layout": [
+        {
+          "position": { "x": 0, "y": 0, "width": 6, "height": 1 },
+          "widget": {
+            "name": "w_p3_title",
+            "textbox_spec": "## Flood Risk & Safety by Suburb\n*Flood data from regional council hazard layers. Crime is TA-level monthly average (area-unit grain).*"
+          }
+        },
+        {
+          "position": { "x": 0, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p3_f_region",
+            "queries": [
+              {
+                "name": "q_p3_region",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`region`", "name": "region" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "region_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Region", "fieldName": "region", "queryName": "q_p3_region" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Region" }
+            }
+          }
+        },
+        {
+          "position": { "x": 2, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p3_f_ta",
+            "queries": [
+              {
+                "name": "q_p3_ta",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "ta_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Territorial Authority", "fieldName": "territorial_authority", "queryName": "q_p3_ta" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: TA" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 2, "width": 6, "height": 7 },
+          "widget": {
+            "name": "w_p3_tbl_risk",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",           "name": "suburb_name" },
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "`region`",                "name": "region" },
+                    { "expression": "`flood_plain`",           "name": "flood_plain" },
+                    { "expression": "`coastal_risk`",          "name": "coastal_risk" },
+                    { "expression": "`median_weekly_rent`",    "name": "median_weekly_rent" },
+                    { "expression": "`ta_avg_monthly_crime`",  "name": "ta_avg_monthly_crime" },
+                    { "expression": "`population_2023`",       "name": "population_2023" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "table",
+              "version": 2,
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  { "fieldName": "suburb_name",           "title": "Suburb",              "type": "string",  "visible": true, "order": 0 },
+                  { "fieldName": "territorial_authority", "title": "TA",                  "type": "string",  "visible": true, "order": 1 },
+                  { "fieldName": "flood_plain",           "title": "Flood Plain Risk",    "type": "boolean", "visible": true, "order": 2 },
+                  { "fieldName": "coastal_risk",          "title": "Coastal Inundation",  "type": "boolean", "visible": true, "order": 3 },
+                  { "fieldName": "median_weekly_rent",    "title": "Median Rent ($/wk)",  "type": "float",   "visible": true, "order": 4, "alignContent": "right" },
+                  { "fieldName": "ta_avg_monthly_crime",  "title": "TA Crime (avg/mth)",  "type": "float",   "visible": true, "order": 5, "alignContent": "right" },
+                  { "fieldName": "population_2023",       "title": "Population",          "type": "integer", "visible": true, "order": 6, "alignContent": "right" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Suburb Flood Risk & Safety — Sort by any column" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 9, "width": 6, "height": 6 },
+          "widget": {
+            "name": "w_p3_bar_crime",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`",  "name": "territorial_authority" },
+                    { "expression": "AVG(`ta_avg_monthly_crime`)", "name": "ta_avg_monthly_crime" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "TA", "fieldName": "territorial_authority", "scale": { "type": "categorical" }, "axis": { "title": "Territorial Authority" } },
+                "y": { "displayName": "Avg Monthly Crime", "fieldName": "ta_avg_monthly_crime", "scale": { "type": "quantitative" }, "axis": { "title": "Average Monthly Victimisations per Area Unit" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Average Monthly Crime by TA" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "p_amenities",
+      "displayName": "Schools, Shops & Transit",
+      "layout": [
+        {
+          "position": { "x": 0, "y": 0, "width": 6, "height": 1 },
+          "widget": {
+            "name": "w_p4_title",
+            "textbox_spec": "## Schools, Shops & Transit — What's Nearby?\n*Source: OpenStreetMap amenities + GTFS transit feeds (Auckland, Wellington, Waikato, Christchurch). Filter to a TA to focus the charts.*"
+          }
+        },
+        {
+          "position": { "x": 0, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p4_f_ta",
+            "queries": [
+              {
+                "name": "q_p4_ta",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "ta_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Territorial Authority", "fieldName": "territorial_authority", "queryName": "q_p4_ta" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: TA (for bar charts below)" }
+            }
+          }
+        },
+        {
+          "position": { "x": 2, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p4_f_amenity",
+            "queries": [
+              {
+                "name": "q_p4_amenity",
+                "query": {
+                  "datasetName": "ds_amenities_map",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`amenity_type`", "name": "amenity_type" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "type_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Amenity Type", "fieldName": "amenity_type", "queryName": "q_p4_amenity" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Amenity Type (for map)" }
+            }
+          }
+        },
+        {
+          "position": { "x": 4, "y": 1, "width": 2, "height": 1 },
+          "widget": {
+            "name": "w_p4_f_feed",
+            "queries": [
+              {
+                "name": "q_p4_feed",
+                "query": {
+                  "datasetName": "ds_transit_map",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`feed_source`", "name": "feed_source" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "feed_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Transit Feed", "fieldName": "feed_source", "queryName": "q_p4_feed" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Transit City" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 2, "width": 3, "height": 7 },
+          "widget": {
+            "name": "w_p4_map_amenities",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_amenities_map",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`lat`",          "name": "lat" },
+                    { "expression": "`lon`",          "name": "lon" },
+                    { "expression": "`amenity_type`", "name": "amenity_type" },
+                    { "expression": "`name`",         "name": "name" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "point-map",
+              "version": 1,
+              "encodings": {
+                "lat": { "fieldName": "lat" },
+                "lon": { "fieldName": "lon" },
+                "color": {
+                  "displayName": "Amenity Type",
+                  "fieldName": "amenity_type",
+                  "scale": { "type": "categorical" }
+                }
+              },
+              "frame": { "showTitle": true, "title": "Amenities Map — Schools, Supermarkets, Parks, Health" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 2, "width": 3, "height": 7 },
+          "widget": {
+            "name": "w_p4_map_transit",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_transit_map",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`stop_lat`",    "name": "stop_lat" },
+                    { "expression": "`stop_lon`",    "name": "stop_lon" },
+                    { "expression": "`feed_source`", "name": "feed_source" },
+                    { "expression": "`stop_name`",   "name": "stop_name" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "point-map",
+              "version": 1,
+              "encodings": {
+                "lat": { "fieldName": "stop_lat" },
+                "lon": { "fieldName": "stop_lon" },
+                "color": {
+                  "displayName": "City / Network",
+                  "fieldName": "feed_source",
+                  "scale": { "type": "categorical" }
+                }
+              },
+              "frame": { "showTitle": true, "title": "Transit Stops Map — Auckland, Wellington, Waikato, Christchurch" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 9, "width": 3, "height": 5 },
+          "widget": {
+            "name": "w_p4_bar_edu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",       "name": "suburb_name" },
+                    { "expression": "`education_nearby`",  "name": "education_nearby" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "Schools & ECE Nearby", "fieldName": "education_nearby", "scale": { "type": "quantitative" }, "axis": { "title": "Schools + ECE (H3 cells)" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Schools & Early Childhood Education Nearby" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 9, "width": 3, "height": 5 },
+          "widget": {
+            "name": "w_p4_bar_transit",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",   "name": "suburb_name" },
+                    { "expression": "`transit_stops`", "name": "transit_stops" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "bar",
+              "version": 3,
+              "encodings": {
+                "x": { "displayName": "Suburb", "fieldName": "suburb_name", "scale": { "type": "categorical" }, "axis": { "title": "Suburb" } },
+                "y": { "displayName": "Transit Stops", "fieldName": "transit_stops", "scale": { "type": "quantitative" }, "axis": { "title": "Number of Transit Stops" } },
+                "label": { "show": false }
+              },
+              "frame": { "showTitle": true, "title": "Transit Stops by Suburb" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "p_detail",
+      "displayName": "Suburb Profile",
+      "layout": [
+        {
+          "position": { "x": 0, "y": 0, "width": 6, "height": 1 },
+          "widget": {
+            "name": "w_p5_title",
+            "textbox_spec": "## Suburb Profile — Full Detail\n*Select a TA or specific suburb to see all housing quality metrics from the 2023 Census.*"
+          }
+        },
+        {
+          "position": { "x": 0, "y": 1, "width": 3, "height": 1 },
+          "widget": {
+            "name": "w_p5_f_ta",
+            "queries": [
+              {
+                "name": "q_p5_ta",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "ta_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Territorial Authority", "fieldName": "territorial_authority", "queryName": "q_p5_ta" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: TA" }
+            }
+          }
+        },
+        {
+          "position": { "x": 3, "y": 1, "width": 3, "height": 1 },
+          "widget": {
+            "name": "w_p5_f_suburb",
+            "queries": [
+              {
+                "name": "q_p5_suburb",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": false,
+                  "fields": [
+                    { "expression": "`suburb_name`", "name": "suburb_name" },
+                    { "expression": "COUNT_IF(`associative_filter_predicate_group`)", "name": "suburb_assoc" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "filter-multi-select",
+              "version": 2,
+              "encodings": {
+                "fields": [ { "displayName": "Suburb", "fieldName": "suburb_name", "queryName": "q_p5_suburb" } ]
+              },
+              "frame": { "showTitle": true, "title": "Filter: Suburb" }
+            }
+          }
+        },
+        {
+          "position": { "x": 0, "y": 2, "width": 6, "height": 9 },
+          "widget": {
+            "name": "w_p5_tbl_full",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_suburb_sarah",
+                  "disaggregated": true,
+                  "fields": [
+                    { "expression": "`suburb_name`",           "name": "suburb_name" },
+                    { "expression": "`territorial_authority`", "name": "territorial_authority" },
+                    { "expression": "`population_2023`",       "name": "population_2023" },
+                    { "expression": "`median_weekly_rent`",    "name": "median_weekly_rent" },
+                    { "expression": "`median_household_income`","name": "median_household_income" },
+                    { "expression": "`rent_to_income_pct`",   "name": "rent_to_income_pct" },
+                    { "expression": "`owner_occupier_pct`",   "name": "owner_occupier_pct" },
+                    { "expression": "`percent_crowded`",      "name": "percent_crowded" },
+                    { "expression": "`pct_always_damp`",      "name": "pct_always_damp" },
+                    { "expression": "`dwellings_no_heating`", "name": "dwellings_no_heating" },
+                    { "expression": "`flood_plain`",          "name": "flood_plain" },
+                    { "expression": "`coastal_risk`",         "name": "coastal_risk" },
+                    { "expression": "`education_nearby`",     "name": "education_nearby" },
+                    { "expression": "`supermarkets_nearby`",  "name": "supermarkets_nearby" },
+                    { "expression": "`parks_nearby`",         "name": "parks_nearby" },
+                    { "expression": "`health_nearby`",        "name": "health_nearby" },
+                    { "expression": "`transit_stops`",        "name": "transit_stops" },
+                    { "expression": "`ta_avg_monthly_crime`", "name": "ta_avg_monthly_crime" }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "widgetType": "table",
+              "version": 2,
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  { "fieldName": "suburb_name",            "title": "Suburb",               "type": "string",  "visible": true, "order": 0 },
+                  { "fieldName": "territorial_authority",  "title": "TA",                   "type": "string",  "visible": true, "order": 1 },
+                  { "fieldName": "population_2023",        "title": "Population",           "type": "integer", "visible": true, "order": 2,  "alignContent": "right" },
+                  { "fieldName": "median_weekly_rent",     "title": "Rent ($/wk)",          "type": "float",   "visible": true, "order": 3,  "alignContent": "right" },
+                  { "fieldName": "median_household_income","title": "HH Income ($)",        "type": "float",   "visible": true, "order": 4,  "alignContent": "right" },
+                  { "fieldName": "rent_to_income_pct",     "title": "Rent-to-Income %",     "type": "float",   "visible": true, "order": 5,  "alignContent": "right" },
+                  { "fieldName": "owner_occupier_pct",     "title": "Owner-Occ %",          "type": "float",   "visible": true, "order": 6,  "alignContent": "right" },
+                  { "fieldName": "percent_crowded",        "title": "Crowded %",            "type": "float",   "visible": true, "order": 7,  "alignContent": "right" },
+                  { "fieldName": "pct_always_damp",        "title": "Always Damp %",        "type": "float",   "visible": true, "order": 8,  "alignContent": "right" },
+                  { "fieldName": "dwellings_no_heating",   "title": "No Heating (n)",       "type": "integer", "visible": true, "order": 9,  "alignContent": "right" },
+                  { "fieldName": "flood_plain",            "title": "Flood Risk",           "type": "boolean", "visible": true, "order": 10 },
+                  { "fieldName": "coastal_risk",           "title": "Coastal Risk",         "type": "boolean", "visible": true, "order": 11 },
+                  { "fieldName": "education_nearby",       "title": "Schools",              "type": "integer", "visible": true, "order": 12, "alignContent": "right" },
+                  { "fieldName": "supermarkets_nearby",    "title": "Supermarkets",         "type": "integer", "visible": true, "order": 13, "alignContent": "right" },
+                  { "fieldName": "transit_stops",          "title": "Transit Stops",        "type": "integer", "visible": true, "order": 14, "alignContent": "right" },
+                  { "fieldName": "ta_avg_monthly_crime",   "title": "TA Crime (avg/mth)",   "type": "float",   "visible": true, "order": 15, "alignContent": "right" }
+                ]
+              },
+              "frame": { "showTitle": true, "title": "Full Suburb Profile (2023 Census + live data)" }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

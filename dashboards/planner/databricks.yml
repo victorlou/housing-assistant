@@ -1,0 +1,20 @@
+bundle:
+  name: housing-planner-dashboard
+
+variables:
+  warehouse_id:
+    description: SQL warehouse ID for dashboard execution
+    default: f21913d784edd9ad  # housing-assistant-dev
+
+targets:
+  dev:
+    workspace:
+      host: https://dbc-c3095737-46ec.cloud.databricks.com
+
+resources:
+  dashboards:
+    planner_dashboard:
+      file_path: dashboard.lvdash.json
+      display_name: "NZ Housing Affordability: Suburb Finder"
+      warehouse_id: ${var.warehouse_id}
+      parent_path: /Shared/housing-assistant
