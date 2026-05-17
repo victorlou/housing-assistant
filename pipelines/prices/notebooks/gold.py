@@ -5,7 +5,7 @@
 # MAGIC The contract table consumers (Genie, the agent, the consumer view)
 # MAGIC join against:
 # MAGIC
-# MAGIC - `housing.gold.house_price__quarter__region` — RBNZ M10
+# MAGIC - `housing.gold.region__quarter` — RBNZ M10
 # MAGIC   indicators plus a derived year-on-year HPI % change computed via a
 # MAGIC   4-quarter `LAG` window per region.
 # MAGIC
@@ -30,13 +30,17 @@ SILVER = "housing.silver"
 
 
 @dlt.table(
-    name="house_price__quarter__region",
+    name="region__quarter",
     comment=(
-        "Quarterly NZ housing-market indicators by region. HPI year-on-year "
-        "% change is computed in-table via a 4-quarter LAG window per region. "
-        "Joins to housing.gold.suburb on region for affordability rollups "
-        "(today: only the 'New Zealand' aggregate row matches; per-region "
-        "rows come from a future REINZ / Stats NZ source)."
+        "Time-series fact at NZ-region + quarter grain. One row per (region, "
+        "quarter). Today every row carries region = 'New Zealand' because "
+        "the only source — RBNZ M10 Housing — publishes at country-aggregate "
+        "level only. When a regional source lands (REINZ, Stats NZ property "
+        "transfers), this table fills with proper region values without "
+        "schema change. Joins to housing.gold.suburb on region. HPI YoY % "
+        "change is derived in-table via a 4-quarter LAG window per region. "
+        "Naming: follows the <spatial_dim>__<time_grain> convention — see "
+        "docs/conventions.md."
     ),
     table_properties={"quality": "gold", "project": "housing-assistant"},
     partition_cols=["region"],
@@ -54,7 +58,7 @@ SILVER = "housing.silver"
 )
 @dlt.expect_or_drop("has_region", "region IS NOT NULL")
 @dlt.expect_or_drop("has_quarter", "quarter IS NOT NULL")
-def house_price__quarter__region():
+def region__quarter():
     silver = spark.read.table(f"{SILVER}.house_price_index")
 
     # YoY: lag 4 quarters within each region, compute % delta against the

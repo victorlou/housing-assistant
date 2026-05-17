@@ -8,10 +8,12 @@ For every region in REGIONS, the script:
   2. Pulls the latest GTFS zip for that feed from the bronze volume and
      strips header-only tables that R5 refuses to parse.
   3. Builds a routing graph (OSM walking + GTFS transit), cached on disk.
-  4. Computes door-to-door travel times from a handful of origin centres
-     to every H3 cell hosting a stop in `housing.gold.transit_stop`, plus
-     a ring of neighbouring cells (so residential cells near transit show
-     up even when they don't host their own stop).
+  4. Computes a symmetric door-to-door travel-time matrix over every H3
+     cell hosting a stop in `housing.gold.transit_stop` plus a 1-ring
+     expansion (so residential cells near transit are routable too). Both
+     `origin_h3` and `destination_h3` are drawn from this same set — the
+     agent can query travel time from any lat/lon near transit, not just
+     from a pre-selected list of named hubs.
 
 After all regions are done it concatenates everything, uploads the combined
 Parquet to `dbfs:/Volumes/housing/bronze/osm_files/isochrone_all.parquet`,
@@ -45,13 +47,13 @@ from pathlib import Path
 from typing import Iterable
 
 import geopandas as gpd
+
 # h3-py 4.x ships the string-based API as the default top-level module — every
 # call expects hex H3 IDs like "8928308280fffff". We work in the BIGINT
 # representation (matches Databricks' `h3_cell` column), so we import the
 # integer-based API alias and use ints end-to-end.
 import h3.api.basic_int as h3
 import pandas as pd
-from shapely.geometry import Point
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.config import Config
@@ -70,16 +72,18 @@ DATABRICKS_WAREHOUSE_NAME = "housing-assistant-dev"
 DEPARTURE = datetime(2026, 5, 20, 8, 30)  # Wednesday 08:30 NZT
 MAX_TRAVEL_MIN = 90
 H3_RESOLUTION = 8
-COMPUTATION_VERSION = "r5py-v1"
+# Bumped to v2 when the matrix moved from "22 hand-picked origin centres" to
+# a fully symmetric cell-to-cell matrix. Old r5py-v1 rows in any downstream
+# cache should be invalidated when this version changes.
+COMPUTATION_VERSION = "r5py-v2"
 
 # Ring of H3 neighbours to include around each stop cell. 0 = stop cells only;
-# 1 = stop cells + 6 immediate neighbours each (~3-5× more cells after dedup).
+# 1 = stop cells + 6 immediate neighbours each (~3-5x more cells after dedup).
+# Applies to both origins and destinations (they share the same cell set).
 DESTINATION_RING = 1
 
 # Where the combined Parquet lands on Databricks and which table it backs.
-BRONZE_VOLUME_TARGET = (
-    "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
-)
+BRONZE_VOLUME_TARGET = "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
 GOLD_TABLE = "housing.gold.isochrone"
 
 # Source NZ-wide OSM extract. Used as input to per-region osmium clipping.
@@ -88,6 +92,9 @@ NZ_OSM_SOURCE_GLOB = "new-zealand-*.osm.pbf"
 
 # Region definitions. Add a new entry to bring another NZ region online.
 # clip_bbox is "min_lon,min_lat,max_lon,max_lat" — same format osmium uses.
+# Origin lists used to live inline here (22 named hubs total); they're gone
+# because the matrix is now symmetric — every cell hosting a transit stop
+# (plus its 1-ring) is both an origin and a destination.
 REGIONS = [
     {
         "feed_source": "auckland_transport",
@@ -95,15 +102,6 @@ REGIONS = [
         "region_key": "auckland",
         "clip_bbox": "174.40,-37.85,175.30,-36.25",
         "gtfs_volume": "/Volumes/housing/bronze/gtfs_files/_zip/auckland_transport",
-        "origins": [
-            ("britomart", "Britomart", -36.84393, 174.76682),
-            ("newmarket", "Newmarket", -36.87015, 174.77648),
-            ("albany", "Albany", -36.72823, 174.70019),
-            ("manukau", "Manukau", -36.99113, 174.88004),
-            ("henderson", "Henderson", -36.87598, 174.62881),
-            ("smales_farm", "Smales Farm", -36.77781, 174.74798),
-            ("sylvia_park", "Sylvia Park", -36.91035, 174.84249),
-        ],
     },
     {
         "feed_source": "metlink",
@@ -111,14 +109,6 @@ REGIONS = [
         "region_key": "wellington",
         "clip_bbox": "174.65,-41.40,175.15,-40.95",
         "gtfs_volume": "/Volumes/housing/bronze/gtfs_files/_zip/metlink",
-        "origins": [
-            ("wellington_stn", "Wellington Station", -41.27866, 174.78035),
-            ("lambton_quay", "Lambton Quay", -41.28448, 174.77685),
-            ("courtenay_place", "Courtenay Place", -41.29368, 174.78173),
-            ("petone", "Petone", -41.22850, 174.87410),
-            ("hutt_central", "Hutt Central", -41.20961, 174.91124),
-            ("porirua_stn", "Porirua Station", -41.13427, 174.84016),
-        ],
     },
     {
         "feed_source": "busit",
@@ -126,12 +116,6 @@ REGIONS = [
         "region_key": "waikato",
         "clip_bbox": "175.05,-38.00,175.40,-37.55",
         "gtfs_volume": "/Volumes/housing/bronze/gtfs_files/_zip/busit",
-        "origins": [
-            ("hamilton_centre", "Hamilton Transport Centre", -37.78603, 175.27786),
-            ("the_base", "The Base / Te Awa", -37.74916, 175.24193),
-            ("chartwell", "Chartwell Mall", -37.76574, 175.27893),
-            ("hamilton_east", "Hamilton East / University", -37.79213, 175.30005),
-        ],
     },
     {
         "feed_source": "metroinfo",
@@ -139,13 +123,6 @@ REGIONS = [
         "region_key": "christchurch",
         "clip_bbox": "172.30,-43.75,172.85,-43.35",
         "gtfs_volume": "/Volumes/housing/bronze/gtfs_files/_zip/metroinfo",
-        "origins": [
-            ("bus_interchange", "Bus Interchange", -43.53309, 172.63659),
-            ("riccarton", "Riccarton Mall", -43.53212, 172.59247),
-            ("hornby", "Hornby South Mall", -43.55139, 172.55168),
-            ("eastgate", "Eastgate / Linwood", -43.53388, 172.66837),
-            ("northlands", "Northlands Mall", -43.49443, 172.59890),
-        ],
     },
 ]
 
@@ -166,11 +143,6 @@ def _coerce_h3_int(value) -> int:
     if isinstance(value, str):
         return int(value, 16)
     return int(value)
-
-
-def _h3_cell_int(lat: float, lon: float, res: int) -> int:
-    """Return an H3 cell as a Python int. Databricks' BIGINT representation."""
-    return _coerce_h3_int(h3.latlng_to_cell(lat, lon, res))
 
 
 def _h3_disk_ints(cell_int: int, k: int) -> Iterable[int]:
@@ -207,9 +179,7 @@ def _warehouse_id() -> str:
         w for w in workspace.warehouses.list() if w.name == DATABRICKS_WAREHOUSE_NAME
     ]
     if not matching:
-        sys.exit(
-            f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found."
-        )
+        sys.exit(f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found.")
     return matching[0].id
 
 
@@ -234,9 +204,7 @@ def _run_sql(stmt: str) -> list[list]:
         StatementState.RUNNING,
     ):
         time.sleep(1)
-        response = workspace.statement_execution.get_statement(
-            response.statement_id
-        )
+        response = workspace.statement_execution.get_statement(response.statement_id)
 
     state = response.status.state if response.status else None
     if state != StatementState.SUCCEEDED:
@@ -292,9 +260,7 @@ def ensure_osm_clip(region: dict) -> Path:
     suffix = source.name.replace("new-zealand-", "").replace(".osm.pbf", "")
     target = DATA / f"{region_key}-{suffix}.osm.pbf"
 
-    print(
-        f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})"
-    )
+    print(f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})")
     subprocess.run(
         [
             "osmium",
@@ -351,7 +317,8 @@ def clean_gtfs_zip(src_zip: Path) -> Path:
         for info in src.infolist():
             data = src.read(info.filename)
             lines = [
-                ln for ln in data.decode("utf-8", errors="ignore").splitlines()
+                ln
+                for ln in data.decode("utf-8", errors="ignore").splitlines()
                 if ln.strip()
             ]
             if len(lines) <= 1:
@@ -397,25 +364,6 @@ def fetch_destinations(feed_source: str, ring: int) -> gpd.GeoDataFrame:
     )[["id", "geometry"]]
 
 
-def origins_gdf(origin_list: list[tuple]) -> gpd.GeoDataFrame:
-    rows = [
-        {
-            "id": cid,
-            "name": name,
-            "lat": lat,
-            "lon": lon,
-            "h3_cell": _h3_cell_int(lat, lon, H3_RESOLUTION),
-        }
-        for cid, name, lat, lon in origin_list
-    ]
-    df = pd.DataFrame(rows)
-    return gpd.GeoDataFrame(
-        df,
-        geometry=gpd.points_from_xy(df.lon, df.lat),
-        crs="EPSG:4326",
-    )
-
-
 # ── Per-region compute ──────────────────────────────────────────────
 
 
@@ -433,8 +381,14 @@ def compute_region(region: dict) -> pd.DataFrame:
     print(f"  GTFS: {gtfs_zip.name} ({gtfs_zip.stat().st_size / 1e6:,.1f} MB)")
 
     destinations = fetch_destinations(feed_source, DESTINATION_RING)
-    origins = origins_gdf(region["origins"])
-    print(f"  Origins: {len(origins)}  ·  Destinations: {len(destinations):,}")
+    # Symmetric matrix: origins are the same cell set as destinations. Every
+    # res-8 H3 cell near transit is reachable *from* every other such cell,
+    # so any workplace lat/lon near transit gets an answer (not just one of
+    # the 22 hand-picked hubs we used to keep here). r5py reads only `id`
+    # and `geometry` from each gdf, so a .copy() is enough.
+    origins = destinations.copy()
+    print(f"  Origins: {len(origins):,}  ·  Destinations: {len(destinations):,}")
+    print(f"  Pairs to evaluate: {len(origins) * len(destinations):,}")
 
     print("  Building routing network...")
     network = TransportNetwork(osm_pbf=str(osm_pbf), gtfs=[str(gtfs_zip)])
@@ -451,9 +405,10 @@ def compute_region(region: dict) -> pd.DataFrame:
     if "travel_time" in matrix.columns:
         matrix = matrix.rename(columns={"travel_time": "travel_minutes"})
 
-    origin_h3_by_id = dict(zip(origins["id"], origins["h3_cell"]))
     rows = matrix.assign(
-        origin_h3=matrix["from_id"].map(origin_h3_by_id),
+        # In the symmetric matrix both `from_id` and `to_id` are already H3
+        # cells (fetch_destinations sets id = cell), so no mapping is needed.
+        origin_h3=matrix["from_id"],
         destination_h3=matrix["to_id"],
         mode="transit",
         feed_source=feed_source,
@@ -503,36 +458,40 @@ def upload_to_volume(local_path: Path, volume_path: str) -> None:
 
 
 TABLE_COMMENT = (
-    "Door-to-door public-transit travel-time matrix across NZ's four metro "
-    "regions (Auckland, Wellington, Waikato/Hamilton, Christchurch). One "
-    "row per (origin, destination) pair where the destination is reachable "
-    "from the origin within 90 min on a Wednesday 08:30 NZT departure, "
-    "computed via r5py + R5 routing over OSM walking network + GTFS transit. "
-    "Origins are pre-defined origin centres (Britomart, Newmarket, Wellington "
-    "Station, etc., 22 in total) keyed by their res-8 H3 cell. Destinations "
-    "are H3 res-8 cells covering each region (every cell hosting a transit "
-    "stop, plus a 1-ring expansion to cover residential cells adjacent to "
-    "transit). JOINS: gold.isochrone.destination_h3 → gold.h3_cell.h3_cell → "
-    "gold.suburb.suburb_id is the path to translate an isochrone reach into "
-    "named suburbs. Pattern: `WHERE travel_minutes <= N AND origin_h3 = "
-    "h3_longlatash3(<origin_lon>, <origin_lat>, 8)`. Refreshed locally; see "
-    "pipelines/isochrone/local/."
+    "Symmetric door-to-door public-transit travel-time matrix across NZ's "
+    "four metro regions (Auckland, Wellington, Waikato/Hamilton, "
+    "Christchurch). One row per (origin_h3, destination_h3) pair where the "
+    "destination is reachable from the origin within 90 min on a Wednesday "
+    "08:30 NZT departure, computed via r5py + R5 routing over the OSM "
+    "walking network + GTFS transit. Both origin_h3 and destination_h3 are "
+    "drawn from the same cell set per region: every res-8 H3 cell hosting "
+    "a transit stop in housing.gold.transit_stop, plus a 1-ring of "
+    "neighbouring cells (so residential cells adjacent to transit are "
+    "routable). JOINS: gold.isochrone.destination_h3 → gold.h3_cell.h3_cell "
+    "→ gold.suburb.suburb_id is the path to translate an isochrone reach "
+    "into named suburbs; the same path works on origin_h3 for the reverse "
+    "direction. Pattern: `WHERE travel_minutes <= N AND origin_h3 = "
+    "h3_longlatash3(<origin_lon>, <origin_lat>, 8)`. Refreshed locally; "
+    "see pipelines/isochrone/local/."
 )
 
 COLUMN_COMMENTS = {
     "origin_h3": (
-        "H3 res-8 cell of the origin point (a transit hub like Britomart). "
-        "Use h3_longlatash3(lon, lat, 8) to compute for any lat/lon."
+        "H3 res-8 cell of the origin. Drawn from the same set as "
+        "destination_h3 — any cell hosting a transit stop or adjacent to "
+        "one. Use h3_longlatash3(lon, lat, 8) to look up the cell for any "
+        "workplace lat/lon."
     ),
     "destination_h3": (
-        "H3 res-8 cell of the destination. Joins to gold.h3_cell.h3_cell "
-        "to translate to a suburb_id."
+        "H3 res-8 cell of the destination. Same set as origin_h3. Joins to "
+        "gold.h3_cell.h3_cell to translate to a suburb_id."
     ),
     "mode": "Always 'transit' today. Future: 'drive', 'walk' for fallback modes.",
     "travel_minutes": (
-        "Total trip time (origin walk → transit → destination walk) bucketed "
-        "to the nearest 5 minutes, hard-capped at 90. Smaller is more "
-        "reachable."
+        "Total trip time (origin walk → transit → destination walk) "
+        "bucketed to the nearest 5 minutes, hard-capped at 90. Smaller is "
+        "more reachable. Self-reach rows (origin_h3 = destination_h3) "
+        "report 0."
     ),
     "feed_source": (
         "Which regional GTFS feed produced this row: 'auckland_transport', "
@@ -542,7 +501,11 @@ COLUMN_COMMENTS = {
     "departure_time": "Assumed departure clock time, e.g. '08:30'. Currently weekday peak only.",
     "service_date": "Service date used for the routing query (currently Wednesday 2026-05-20).",
     "computed_at": "When this row was computed by r5py.",
-    "computation_version": "Bumped when the routing algorithm or assumptions change. e.g. 'r5py-v1'.",
+    "computation_version": (
+        "Bumped when the routing algorithm or origin/destination set "
+        "changes. Current: 'r5py-v2' (symmetric matrix). 'r5py-v1' was "
+        "the prior 22-hand-picked-hubs run."
+    ),
 }
 
 
@@ -563,20 +526,21 @@ def refresh_gold_table(volume_path: str, table: str) -> None:
     print(f"  ✓ {table} has {int(row_count):,} rows")
 
 
-def _apply_comments(table: str, table_comment: str, column_comments: dict[str, str]) -> None:
+def _apply_comments(
+    table: str, table_comment: str, column_comments: dict[str, str]
+) -> None:
     """
     Apply COMMENT ON TABLE + ALTER COLUMN COMMENT for every column listed.
     Comments propagate into Genie's schema descriptions, so this is the
     primary place to put discoverable guidance for natural-language queries.
     """
+
     def _esc(s: str) -> str:
         return s.replace("'", "''")
 
     _run_sql(f"COMMENT ON TABLE {table} IS '{_esc(table_comment)}'")
     for col, comment in column_comments.items():
-        _run_sql(
-            f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'"
-        )
+        _run_sql(f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{_esc(comment)}'")
 
 
 # ── Main ────────────────────────────────────────────────────────────

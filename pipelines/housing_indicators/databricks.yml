@@ -37,6 +37,10 @@ resources:
         project: housing-assistant
         source: housing_indicators
         layer: bronze
+        # Fail fast on hard errors: try a flow once, no retry. Default is 2
+        # retries (3 attempts), which masks code bugs as "intermittent" and
+        # spams the event log when iterating.
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/bronze.py
@@ -54,6 +58,7 @@ resources:
         project: housing-assistant
         source: housing_indicators
         layer: silver
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/silver.py
@@ -71,6 +76,7 @@ resources:
         project: housing-assistant
         source: housing_indicators
         layer: gold
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/gold.py
@@ -81,9 +87,8 @@ resources:
       description: |
         Monthly fetch of HUD Local Housing Statistics (TA-level NZ housing
         indicators: prices, rents, affordability, MSD, census tenure).
-        Produces housing.gold.housing_indicator__month__ta plus three pivoted
-        convenience tables (house_price, rent_price, affordability) keyed
-        by territorial authority.
+        Produces housing.gold.ta__month and housing.gold.ta__quarter
+        (wide time-series tables keyed by territorial authority).
 
         Manual XLSX upload to the bronze volume; see ./README.md.
 

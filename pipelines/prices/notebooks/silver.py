@@ -17,7 +17,6 @@
 # COMMAND ----------
 
 import dlt
-from pyspark.sql import functions as F
 
 BRONZE = "housing.bronze"
 

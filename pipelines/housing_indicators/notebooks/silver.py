@@ -13,7 +13,6 @@
 # COMMAND ----------
 
 import dlt
-from pyspark.sql import functions as F
 
 BRONZE = "housing.bronze"
 
@@ -62,7 +61,7 @@ TA_NAME_FIXES_SQL = """
         area_name STRING COMMENT 'Human-readable area name. For TAs, matches gold.suburb.territorial_authority exactly.',
         theme STRING COMMENT 'Top-level grouping: Affordability, MSD, Sales, Bonds, RPI, Building Consents, Census Tenure, Census Crowding, Census Housing Deprivation, Rent Proportion, population.',
         series STRING COMMENT 'The specific metric within the theme, e.g. "Current Annual Median Sales Price", "Deposit affordability index", "Housing Register".',
-        ethnicity STRING COMMENT 'Demographic cut. Mostly null; set for some census series like "Maori Crowding Rank".',
+        ethnicity STRING COMMENT 'Demographic cut. NULL means "not broken down by ethnicity" (the aggregate / Total row). Set for ethnicity-specific cuts in some census series like "Maori Crowding Rank". Note: HUDs MSD theme ships every row with ethnicity="All" as its aggregate sentinel; silver normalises that to NULL here so a single ethnicity IS NULL filter works across all themes.',
         value DOUBLE COMMENT 'The metric value, cast to DOUBLE. May be null where HUD suppressed for privacy reasons.',
         value_type STRING COMMENT 'Unit hint from HUD: "index", "NZD", "percent", "count", "ratio", etc.',
         _ingested_at TIMESTAMP COMMENT 'When this row was written to silver.'
@@ -83,7 +82,10 @@ def housing_indicator():
         f"({TA_NAME_FIXES_SQL}) AS area_name",
         "cast(theme AS STRING) AS theme",
         "cast(series AS STRING) AS series",
-        "cast(ethnicity AS STRING) AS ethnicity",
+        # HUD ships MSD rows with ethnicity='All' as its aggregate sentinel,
+        # while every other theme uses NULL. Normalise here so downstream
+        # filters can treat NULL as "not an ethnicity cut" uniformly.
+        "nullif(cast(ethnicity AS STRING), 'All') AS ethnicity",
         "cast(value AS DOUBLE) AS value",
         "cast(value_type AS STRING) AS value_type",
         "_ingested_at",

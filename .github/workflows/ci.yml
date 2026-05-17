@@ -43,9 +43,11 @@ jobs:
         if: steps.pyfiles.outputs.count != '0'
         with:
           python-version: "3.12"
-      - name: Install ruff
+      - name: Install dev tooling
         if: steps.pyfiles.outputs.count != '0'
-        run: pip install ruff
+        # Pinned in requirements-dev.txt so CI and local dev run identical
+        # ruff versions — no "passes on my machine, fails in CI" drift.
+        run: pip install -r requirements-dev.txt
       - name: Lint
         if: steps.pyfiles.outputs.count != '0'
         run: ruff check .

@@ -1,0 +1,11 @@
+# Dev-time Python tooling.
+#
+# Pinned so CI and local dev run identical versions — if CI fails on a lint
+# rule, you should be able to reproduce it 1:1 locally.
+#
+# Install with:  pip install -r requirements-dev.txt
+#
+# Ruff handles both linting (`ruff check`) and formatting (`ruff format`).
+# Config lives in pyproject.toml.
+
+ruff==0.15.13
