@@ -39,26 +39,23 @@ import sys
 import time
 import traceback
 import zipfile
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
 
 import geopandas as gpd
+
 # h3-py 4.x ships the string-based API as the default top-level module — every
 # call expects hex H3 IDs like "8928308280fffff". We work in the BIGINT
 # representation (matches Databricks' `h3_cell` column), so we import the
 # integer-based API alias and use ints end-to-end.
 import h3.api.basic_int as h3
 import pandas as pd
-from shapely.geometry import Point
-
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.config import Config
 from databricks.sdk.service.sql import StatementState
-
-from r5py import TransportNetwork, TravelTimeMatrix, TransportMode
-
+from r5py import TransportMode, TransportNetwork, TravelTimeMatrix
 
 # ── Config ──────────────────────────────────────────────────────────
 HERE = Path(__file__).parent
@@ -77,9 +74,7 @@ COMPUTATION_VERSION = "r5py-v1"
 DESTINATION_RING = 1
 
 # Where the combined Parquet lands on Databricks and which table it backs.
-BRONZE_VOLUME_TARGET = (
-    "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
-)
+BRONZE_VOLUME_TARGET = "/Volumes/housing/bronze/osm_files/isochrone_all.parquet"
 GOLD_TABLE = "housing.gold.isochrone"
 
 # Source NZ-wide OSM extract. Used as input to per-region osmium clipping.
@@ -203,13 +198,9 @@ def _workspace() -> tuple[Config, WorkspaceClient]:
 @lru_cache(maxsize=1)
 def _warehouse_id() -> str:
     _, workspace = _workspace()
-    matching = [
-        w for w in workspace.warehouses.list() if w.name == DATABRICKS_WAREHOUSE_NAME
-    ]
+    matching = [w for w in workspace.warehouses.list() if w.name == DATABRICKS_WAREHOUSE_NAME]
     if not matching:
-        sys.exit(
-            f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found."
-        )
+        sys.exit(f"No SQL warehouse named {DATABRICKS_WAREHOUSE_NAME!r} found.")
     return matching[0].id
 
 
@@ -234,9 +225,7 @@ def _run_sql(stmt: str) -> list[list]:
         StatementState.RUNNING,
     ):
         time.sleep(1)
-        response = workspace.statement_execution.get_statement(
-            response.statement_id
-        )
+        response = workspace.statement_execution.get_statement(response.statement_id)
 
     state = response.status.state if response.status else None
     if state != StatementState.SUCCEEDED:
@@ -262,8 +251,8 @@ def ensure_osm_clip(region: dict) -> Path:
 
     Looks for:
       data/<region_key>-*.osm.pbf  (existing clip, any date suffix)
-    If absent, clips:
-      data/<NZ source>.osm.pbf  ── osmium extract -b clip_bbox ──▶  data/<region_key>-<source_date>.osm.pbf
+    If absent, clips data/<NZ source>.osm.pbf with osmium extract -b clip_bbox to
+      data/<region_key>-<source_date>.osm.pbf
     """
     region_key = region["region_key"]
     existing = sorted(DATA.glob(f"{region_key}-*.osm.pbf"))
@@ -282,8 +271,7 @@ def ensure_osm_clip(region: dict) -> Path:
 
     if not shutil.which("osmium"):
         sys.exit(
-            "\n  ERROR: osmium not on PATH. Install it once:\n\n"
-            "    brew install osmium-tool\n"
+            "\n  ERROR: osmium not on PATH. Install it once:\n\n    brew install osmium-tool\n"
         )
 
     # Carry the source's date suffix into the clip filename so re-downloads
@@ -292,9 +280,7 @@ def ensure_osm_clip(region: dict) -> Path:
     suffix = source.name.replace("new-zealand-", "").replace(".osm.pbf", "")
     target = DATA / f"{region_key}-{suffix}.osm.pbf"
 
-    print(
-        f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})"
-    )
+    print(f"  Clipping {source.name} → {target.name} (bbox {region['clip_bbox']})")
     subprocess.run(
         [
             "osmium",
@@ -350,10 +336,7 @@ def clean_gtfs_zip(src_zip: Path) -> Path:
     ):
         for info in src.infolist():
             data = src.read(info.filename)
-            lines = [
-                ln for ln in data.decode("utf-8", errors="ignore").splitlines()
-                if ln.strip()
-            ]
+            lines = [ln for ln in data.decode("utf-8", errors="ignore").splitlines() if ln.strip()]
             if len(lines) <= 1:
                 skipped.append(info.filename)
                 continue
@@ -451,7 +434,7 @@ def compute_region(region: dict) -> pd.DataFrame:
     if "travel_time" in matrix.columns:
         matrix = matrix.rename(columns={"travel_time": "travel_minutes"})
 
-    origin_h3_by_id = dict(zip(origins["id"], origins["h3_cell"]))
+    origin_h3_by_id = dict(zip(origins["id"], origins["h3_cell"], strict=False))
     rows = matrix.assign(
         origin_h3=matrix["from_id"].map(origin_h3_by_id),
         destination_h3=matrix["to_id"],

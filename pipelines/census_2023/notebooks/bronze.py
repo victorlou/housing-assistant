@@ -41,7 +41,12 @@ def _stream_census_jsonl(dataset_subdir: str, dataset_name: str):
             F.col("properties.SA22023_V1_00").cast("string").alias("sa2_code"),
             F.col("properties.SA22023_V1_00_NAME").cast("string").alias("sa2_name"),
             F.col("properties.SA22023_V1_00_NAME_ASCII").cast("string").alias("sa2_name_ascii"),
-            F.col("properties.LAND_AREA_SQ_KM").cast("double").alias("land_area_sq_km"),
+            F.coalesce(
+                F.col("properties.LAND_AREA_SQ_KM"),
+                F.col("properties.AREA_SQ_KM"),
+            )
+            .cast("double")
+            .alias("land_area_sq_km"),
             F.col("properties.*"),
         )
         .drop(
@@ -49,6 +54,7 @@ def _stream_census_jsonl(dataset_subdir: str, dataset_name: str):
             "SA22023_V1_00_NAME",
             "SA22023_V1_00_NAME_ASCII",
             "LAND_AREA_SQ_KM",
+            "AREA_SQ_KM",
         )
     )
 

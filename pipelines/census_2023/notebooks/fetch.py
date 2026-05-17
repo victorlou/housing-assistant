@@ -230,18 +230,21 @@ try:
     else:
         target_path = publish_landing(tmp_path, tmp_dict_path, run_date)
         removed = cleanup_old_landings(retention_days)
-        log_run(
-            run_id,
-            "succeeded",
-            content_hash=content_hash,
-            feed_version="2023",
-            fetched_at=started_at,
-            duration_seconds=time.time() - t0,
-            file_count=1,
-            bytes_written=bytes_written,
-            target_path=target_path,
-            notes=f"cleaned {removed} landing folder(s) older than {retention_days} days",
-        )
+        try:
+            log_run(
+                run_id,
+                "succeeded",
+                content_hash=content_hash,
+                feed_version="2023",
+                fetched_at=started_at,
+                duration_seconds=time.time() - t0,
+                file_count=1,
+                bytes_written=bytes_written,
+                target_path=target_path,
+                notes=f"cleaned {removed} landing folder(s) older than {retention_days} days",
+            )
+        except Exception as log_exc:
+            print(f"[{run_id}] Warning: landed at {target_path} but ingest_runs log failed: {log_exc}")
         print(f"[{run_id}] Succeeded: {target_path} (cleaned {removed} old folder(s))")
 
 except Exception as exc:

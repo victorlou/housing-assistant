@@ -13,7 +13,6 @@ exclude = [
     ".venv",
     ".uv",
     ".databricks",
-    "pipelines/gtfs/notebooks",
 ]
 
 [tool.ruff.lint]

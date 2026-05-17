@@ -48,7 +48,7 @@ dbutils.library.restartPython()
 import hashlib
 import time
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -75,8 +75,8 @@ RAW_SUBDIR = "_xlsx"
 # RBNZ M10 sheet name + the canonical column titles we expect to find in
 # the header row. If RBNZ rename a column, this is the spot to update.
 M10_SHEET = "Data"
-M10_HEADER_ROW = 0   # row index (0-based) where the column titles live
-M10_DATA_START = 5   # row index where the actual quarterly rows begin
+M10_HEADER_ROW = 0  # row index (0-based) where the column titles live
+M10_DATA_START = 5  # row index where the actual quarterly rows begin
 
 # Maps the RBNZ column title → output column name. Any title not in this
 # map is silently skipped, so RBNZ adding new metrics doesn't break us.
@@ -162,9 +162,7 @@ def log_run(run_id: str, status: str, source_url_repr: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
-        INGEST_RUNS_TABLE
-    )
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
 
 
 def last_successful_content_hash() -> str | None:
@@ -295,8 +293,7 @@ def latest_xlsx_path() -> Path:
     )
     if not candidates:
         raise FileNotFoundError(
-            f"No .xlsx files in {upload_dir}. "
-            "Manually upload the RBNZ M10 XLSX first — see README."
+            f"No .xlsx files in {upload_dir}. Manually upload the RBNZ M10 XLSX first — see README."
         )
     return candidates[-1]
 
@@ -310,7 +307,7 @@ def write_csv(wide_df: pd.DataFrame, source_xlsx: Path) -> tuple[str, int]:
 
 
 def cleanup_old_parsed_csvs(retention_days: int) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     csv_dir = Path(BRONZE_VOLUME) / dataset
     if not csv_dir.exists():
         return 0
@@ -319,9 +316,7 @@ def cleanup_old_parsed_csvs(retention_days: int) -> int:
         if not landing.is_file() or landing.suffix.lower() != ".csv":
             continue
         try:
-            run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
-            )
+            run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
         if run_date < cutoff:
@@ -337,7 +332,7 @@ def cleanup_old_parsed_csvs(retention_days: int) -> int:
 # COMMAND ----------
 
 run_id = str(uuid.uuid4())
-started_at = datetime.now(timezone.utc)
+started_at = datetime.now(UTC)
 t0 = time.time()
 
 try:
@@ -346,10 +341,7 @@ try:
 
     xlsx_bytes = xlsx_path.read_bytes()
     content_hash = hashlib.sha256(xlsx_bytes).hexdigest()
-    print(
-        f"[{run_id}] dataset={dataset} bytes={len(xlsx_bytes):,} "
-        f"hash={content_hash[:12]}…"
-    )
+    print(f"[{run_id}] dataset={dataset} bytes={len(xlsx_bytes):,} hash={content_hash[:12]}…")
 
     last_hash = last_successful_content_hash()
     if last_hash and content_hash == last_hash:
@@ -390,8 +382,7 @@ try:
             ),
         )
         print(
-            f"[{run_id}] Succeeded: {csv_size:,} bytes at {csv_path} "
-            f"(cleaned {removed} old CSV(s))"
+            f"[{run_id}] Succeeded: {csv_size:,} bytes at {csv_path} (cleaned {removed} old CSV(s))"
         )
 
 except Exception as exc:

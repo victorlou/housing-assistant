@@ -105,7 +105,7 @@ def census_sa2_area():
         F.col("sa2_code"),
         F.col("sa2_name"),
         F.col("sa2_name_ascii"),
-        F.col("land_area_sq_km"),
+        F.coalesce(F.col("land_area_sq_km"), F.col("AREA_SQ_KM")).alias("land_area_sq_km"),
         F.col("_run_date").alias("source_run_date"),
         F.expr(
             "h3_longlatash3("
