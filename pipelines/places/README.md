@@ -7,7 +7,7 @@ Source: **Stats NZ DataFinder** (Koordinates platform, same family as LINZ Data 
 - `sa2_polygons` — "Statistical Area 2 Higher Geographies 2023 (generalised)", [layer 111218](https://datafinder.stats.govt.nz/layer/111218-statistical-area-2-higher-geographies-2023-generalised/), via WFS as GeoJSON in WGS84. Same SA2 polygons as the bare 111227 layer but pre-joined with parent territorial authority + region attributes, so silver doesn't need a separate spatial join.
 - `sa2_census` — Stats NZ 2023 Census aggregates per SA2 (downloaded manually as CSV from DataFinder, e.g. [layer 120897](https://datafinder.stats.govt.nz/layer/120897-2023-census-totals-by-topic-for-individuals-by-statistical-area-2-part-1/)). Wide source format with hundreds of columns; silver projects just `population_2023` and `median_age_2023`. Refreshes 5-yearly so manual upload is fine.
 
-Census demographics (population, median age) are reserved nullable columns on the gold table; populated in a follow-up PR — see [What's still TODO](#whats-still-todo).
+2023 Census demographics are joined from `housing.silver.census_sa2_features` (produced by [`pipelines/census_2023`](../census_2023/)). Run `census_2023_ingest` before refreshing places gold.
 
 ## Contract — gold tables
 
@@ -25,8 +25,13 @@ CREATE TABLE housing.gold.suburb (
   region                 STRING,             -- "Auckland Region"
   centroid_h3            BIGINT,             -- res-8 cell at polygon centroid
   land_area_km2          DOUBLE,             -- Stats NZ LAND_AREA_SQ_KM (excludes water)
-  population_2023        INT,                -- Stats NZ 2023 census, joined on sa2_code
-  median_age_2023        DOUBLE,             -- Stats NZ 2023 census, joined on sa2_code
+  population_2023        INT,                -- 2023 Census usual residents
+  median_age_2023        DOUBLE,             -- 2023 Census median age
+  median_household_income_2023 DOUBLE,       -- from census_2023
+  household_count_2023   INT,
+  owner_occupier_pct_2023 DOUBLE,
+  median_weekly_rent_2023 DOUBLE,
+  percent_crowded_2023   DOUBLE,
   geometry               BINARY,             -- WKB for downstream spatial queries
   _updated_at            TIMESTAMP NOT NULL
 )
@@ -132,10 +137,11 @@ GROUP BY s.feed_source;
 -- Cells with no suburb (sanity — should be water/EEZ only, expect 0 for AKL stops)
 SELECT COUNT(*) FROM housing.gold.h3_cell WHERE suburb_id IS NULL;
 
--- Demographics populated? (expect ~2,395 SA2s with non-null population_2023)
+-- Census enrichment on suburb (after census_2023_ingest + places gold refresh)
 SELECT COUNT(*) AS suburbs,
        COUNT(population_2023) AS with_pop,
-       COUNT(median_age_2023) AS with_age
+       COUNT(median_age_2023) AS with_age,
+       COUNT(median_household_income_2023) AS with_income
 FROM housing.gold.suburb;
 
 -- Top 10 most populous suburbs nationally
@@ -190,11 +196,7 @@ The notebooks are wired up but a few things need verifying or following up:
 
 - **Stats NZ DataFinder API key** in the `housing-assistant` secret scope (see [Setup before first run](#setup-before-first-run)).
 - **SA2 polygon property names** in `silver.py` (`SA22023_V1_00`, `SA22023_V1_00_NAME`, `TA2023_V1_00*`, `REGC2023_V1_00*`, `LAND_AREA_SQ_KM`). Verify against `housing.bronze.places_sa2_polygon_raw` with `DESCRIBE`; the `properties` struct should show all of these as nested fields. If any are absent on layer 111218 the SELECT in `silver.py` is the one place to fix.
-- **Census column codes**: Stats NZ ships the 2023 census as a ~530-column wide CSV where columns are coded `VAR_1_1` through `VAR_1_530-ish` with meanings only in the accompanying lookup CSV. We currently project two:
-  - `VAR_1_3` → `population_2023` (2023 Census usually resident population count)
-  - `VAR_1_69` → `median_age_2023` (2023 Median age)
-  - `-999` is Stats NZ's suppression / not-applicable sentinel (mostly "Inland water" SA2s). Silver replaces it with NULL via `nullif(..., -999)`.
-  - To add more demographic columns later, grep the lookup CSV in the source zip for the right code and add a `cast(nullif(VAR_1_N, -999) AS <type>) AS <out_name>` line to silver.
+- **Census enrichment.** After [`pipelines/census_2023`](../census_2023/) ingest, run `places_ingest` (or refresh the `places_gold` pipeline) so `gold.suburb` picks up `census_sa2_features`. If census silver is missing, demographic columns stay null.
 
 ## Volume migration note
 
@@ -220,7 +222,7 @@ After this, `databricks bundle run places_ingest --target dev` does a clean fetc
 
 ## Coming next
 
-- **Census follow-up:** the manual SA2 census CSV drop described above, plus the silver/gold wiring to populate `population_2023` and `median_age_2023` on `gold.suburb`.
+- **Census:** additional 2023 topics can be added via `pipelines/census_2023/census_2023_gold.yml` without changing the suburb contract shape.
 - **School zones:** Ministry of Education school catchment polygons → new `gold.school_zone` dim plus a `gold.h3_cell__school_zone` bridge (cells can sit in multiple zones simultaneously — primary, intermediate, secondary — so a single FK column on h3_cell won't do).
-- **Amenities:** supermarkets, hospitals, employment centres. Gives Genie destinations beyond the seven origins hardcoded in `pipelines/isochrone/`.
-- **Address-level lookup:** LINZ NZ Street Address layer landed in a separate `pipelines/addresses/` against the existing `addresses_files` volume. Useful for the "is this listing near a bus stop" question.
+- **Amenities:** supermarkets, hospitals, employment centres. Gives Genie destinations beyond pre-defined transit origin centres.
+- **Address-level lookup:** LINZ NZ Addresses in [`pipelines/linz_nz_addresses`](../linz_nz_addresses/) (`linz_nz_addresses_files` volume). Useful for the "is this listing near a bus stop" question.

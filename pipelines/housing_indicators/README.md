@@ -153,7 +153,22 @@ DROP TABLE IF EXISTS housing.gold.rent_price__month__ta;
 DROP TABLE IF EXISTS housing.gold.affordability__quarter__ta;
 ```
 
+## Relationship to census_2023
+
+[`pipelines/census_2023`](../census_2023/) ingests **SA2-level** 2023 Census metrics from Stats NZ ArcGIS and enriches `housing.gold.suburb` via `housing.silver.census_sa2_features`. This bundle (HUD) remains the source for **territorial-authority** housing-market indicators plus **TA-level** census summaries (themes `Census Tenure`, `Census Crowding`, `Census Housing Deprivation`, `Rent Proportion`).
+
+| Question grain | Use |
+|----------------|-----|
+| Suburb / SA2 demographics | `housing.gold.suburb` (current snapshot dim), `housing.gold.suburb__year` (time series + full census columns) |
+| TA affordability (quarterly, 25-year back to 2001) | `housing.gold.ta__quarter` |
+| TA sales / rent / MSD (monthly) | `housing.gold.ta__month` |
+| TA-level HUD census themes (Tenure, Crowding, Housing Deprivation, Rent Proportion) | `housing.silver.housing_indicator` (long-format, filter `theme IN ('Census Tenure', ...)`) — not pivoted into gold because the SA2 census marts now cover the same questions at finer grain. |
+
+Median household income at SA2 is **not** in HUD; use census marts. HUD uses income only inside affordability ratios.
+
 ## Coming next
 
+- **Automated URL fetch.** HUD's download URL is predictable (`/assets/Uploads/Documents/LHS-data-download-<Month>-<Year>.xlsx`). If `hud.govt.nz` doesn't Cloudflare-block Databricks egress (RBNZ does, HUD probably doesn't), this becomes one of the few NZ open-data sources we can poll automatically.
+- **More pivoted views as need emerges.** MSD (housing register) — easy follow-up; census tenure/crowding at TA are largely superseded by SA2 census marts for suburb questions.
 - **REINZ Monthly Property Report PDF parser** → adds TA-level median sale price columns to `ta__month` from REINZ direct (currently HUD relays this with a lag).
 - **Trade Me Property Price Index** as an alternative TA-level rent source.

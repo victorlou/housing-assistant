@@ -72,9 +72,8 @@ flowchart TB
 - `hazard`. Flood, coastal, liquefaction risk per H3 cell.
 - `isochrone`. Pre-computed travel time from H3 origin cell to commercial centres, by mode and minute bucket. This is the table that makes the consumer demo feel fast.
 - `rent__month__suburb`. Median rent, p25/p75, dwelling type, sample size.
-- `income__year__suburb`. Median household income deciles per suburb.
-- `crime__month__area_unit`. Crime counts per category per area unit.
-- `house_price__month__territorial_authority`. Stats NZ HPI by TA and dwelling type.
+- `suburb__year`. Census metrics per suburb per census year — income, tenure, rent, crowding, dwelling quality, demographics, plus allocated annual crime totals (via the AU2013→SA2 bridge in silver).
+- `ta__month` / `ta__quarter`. HUD price, rent, MSD, and affordability indices per territorial authority.
 
 **Pipelines.** All transformations are Lakeflow Declarative Pipelines. We prefer SQL over Python where the transformation is expressible in SQL. Each source has a dedicated pipeline. A top-level "marts" pipeline depends on them and refreshes the gold tables.
 
@@ -82,7 +81,7 @@ flowchart TB
 
 The Genie Space wraps the gold catalog with a curated semantic model.
 
-**Synonyms.** "Rent" maps to `rent__month__suburb.median_rent_weekly`, "income" to `income__year__suburb.median_household_income`. "Decile" includes both school-decile and income-decile concepts, disambiguated by context.
+**Synonyms.** "Rent" maps to `rent__month__suburb.median_rent_weekly`, "income" to `suburb__year.median_household_income`. "Decile" includes both school-decile and income-decile concepts, disambiguated by context.
 
 **Joins.** All canonical joins are pre-defined so users do not need to know our schema.
 

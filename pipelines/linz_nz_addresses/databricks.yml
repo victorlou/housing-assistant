@@ -1,5 +1,5 @@
 bundle:
-  name: prices
+  name: linz_nz_addresses
 
 variables:
   jobs_service_principal_id:
@@ -8,10 +8,6 @@ variables:
     description: Account-level admin group whose members can deploy and manage this bundle.
   notification_email:
     description: Email to alert on job failure.
-
-  # The RBNZ M10 XLSX sits behind Cloudflare bot management — automated
-  # download from any Python HTTP client gets 403'd. We manually upload the
-  # file to the bronze volume; fetch.py reads from there. See README.
 
 permissions:
   - level: CAN_MANAGE
@@ -23,8 +19,8 @@ permissions:
 
 resources:
   pipelines:
-    prices_bronze:
-      name: prices_bronze
+    linz_nz_addresses_bronze:
+      name: linz_nz_addresses_bronze
       catalog: housing
       schema: bronze
       serverless: true
@@ -34,15 +30,15 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: linz_nz_addresses
         layer: bronze
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/bronze.py
 
-    prices_silver:
-      name: prices_silver
+    linz_nz_addresses_silver:
+      name: linz_nz_addresses_silver
       catalog: housing
       schema: silver
       serverless: true
@@ -52,15 +48,15 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: linz_nz_addresses
         layer: silver
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/silver.py
 
-    prices_gold:
-      name: prices_gold
+    linz_nz_addresses_gold:
+      name: linz_nz_addresses_gold
       catalog: housing
       schema: gold
       serverless: true
@@ -70,7 +66,7 @@ resources:
         service_principal_name: ${var.jobs_service_principal_id}
       configuration:
         project: housing-assistant
-        source: prices
+        source: linz_nz_addresses
         layer: gold
         pipelines.maxFlowRetryAttempts: "0"
       libraries:
@@ -78,62 +74,59 @@ resources:
             path: ./notebooks/gold.py
 
   jobs:
-    prices_ingest:
-      name: prices_ingest
+    linz_nz_addresses_ingest:
+      name: linz_nz_addresses_ingest
       description: |
-        Monthly fetch of NZ house price data, currently sourced from the RBNZ
-        M10 Housing statistical series (regional HPI + median price, quarterly).
-        Produces housing.gold.region__quarter.
-        See ./README.md.
+        Scheduled fetch of LINZ NZ Addresses WFS, then bronze → silver → gold.
+        Owned by the housing-assistant project. See ./README.md.
 
       tags:
         project: housing-assistant
-        source: prices
+        source: linz_nz_addresses
 
       run_as:
         service_principal_name: ${var.jobs_service_principal_id}
 
       schedule:
-        # 10th of every month, 04:00 Pacific/Auckland. RBNZ publishes
-        # quarterly HPI ~4 months after the reference quarter — monthly polling
-        # mostly hash-skips and catches publication promptly when it happens.
-        quartz_cron_expression: "0 0 4 10 * ?"
+        quartz_cron_expression: "0 0 4 ? * MON"
         timezone_id: Pacific/Auckland
         pause_status: UNPAUSED
 
       max_concurrent_runs: 1
-      timeout_seconds: 3600
+      timeout_seconds: 7200
 
       email_notifications:
         on_failure:
           - ${var.notification_email}
 
       tasks:
-        - task_key: fetch_rbnz_hpi
+        - task_key: fetch_nz_addresses
           notebook_task:
             notebook_path: ./notebooks/fetch.py
             base_parameters:
-              dataset: rbnz_hpi
-              retention_days: "365"
+              feed_source: nz_addresses
+              retention_days: "90"
+              auth_secret_scope: housing-assistant
+              auth_secret_key: linz_api_key
 
         - task_key: transform_bronze
           depends_on:
-            - task_key: fetch_rbnz_hpi
+            - task_key: fetch_nz_addresses
           run_if: ALL_DONE
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_bronze.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_bronze.id}
 
         - task_key: transform_silver
           depends_on:
             - task_key: transform_bronze
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_silver.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_silver.id}
 
         - task_key: transform_gold
           depends_on:
             - task_key: transform_silver
           pipeline_task:
-            pipeline_id: ${resources.pipelines.prices_gold.id}
+            pipeline_id: ${resources.pipelines.linz_nz_addresses_gold.id}
 
 targets:
   dev:
@@ -144,4 +137,4 @@ targets:
     variables:
       jobs_service_principal_id: e61d2aac-5a1a-476e-b4a5-fb88f9be1bf3
       admins_group_name: housing-assistant-dev-admins
-      notification_email: victor.lourenco@zuru.com
+      notification_email: isabelbody@zuru.com
