@@ -28,11 +28,12 @@
 # COMMAND ----------
 
 import hashlib
+import io
 import json
 import os
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import requests
@@ -155,7 +156,9 @@ def log_run(run_id: str, status: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
+        INGEST_RUNS_TABLE
+    )
 
 
 def last_successful_content_hash() -> str | None:
@@ -180,7 +183,7 @@ def last_successful_content_hash() -> str | None:
 # COMMAND ----------
 
 run_id = str(uuid.uuid4())
-started_at = datetime.now(UTC)
+started_at = datetime.now(timezone.utc)
 t0 = time.time()
 
 resolved_url = source_url
@@ -192,7 +195,10 @@ if auth_inject_mode in ("url_placeholder", "header") and auth_secret_scope and a
     except Exception as exc:
         err_str = str(exc)
         if "Secret does not exist" in err_str:
-            short_notes = f"auth secret `{auth_secret_scope}/{auth_secret_key}` not configured yet"
+            short_notes = (
+                f"auth secret `{auth_secret_scope}/{auth_secret_key}` "
+                "not configured yet"
+            )
         else:
             short_notes = (
                 f"failed to read auth secret "
@@ -253,7 +259,9 @@ def write_to_volume(geojson_bytes: bytes, run_date: str) -> tuple[str, int, int]
     # line is a standalone JSON object that Auto Loader can stream as a row.
     payload = json.loads(geojson_bytes.decode("utf-8"))
     if payload.get("type") != "FeatureCollection" or "features" not in payload:
-        raise ValueError(f"Expected a GeoJSON FeatureCollection, got type={payload.get('type')!r}")
+        raise ValueError(
+            f"Expected a GeoJSON FeatureCollection, got type={payload.get('type')!r}"
+        )
 
     jsonl_dir = f"{BRONZE_VOLUME}/{dataset}"
     os.makedirs(jsonl_dir, exist_ok=True)
@@ -266,13 +274,15 @@ def write_to_volume(geojson_bytes: bytes, run_date: str) -> tuple[str, int, int]
     bytes_written += os.path.getsize(jsonl_path)
     file_count += 1
     feature_count = len(payload["features"])
-    print(f"[{run_id}] Wrote {feature_count:,} features → {jsonl_path}")
+    print(
+        f"[{run_id}] Wrote {feature_count:,} features → {jsonl_path}"
+    )
 
     return raw_path, file_count, bytes_written
 
 
 def cleanup_old_landings(retention_days: int) -> int:
-    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     base = Path(BRONZE_VOLUME)
     if not base.exists():
         return 0
@@ -290,7 +300,9 @@ def cleanup_old_landings(retention_days: int) -> int:
             if not landing.is_file():
                 continue
             try:
-                run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(tzinfo=UTC)
+                run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
+                    tzinfo=timezone.utc
+                )
             except ValueError:
                 continue
             if run_date < cutoff:
@@ -305,13 +317,16 @@ def cleanup_old_landings(retention_days: int) -> int:
 
 # COMMAND ----------
 
-run_date = datetime.now(UTC).strftime("%Y-%m-%d")
+run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 try:
     print(f"[{run_id}] Downloading {dataset}")
     geojson_bytes = download(resolved_url, headers=auth_headers)
     content_hash = hashlib.sha256(geojson_bytes).hexdigest()
-    print(f"[{run_id}] dataset={dataset} bytes={len(geojson_bytes):,} hash={content_hash[:12]}…")
+    print(
+        f"[{run_id}] dataset={dataset} bytes={len(geojson_bytes):,} "
+        f"hash={content_hash[:12]}…"
+    )
 
     last_hash = last_successful_content_hash()
     if last_hash and content_hash == last_hash:

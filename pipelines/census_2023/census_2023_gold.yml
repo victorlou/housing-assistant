@@ -77,9 +77,6 @@ marts:
     - median_weekly_rent
     - renting_households_total
     - renting_households_stated
-  crowding__year__suburb:
-    - households_crowded
-    - households_crowding_total_stated
   dwelling__year__suburb:
     - dwellings_always_damp
     - dwellings_sometimes_damp

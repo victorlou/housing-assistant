@@ -168,15 +168,11 @@ def suburb():
 def h3_cell():
     polygons = spark.read.table(f"{SILVER}.sa2_polygon")
 
-    return (
-        polygons.selectExpr(
-            "sa2_code AS suburb_id",
-            f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
-        )
-        .select(
-            F.col("h3_cell"),
-            F.col("suburb_id"),
-            F.current_timestamp().alias("_updated_at"),
-        )
-        .dropDuplicates(["h3_cell"])
-    )
+    return polygons.selectExpr(
+        "sa2_code AS suburb_id",
+        f"explode(h3_polyfillash3(geometry, {H3_RESOLUTION})) AS h3_cell",
+    ).select(
+        F.col("h3_cell"),
+        F.col("suburb_id"),
+        F.current_timestamp().alias("_updated_at"),
+    ).dropDuplicates(["h3_cell"])

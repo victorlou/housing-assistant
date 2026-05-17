@@ -12,7 +12,7 @@ locals {
     "places_files",                  # Stats NZ SA2 polygons (+ future school zones, amenity points)
     "census_2023_files",             # 2023 Census SA2 ArcGIS landings
     "linz_nz_addresses_files",       # LINZ NZ Addresses WFS JSONL
-    "police_recorded_crime_files",   # NZ Police Tableau CSV landings
+    "crime_files",                   # NZ Police Tableau CSV landings (police_recorded_crime/)
     "prices_files",                  # RBNZ HPI (NZ-aggregate price index time series)
     "housing_indicators_files",      # HUD Local Housing Statistics (TA-level prices, rents, affordability, MSD)
     "flood_files",                   # Regional flood hazard ArcGIS JSONL landings

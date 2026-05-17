@@ -63,12 +63,11 @@ housing-assistant/
 ├── dashboards/                  ← AI/BI dashboard exports
 ├── notebooks/                   ← exploration, prototypes
 ├── data/                        ← canonical source registry (sources.yaml)
-├── config/                      ← sources/*.yml (operator YAML; LINZ WFS)
 ├── ingestion/                   ← small fetch helpers (e.g. LINZ WFS → JSONL)
 └── .github/                     ← CI workflows, PR template, CODEOWNERS
 ```
 
-Most top-level folders have a `README.md`. `config/` holds only `sources/` YAML for ingestion helpers (no extra scaffolding).
+Most top-level folders have a `README.md`. Pipeline-specific operator YAML lives under each `pipelines/<name>/` folder.
 
 ## Getting started
 

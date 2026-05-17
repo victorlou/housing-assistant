@@ -75,7 +75,7 @@ resources:
       name: police_recorded_crime_ingest
       description: |
         Bronze → silver → gold for NZ Police ANZSOC victimisation CSV landings.
-        Upload CSV to police_recorded_crime_files volume before running (no automated fetch yet).
+        Upload CSV to crime_files/police_recorded_crime volume before running (no automated fetch yet).
         See ./README.md.
 
       tags:

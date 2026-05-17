@@ -210,18 +210,22 @@ def with_wfs_overrides(cfg: dict[str, Any], **overrides: Any) -> dict[str, Any]:
     return out
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_PIPELINE_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _PIPELINE_DIR.parents[1]
+_DEFAULT_CONFIG = _PIPELINE_DIR / "linz_nz_addresses.yml"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=("Fetch LINZ WFS into JSONL (default: config/sources/linz_nz_addresses.yml)")
+        description=(
+            "Fetch LINZ WFS into JSONL (default: pipelines/linz_nz_addresses/linz_nz_addresses.yml)"
+        )
     )
     parser.add_argument(
         "--config",
         type=Path,
-        default=_REPO_ROOT / "config" / "sources" / "linz_nz_addresses.yml",
-        help="Path to YAML (default: config/sources/linz_nz_addresses.yml)",
+        default=_DEFAULT_CONFIG,
+        help="Path to YAML (default: pipelines/linz_nz_addresses/linz_nz_addresses.yml)",
     )
     parser.add_argument(
         "--output",

@@ -16,7 +16,6 @@ sources:
       - housing.gold.income__year__suburb
       - housing.gold.tenure__year__suburb
       - housing.gold.rent__year__suburb
-      - housing.gold.crowding__year__suburb
       - housing.gold.dwelling__year__suburb
       - housing.gold.census_metric__year__sa2
     tier: 1
@@ -65,11 +64,10 @@ sources:
     target_tables:
       - housing.bronze.police_recorded_crime_anzsoc_victimisations
       - housing.silver.crime_victimisation_monthly
-      - housing.gold.crime__month__anzsoc_subdivision
+      - housing.gold.crime__month__area_unit
     tier: 1
     notes: |
-      Manual Tableau CSV to police_recorded_crime_files; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
-      Current export is ANZSOC-by-month (no geography). crime__month__area_unit needs Time and Place export.
+      Manual Tableau ANZSOC Full Data CSV to crime_files/police_recorded_crime; job police_recorded_crime_ingest runs bronze/silver/gold pipelines.
 
   - name: flood_hazard_regional
     publisher: Multiple (Auckland Council, GWRC, regional councils)

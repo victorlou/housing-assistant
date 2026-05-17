@@ -12,7 +12,7 @@
 
 **API key:** Prefer Databricks secrets (`auth_secret_scope` + `auth_secret_key` widgets). If `auth_secret_scope` is empty, the job uses the `LINZ_API_KEY` environment variable on the compute (set via job/cluster env if not using secrets).
 
-WFS layer and paging defaults live in `notebooks/fetch.py` (aligned with `config/sources/linz_nz_addresses.yml` for local CLI). Job `base_parameters` are `feed_source`, `retention_days`, `auth_secret_scope`, and `auth_secret_key`, like the GTFS fetch tasks.
+WFS layer and paging defaults live in `notebooks/fetch.py` (aligned with `linz_nz_addresses.yml` for local CLI). Job `base_parameters` are `feed_source`, `retention_days`, `auth_secret_scope`, and `auth_secret_key`, like the GTFS fetch tasks.
 
 ## Lakeflow pipeline (DLT)
 
@@ -33,7 +33,7 @@ set LINZ_API_KEY=...
 python -m ingestion.linz_wfs --output ./out
 ```
 
-Config defaults live in `config/sources/linz_nz_addresses.yml` (`${LINZ_API_KEY}` expansion for that path only).
+Config defaults live in `linz_nz_addresses.yml` (`${LINZ_API_KEY}` expansion for that path only).
 
 ## Deploy
 

@@ -13,7 +13,12 @@ from ingestion.linz_wfs import (
     with_wfs_overrides,
 )
 
-_CONFIG = Path(__file__).resolve().parents[1] / "config" / "sources" / "linz_nz_addresses.yml"
+_CONFIG = (
+    Path(__file__).resolve().parents[1]
+    / "pipelines"
+    / "linz_nz_addresses"
+    / "linz_nz_addresses.yml"
+)
 
 
 def test_load_source_config() -> None:

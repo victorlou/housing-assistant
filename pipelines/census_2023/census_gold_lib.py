@@ -9,20 +9,14 @@ import yaml
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-_MANIFEST_CANDIDATES = (
-    Path(__file__).resolve().parent / "census_2023_gold.yml",
-    Path(__file__).resolve().parent.parent.parent / "config" / "sources" / "census_2023_gold.yml",
-)
+_MANIFEST_PATH = Path(__file__).resolve().parent / "census_2023_gold.yml"
 
 
 def load_gold_manifest() -> dict[str, Any]:
-    for path in _MANIFEST_CANDIDATES:
-        if path.is_file():
-            with path.open(encoding="utf-8") as fh:
-                return yaml.safe_load(fh)
-    raise FileNotFoundError(
-        "census_2023_gold.yml not found; expected under pipelines/census_2023/ or config/sources/"
-    )
+    if not _MANIFEST_PATH.is_file():
+        raise FileNotFoundError(f"census_2023_gold.yml not found; expected at {_MANIFEST_PATH}")
+    with _MANIFEST_PATH.open(encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
 
 
 def metric_specs(manifest: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:

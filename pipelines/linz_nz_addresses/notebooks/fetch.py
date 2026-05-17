@@ -56,7 +56,7 @@ BRONZE_VOLUME = "/Volumes/housing/bronze/linz_nz_addresses_files"
 OUTPUT_FILENAME = "linz_nz_addresses.jsonl"
 INGEST_RUNS_TABLE = "housing.bronze.ingest_runs"
 
-# WFS defaults (same as `config/sources/linz_nz_addresses.yml`; change in code if LINZ updates the layer).
+# WFS defaults (same as `linz_nz_addresses.yml`; change in code if LINZ updates the layer).
 WFS_VERSION = "2.0.0"
 WFS_TYPE_NAMES = "layer-105689"
 WFS_OUTPUT_FORMAT = "application/json"

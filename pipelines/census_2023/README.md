@@ -29,8 +29,7 @@ transform_bronze  →  transform_silver  →  transform_gold
 | `housing.gold.income__year__suburb` | Median household income, household counts by SA2 |
 | `housing.gold.tenure__year__suburb` | Tenure counts + owner-occupier % |
 | `housing.gold.rent__year__suburb` | Median weekly rent (renting households) |
-| `housing.gold.crowding__year__suburb` | Crowding counts + % crowded |
-| `housing.gold.dwelling__year__suburb` | Dampness, mould, heating, mean rooms |
+| `housing.gold.dwelling__year__suburb` | Crowding, dampness, mould, heating, mean rooms |
 | `housing.gold.census_metric__year__sa2` | Long curated metrics for open-ended queries |
 
 NZDep2023 is **not** in this bundle (SA1 / separate ADE tables).
@@ -83,8 +82,8 @@ SELECT COUNT(*) FROM housing.gold.census_metric__year__sa2;
 
 ## Configuration
 
-- ArcGIS layers: [`config/sources/census_2023.yml`](../../config/sources/census_2023.yml)
-- Gold metric manifest: [`census_2023_gold.yml`](./census_2023_gold.yml) (copy in [`config/sources/census_2023_gold.yml`](../../config/sources/census_2023_gold.yml))
+- ArcGIS layers: [`census_2023.yml`](./census_2023.yml)
+- Gold metric manifest: [`census_2023_gold.yml`](./census_2023_gold.yml)
 
 ## Local fetch (optional)
 

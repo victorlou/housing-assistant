@@ -129,8 +129,8 @@ def rent__year__suburb():
 
 
 @dlt.table(
-    name="crowding__year__suburb",
-    comment="2023 Census household crowding by SA2.",
+    name="dwelling__year__suburb",
+    comment="2023 Census dwelling quality and household crowding by SA2.",
     table_properties={"quality": "gold", "project": "housing-assistant"},
     schema="""
         census_year INT,
@@ -138,30 +138,7 @@ def rent__year__suburb():
         sa2_name STRING,
         households_crowded INT,
         households_crowding_total_stated INT,
-        percent_crowded DOUBLE COMMENT 'households_crowded / households_crowding_total_stated.'
-    """,
-)
-def crowding__year__suburb():
-    features = spark.read.table(f"{SILVER}.census_sa2_features")
-    return _with_census_year(
-        features.select(
-            F.col("sa2_code"),
-            F.col("sa2_name"),
-            F.col("households_crowded").cast("int"),
-            F.col("households_crowding_total_stated").cast("int"),
-            F.col("percent_crowded"),
-        )
-    )
-
-
-@dlt.table(
-    name="dwelling__year__suburb",
-    comment="2023 Census dwelling quality indicators by SA2.",
-    table_properties={"quality": "gold", "project": "housing-assistant"},
-    schema="""
-        census_year INT,
-        sa2_code STRING,
-        sa2_name STRING,
+        percent_crowded DOUBLE COMMENT 'households_crowded / households_crowding_total_stated.',
         dwellings_always_damp INT,
         dwellings_sometimes_damp INT,
         dwellings_damp_total_stated INT,
@@ -175,10 +152,19 @@ def dwelling__year__suburb():
     metrics = spark.read.table(f"{SILVER}.census_sa2_metric")
     keys = _MANIFEST["marts"]["dwelling__year__suburb"]
     wide = pivot_manifest_metrics(metrics, keys, _MANIFEST)
+    crowding = spark.read.table(f"{SILVER}.census_sa2_features").select(
+        F.col("sa2_code"),
+        F.col("households_crowded").cast("int"),
+        F.col("households_crowding_total_stated").cast("int"),
+        F.col("percent_crowded"),
+    )
     return _with_census_year(
-        wide.select(
+        wide.join(crowding, on="sa2_code", how="left").select(
             F.col("sa2_code"),
             F.col("sa2_name"),
+            F.col("households_crowded"),
+            F.col("households_crowding_total_stated"),
+            F.col("percent_crowded"),
             F.col("dwellings_always_damp").cast("int"),
             F.col("dwellings_sometimes_damp").cast("int"),
             F.col("dwellings_damp_total_stated").cast("int"),

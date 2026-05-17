@@ -4,25 +4,34 @@ Bronze → silver → gold for manually uploaded Police Tableau CSV exports (sam
 
 ## Data
 
-Tableau **Full Data** export: ANZSOC offence codes, `Year Month`, `Victimisations`. **No geography** in the current file — see [`.devnotes/police/schema.md`](../../.devnotes/police/schema.md).
+Tableau **Full Data** export (`ANZSOC_Full Data.csv`):
+
+| Column | Role |
+|--------|------|
+| `Year Month` | Report month label |
+| `Territorial Authority` | TA name |
+| `Area Unit` | Stats NZ area unit |
+| `Month Year` | Duplicate month label (kept in bronze) |
+| `Victimisations` | Count |
+| `ANZSOC Division` / `Group` / `Subdivision` | Offence hierarchy (text labels) |
+
+Rows with `Area Unit = 999999` are excluded in bronze.
 
 ## Prerequisites
 
-Unity Catalog volume `housing.bronze.police_recorded_crime_files` must exist (Terraform seeds it in `terraform/modules/catalog`). If missing:
-
-```sql
-CREATE VOLUME IF NOT EXISTS housing.bronze.police_recorded_crime_files
-  COMMENT 'NZ Police crime statistics CSV landings';
-```
+Unity Catalog volume `housing.bronze.crime_files` (Terraform seeds it in `terraform/modules/catalog`).
 
 ## Upload landing file (before running the job)
 
 ```powershell
 $date = Get-Date -Format "yyyy-MM-dd"
-databricks fs cp "$env:USERPROFILE\Downloads\ANZSOC_Full Data_data.csv" `
-  "dbfs:/Volumes/housing/bronze/police_recorded_crime_files/anzsoc_victimisations/$date/anzsoc_victimisations.csv" `
+databricks fs mkdir "dbfs:/Volumes/housing/bronze/crime_files/police_recorded_crime/$date" -p hackathon
+databricks fs cp "$env:USERPROFILE\Downloads\ANZSOC_Full Data.csv" `
+  "dbfs:/Volumes/housing/bronze/crime_files/police_recorded_crime/$date/anzsoc_victimisations.csv" `
   --overwrite -p hackathon
 ```
+
+Remove superseded landings so Auto Loader does not re-ingest old exports.
 
 ## Deploy
 
@@ -34,16 +43,18 @@ databricks bundle deploy --target dev -p hackathon
 
 ## Run (bronze → silver → gold)
 
+After a schema change or landing replacement, use full refresh:
+
 ```bash
-databricks bundle run police_recorded_crime_ingest --target dev -p hackathon
+databricks bundle run police_recorded_crime_ingest --target dev -p hackathon --refresh-all
 ```
 
 Or run pipelines individually:
 
 ```bash
-databricks bundle run police_recorded_crime_bronze --target dev -p hackathon
-databricks bundle run police_recorded_crime_silver --target dev -p hackathon
-databricks bundle run police_recorded_crime_gold --target dev -p hackathon
+databricks bundle run police_recorded_crime_bronze --target dev -p hackathon --refresh-all
+databricks bundle run police_recorded_crime_silver --target dev -p hackathon --refresh-all
+databricks bundle run police_recorded_crime_gold --target dev -p hackathon --refresh-all
 ```
 
 ## Tables
@@ -52,23 +63,21 @@ databricks bundle run police_recorded_crime_gold --target dev -p hackathon
 |-------|-------|------|
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations_raw` | Auto Loader CSV |
 | Bronze | `housing.bronze.police_recorded_crime_anzsoc_victimisations` | Typed rows |
-| Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month + ANZSOC subdivision |
-| Gold | `housing.gold.crime__month__anzsoc_subdivision` | Genie-ready national mart |
-
-`housing.gold.crime__month__area_unit` (area-unit breakdown) waits on a geographic Police export.
+| Silver | `housing.silver.crime_victimisation_monthly` | `SUM(victimisations)` by month, area unit, ANZSOC subdivision |
+| Gold | `housing.gold.crime__month__area_unit` | Genie-ready area-unit mart |
 
 ## Verify
 
 ```sql
 SELECT COUNT(*) FROM housing.bronze.police_recorded_crime_anzsoc_victimisations;
 SELECT COUNT(*) FROM housing.silver.crime_victimisation_monthly;
-SELECT COUNT(*) FROM housing.gold.crime__month__anzsoc_subdivision;
+SELECT COUNT(*) FROM housing.gold.crime__month__area_unit;
 
-SELECT report_month, anzsoc_division, SUM(victimisation_count) AS total
-FROM housing.gold.crime__month__anzsoc_subdivision
-GROUP BY 1, 2
-ORDER BY 1 DESC, 3 DESC
+SELECT report_month, territorial_authority, area_unit, anzsoc_division, SUM(victimisation_count) AS total
+FROM housing.gold.crime__month__area_unit
+GROUP BY 1, 2, 3, 4
+ORDER BY 1 DESC, 5 DESC
 LIMIT 20;
 ```
 
-Registry: [`data/sources.yaml`](../../data/sources.yaml). Plan: [`.devnotes/police/databricks-plan.md`](../../.devnotes/police/databricks-plan.md).
+Registry: [`data/sources.yaml`](../../data/sources.yaml).

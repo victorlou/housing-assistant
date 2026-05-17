@@ -38,7 +38,7 @@ dbutils.library.restartPython()
 import hashlib
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -142,7 +142,9 @@ def log_run(run_id: str, status: str, source_url_repr: str, **fields) -> None:
         fields.get("notes"),
     )
     df = spark.createDataFrame([row], schema=INGEST_RUNS_SCHEMA)
-    df.write.mode("append").option("mergeSchema", "true").saveAsTable(INGEST_RUNS_TABLE)
+    df.write.mode("append").option("mergeSchema", "true").saveAsTable(
+        INGEST_RUNS_TABLE
+    )
 
 
 def last_successful_content_hash() -> str | None:
@@ -255,7 +257,8 @@ def latest_xlsx_path() -> Path:
     )
     if not candidates:
         raise FileNotFoundError(
-            f"No .xlsx files in {upload_dir}. Manually upload the HUD LHS XLSX first — see README."
+            f"No .xlsx files in {upload_dir}. "
+            "Manually upload the HUD LHS XLSX first — see README."
         )
     return candidates[-1]
 
@@ -269,7 +272,7 @@ def write_csv(long_df: pd.DataFrame, source_xlsx: Path) -> tuple[str, int]:
 
 
 def cleanup_old_parsed_csvs(retention_days: int) -> int:
-    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     csv_dir = Path(BRONZE_VOLUME) / dataset
     if not csv_dir.exists():
         return 0
@@ -278,7 +281,9 @@ def cleanup_old_parsed_csvs(retention_days: int) -> int:
         if not landing.is_file() or landing.suffix.lower() != ".csv":
             continue
         try:
-            run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(tzinfo=UTC)
+            run_date = datetime.strptime(landing.stem, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
             continue
         if run_date < cutoff:
@@ -294,7 +299,7 @@ def cleanup_old_parsed_csvs(retention_days: int) -> int:
 # COMMAND ----------
 
 run_id = str(uuid.uuid4())
-started_at = datetime.now(UTC)
+started_at = datetime.now(timezone.utc)
 t0 = time.time()
 
 try:
@@ -303,7 +308,10 @@ try:
 
     xlsx_bytes = xlsx_path.read_bytes()
     content_hash = hashlib.sha256(xlsx_bytes).hexdigest()
-    print(f"[{run_id}] dataset={dataset} bytes={len(xlsx_bytes):,} hash={content_hash[:12]}…")
+    print(
+        f"[{run_id}] dataset={dataset} bytes={len(xlsx_bytes):,} "
+        f"hash={content_hash[:12]}…"
+    )
 
     last_hash = last_successful_content_hash()
     if last_hash and content_hash == last_hash:
@@ -346,7 +354,8 @@ try:
             ),
         )
         print(
-            f"[{run_id}] Succeeded: {csv_size:,} bytes at {csv_path} (cleaned {removed} old CSV(s))"
+            f"[{run_id}] Succeeded: {csv_size:,} bytes at {csv_path} "
+            f"(cleaned {removed} old CSV(s))"
         )
 
 except Exception as exc:
