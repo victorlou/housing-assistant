@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Lightbulb } from 'lucide-react';
 import { useSession } from '@/contexts/SessionContext';
+import kaingaLogoUrl from '@/assets/kainga-logo.svg';
 
 const SUGGESTED_PROMPTS = [
   'Best suburbs within 30 min transit of Newmarket under $650 a week',
@@ -35,7 +36,7 @@ export const Greeting = ({ onSend }: { onSend?: (text: string) => void }) => {
         className="flex justify-center"
       >
         <img
-          src="/kainga-logo.svg"
+          src={kaingaLogoUrl}
           alt="Kāinga"
           className="w-28 h-28 rounded-2xl"
           draggable={false}
