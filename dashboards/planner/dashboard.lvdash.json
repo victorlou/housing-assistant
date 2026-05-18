@@ -6,19 +6,19 @@
       "query": "WITH suburb_hazard AS (\n  SELECT\n    hc.suburb_id,\n    BOOL_OR(hz.in_flood_plain)              AS any_flood_plain,\n    BOOL_OR(hz.in_coastal_inundation_1_aep) AS any_coastal\n  FROM housing.gold.h3_cell hc\n  JOIN housing.gold.hazard hz ON hz.h3_cell = hc.h3_cell\n  GROUP BY hc.suburb_id\n),\nsuburb_amenity AS (\n  SELECT\n    suburb_id,\n    COUNT(CASE WHEN amenity_type IN ('school','early_childhood') THEN 1 END) AS education_count,\n    COUNT(CASE WHEN amenity_type = 'supermarket'                 THEN 1 END) AS supermarket_count,\n    COUNT(CASE WHEN amenity_type = 'park'                        THEN 1 END) AS park_count,\n    COUNT(CASE WHEN amenity_type IN ('hospital','pharmacy','gp_clinic') THEN 1 END) AS health_count\n  FROM housing.gold.amenity__h3\n  GROUP BY suburb_id\n),\nsuburb_transit AS (\n  SELECT\n    hc.suburb_id,\n    COUNT(DISTINCT ts.stop_id) AS transit_stops\n  FROM housing.gold.transit_stop ts\n  JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell\n  GROUP BY hc.suburb_id\n),\nsuburb_crime AS (\n  SELECT suburb_id, total_victimisations AS annual_crime\n  FROM housing.silver.crime_at_suburb_year\n  WHERE crime_year = 2025\n)\nSELECT\n  s.suburb_id,\n  s.suburb_name,\n  s.territorial_authority,\n  s.region,\n  s.population_2023,\n  sy.median_weekly_rent,\n  sy.median_household_income,\n  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n  ROUND(sy.owner_occupier_pct * 100, 1) AS owner_occupier_pct,\n  ROUND(sy.percent_crowded * 100, 1)    AS percent_crowded,\n  sy.dwellings_no_heating,\n  ROUND(sy.dwellings_always_damp * 100.0 / NULLIF(sy.dwellings_damp_total_stated, 0), 1) AS pct_always_damp,\n  CASE WHEN COALESCE(sh.any_flood_plain, FALSE) THEN 'Yes' ELSE 'No' END AS flood_plain,\n  CASE WHEN COALESCE(sh.any_coastal, FALSE)      THEN 'Yes' ELSE 'No' END AS coastal_risk,\n  COALESCE(sa.education_count, 0)      AS education_nearby,\n  COALESCE(sa.supermarket_count, 0)    AS supermarkets_nearby,\n  COALESCE(sa.park_count, 0)           AS parks_nearby,\n  COALESCE(sa.health_count, 0)         AS health_nearby,\n  COALESCE(st.transit_stops, 0)        AS transit_stops,\n  sc.annual_crime                       AS suburb_annual_crime,\n  CASE\n    WHEN sy.median_weekly_rent IS NULL  THEN '13. Not available'\n    WHEN sy.median_weekly_rent <= 300   THEN '01. Under $300 / week'\n    WHEN sy.median_weekly_rent <= 350   THEN '02. $300 to $350 / week'\n    WHEN sy.median_weekly_rent <= 400   THEN '03. $350 to $400 / week'\n    WHEN sy.median_weekly_rent <= 450   THEN '04. $400 to $450 / week'\n    WHEN sy.median_weekly_rent <= 500   THEN '05. $450 to $500 / week'\n    WHEN sy.median_weekly_rent <= 550   THEN '06. $500 to $550 / week'\n    WHEN sy.median_weekly_rent <= 600   THEN '07. $550 to $600 / week'\n    WHEN sy.median_weekly_rent <= 650   THEN '08. $600 to $650 / week'\n    WHEN sy.median_weekly_rent <= 700   THEN '09. $650 to $700 / week'\n    WHEN sy.median_weekly_rent <= 800   THEN '10. $700 to $800 / week'\n    WHEN sy.median_weekly_rent <= 1000  THEN '11. $800 to $1,000 / week'\n    ELSE                                     '12. Over $1,000 / week'\n  END                                  AS rent_bucket,\n  CASE WHEN COALESCE(sa.education_count,0) > 0 THEN 'Yes' ELSE 'No' END AS has_schools,\n  CASE WHEN COALESCE(st.transit_stops,0) >= 5  THEN 'Yes' ELSE 'No' END AS good_transit\nFROM housing.gold.suburb s\nLEFT JOIN housing.gold.suburb__year sy\n  ON sy.suburb_id = s.suburb_id AND sy.census_year = 2023\nLEFT JOIN suburb_hazard sh ON sh.suburb_id = s.suburb_id\nLEFT JOIN suburb_amenity sa ON sa.suburb_id = s.suburb_id\nLEFT JOIN suburb_transit st ON st.suburb_id = s.suburb_id\nLEFT JOIN suburb_crime sc ON sc.suburb_id = s.suburb_id\nWHERE s.population_2023 > 500\nORDER BY s.territorial_authority, s.suburb_name"
     },
     {
-      "name": "ds_amenities_scatter",
-      "displayName": "Amenities geographic scatter (lat/lon, max 1000 rows)",
-      "query": "SELECT amenity_type, name, lat, lon\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')\n  AND lat IS NOT NULL AND lon IS NOT NULL\nLIMIT 1000"
+      "name": "ds_bar_region_afford",
+      "displayName": "Bar: avg rent-to-income by region",
+      "query": "SELECT s.region,\n  ROUND(AVG(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100), 1) AS avg_rent_to_income\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nWHERE sy.census_year = 2023\n  AND sy.median_weekly_rent IS NOT NULL\n  AND sy.median_household_income IS NOT NULL\n  AND s.population_2023 > 500\n  AND s.region IS NOT NULL\nGROUP BY s.region\nORDER BY 2 ASC"
     },
     {
-      "name": "ds_transit_scatter",
-      "displayName": "Transit stops geographic scatter (lat/lon, max 1000 rows)",
-      "query": "SELECT feed_source, stop_name, stop_lat, stop_lon\nFROM housing.gold.transit_stop\nWHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL\nLIMIT 1000"
+      "name": "ds_bar_amenity_type",
+      "displayName": "Bar: amenity count by type (NZ-wide)",
+      "query": "SELECT amenity_type, COUNT(*) AS amenity_count\nFROM housing.gold.amenity__h3\nGROUP BY amenity_type\nORDER BY 2 DESC\nLIMIT 15"
     },
     {
-      "name": "ds_scatter_rti_crime",
-      "displayName": "Scatter: rent-to-income vs crime (500 suburbs)",
-      "query": "SELECT s.suburb_name, s.region,\n  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n  sc.total_victimisations AS suburb_annual_crime\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nJOIN housing.silver.crime_at_suburb_year sc\n  ON sc.suburb_id = s.suburb_id AND sc.crime_year = 2025\nWHERE sy.census_year = 2023\n  AND sy.median_weekly_rent IS NOT NULL\n  AND sy.median_household_income IS NOT NULL\n  AND sc.total_victimisations IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY s.suburb_name\nLIMIT 500"
+      "name": "ds_bar_transit_network",
+      "displayName": "Bar: transit stops by network (feed_source)",
+      "query": "SELECT feed_source, COUNT(DISTINCT stop_id) AS stop_count\nFROM housing.gold.transit_stop\nGROUP BY feed_source\nORDER BY 2 DESC"
     },
     {
       "name": "ds_bar_rent",
@@ -671,69 +671,57 @@
             "height": 5
           },
           "widget": {
-            "name": "w_scatter_rti_crime",
+            "name": "w_bar_region_afford",
             "queries": [
               {
-                "name": "q_scatter_rti_crime",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_scatter_rti_crime",
+                  "datasetName": "ds_bar_region_afford",
                   "disaggregated": false,
                   "fields": [
-                    {
-                      "expression": "`suburb_name`",
-                      "name": "suburb_name"
-                    },
                     {
                       "expression": "`region`",
                       "name": "region"
                     },
                     {
-                      "expression": "MAX(`rent_to_income_pct`)",
-                      "name": "max(rent_to_income_pct)"
-                    },
-                    {
-                      "expression": "MAX(`suburb_annual_crime`)",
-                      "name": "max(suburb_annual_crime)"
+                      "expression": "MAX(`avg_rent_to_income`)",
+                      "name": "max(avg_rent_to_income)"
                     }
                   ]
                 }
               }
             ],
             "spec": {
-              "widgetType": "scatter",
+              "widgetType": "bar",
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "max(rent_to_income_pct)",
-                  "displayName": "Rent as % of income",
+                  "displayName": "Avg rent as % of income",
+                  "fieldName": "max(avg_rent_to_income)",
                   "scale": {
                     "type": "quantitative"
                   },
                   "axis": {
-                    "title": "Rent as % of income"
+                    "title": "Avg rent as % of income"
                   }
                 },
                 "y": {
-                  "fieldName": "max(suburb_annual_crime)",
-                  "displayName": "Annual crime reports",
-                  "scale": {
-                    "type": "quantitative"
-                  },
-                  "axis": {
-                    "title": "Annual crime reports"
-                  }
-                },
-                "color": {
-                  "fieldName": "region",
                   "displayName": "Region",
+                  "fieldName": "region",
                   "scale": {
                     "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Region"
                   }
+                },
+                "label": {
+                  "show": false
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Affordability vs safety by region (bottom-left = best)"
+                "title": "Rent affordability by region (lower = better)"
               }
             }
           }
@@ -1061,69 +1049,57 @@
             "height": 6
           },
           "widget": {
-            "name": "w_scatter_amenities",
+            "name": "w_bar_amenity_type",
             "queries": [
               {
-                "name": "q_scatter_amenities",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_amenities_scatter",
+                  "datasetName": "ds_bar_amenity_type",
                   "disaggregated": false,
                   "fields": [
-                    {
-                      "expression": "`name`",
-                      "name": "name"
-                    },
                     {
                       "expression": "`amenity_type`",
                       "name": "amenity_type"
                     },
                     {
-                      "expression": "MAX(`lon`)",
-                      "name": "max(lon)"
-                    },
-                    {
-                      "expression": "MAX(`lat`)",
-                      "name": "max(lat)"
+                      "expression": "MAX(`amenity_count`)",
+                      "name": "max(amenity_count)"
                     }
                   ]
                 }
               }
             ],
             "spec": {
-              "widgetType": "scatter",
+              "widgetType": "bar",
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "max(lon)",
-                  "displayName": "Longitude",
+                  "displayName": "Amenity Type",
+                  "fieldName": "amenity_type",
                   "scale": {
-                    "type": "quantitative"
+                    "type": "categorical"
                   },
                   "axis": {
-                    "title": "Longitude"
+                    "title": "Amenity Type"
                   }
                 },
                 "y": {
-                  "fieldName": "max(lat)",
-                  "displayName": "Latitude",
+                  "displayName": "Number of amenities",
+                  "fieldName": "max(amenity_count)",
                   "scale": {
                     "type": "quantitative"
                   },
                   "axis": {
-                    "title": "Latitude"
+                    "title": "Number of amenities"
                   }
                 },
-                "color": {
-                  "fieldName": "amenity_type",
-                  "displayName": "Amenity Type",
-                  "scale": {
-                    "type": "categorical"
-                  }
+                "label": {
+                  "show": false
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Amenity locations by type"
+                "title": "Amenities by type (NZ-wide)"
               }
             }
           }
@@ -1136,69 +1112,57 @@
             "height": 6
           },
           "widget": {
-            "name": "w_scatter_transit",
+            "name": "w_bar_transit_network",
             "queries": [
               {
-                "name": "q_scatter_transit",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_transit_scatter",
+                  "datasetName": "ds_bar_transit_network",
                   "disaggregated": false,
                   "fields": [
-                    {
-                      "expression": "`stop_name`",
-                      "name": "stop_name"
-                    },
                     {
                       "expression": "`feed_source`",
                       "name": "feed_source"
                     },
                     {
-                      "expression": "MAX(`stop_lon`)",
-                      "name": "max(stop_lon)"
-                    },
-                    {
-                      "expression": "MAX(`stop_lat`)",
-                      "name": "max(stop_lat)"
+                      "expression": "MAX(`stop_count`)",
+                      "name": "max(stop_count)"
                     }
                   ]
                 }
               }
             ],
             "spec": {
-              "widgetType": "scatter",
+              "widgetType": "bar",
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "max(stop_lon)",
-                  "displayName": "Longitude",
+                  "displayName": "Transit Network",
+                  "fieldName": "feed_source",
                   "scale": {
-                    "type": "quantitative"
+                    "type": "categorical"
                   },
                   "axis": {
-                    "title": "Longitude"
+                    "title": "Transit Network"
                   }
                 },
                 "y": {
-                  "fieldName": "max(stop_lat)",
-                  "displayName": "Latitude",
+                  "displayName": "Number of stops",
+                  "fieldName": "max(stop_count)",
                   "scale": {
                     "type": "quantitative"
                   },
                   "axis": {
-                    "title": "Latitude"
+                    "title": "Number of stops"
                   }
                 },
-                "color": {
-                  "fieldName": "feed_source",
-                  "displayName": "Transit Network",
-                  "scale": {
-                    "type": "categorical"
-                  }
+                "label": {
+                  "show": false
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Transit stop locations by network"
+                "title": "Transit stops by network"
               }
             }
           }

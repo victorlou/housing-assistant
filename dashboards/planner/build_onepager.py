@@ -13,10 +13,10 @@ Layout (6-column grid, each unit ≈ 50px tall):
     y  0-1   two filter rows  (budget / region / TA | flood / schools / transit)
     y  2-9   main suburb table
     y 10-11  counters: avg rent | avg rent-to-income | matching suburb count
-    y 12-16  scatter: rent vs crime by region (4w)  |  bar: least overcrowded (2w)
-    y 17-21  hbar: cheapest suburbs (3w)             |  hbar: most schools (3w)
-    y 22-26  hbar: best affordability ratio (3w)     |  hbar: best transit (3w)
-    y 27-32  scatter: amenity locations (3w)         |  scatter: transit stops (3w)
+    y 12-16  hbar: avg rent-to-income by region (4w)  |  bar: least overcrowded (2w)
+    y 17-21  hbar: cheapest suburbs (3w)               |  hbar: most schools (3w)
+    y 22-26  hbar: best affordability ratio (3w)       |  hbar: best transit (3w)
+    y 27-32  bar: amenity count by type (3w)           |  bar: transit stops by network (3w)
 """
 
 import json
@@ -94,17 +94,17 @@ def counter_widget(name, qname, dataset, expr, field_name, display, title):
     }
 
 
-def bar_widget(name, dataset, y_expr, y_name, y_display, title, horizontal=False):
-    """Vertical bar by default; horizontal=True swaps axes for long suburb names."""
+def bar_widget(name, dataset, x_col, x_display, y_expr, y_name, y_display, title, horizontal=False):
+    """Vertical bar by default; horizontal=True swaps axes for long category names."""
     if horizontal:
-        # suburb on y-axis → bars run left-to-right
+        # category on y-axis → bars run left-to-right
         x_enc = {"displayName": y_display, "fieldName": y_name,
                  "scale": {"type": "quantitative"}, "axis": {"title": y_display}}
-        y_enc = {"displayName": "Suburb", "fieldName": "suburb_name",
-                 "scale": {"type": "categorical"}, "axis": {"title": "Suburb"}}
+        y_enc = {"displayName": x_display, "fieldName": x_col,
+                 "scale": {"type": "categorical"}, "axis": {"title": x_display}}
     else:
-        x_enc = {"displayName": "Suburb", "fieldName": "suburb_name",
-                 "scale": {"type": "categorical"}, "axis": {"title": "Suburb"}}
+        x_enc = {"displayName": x_display, "fieldName": x_col,
+                 "scale": {"type": "categorical"}, "axis": {"title": x_display}}
         y_enc = {"displayName": y_display, "fieldName": y_name,
                  "scale": {"type": "quantitative"}, "axis": {"title": y_display}}
     return {
@@ -113,7 +113,7 @@ def bar_widget(name, dataset, y_expr, y_name, y_display, title, horizontal=False
             "datasetName": dataset,
             "disaggregated": False,
             "fields": [
-                {"expression": "`suburb_name`", "name": "suburb_name"},
+                {"expression": f"`{x_col}`", "name": x_col},
                 {"expression": y_expr, "name": y_name},
             ],
         }}],
@@ -125,40 +125,6 @@ def bar_widget(name, dataset, y_expr, y_name, y_display, title, horizontal=False
         },
     }
 
-
-def scatter_widget(name, qname, dataset, x_col, y_col, color_col, group_col,
-                   x_display, y_display, color_display, title):
-    """
-    disaggregated:false + explicit MAX aggregation on x/y, GROUP BY color_col + group_col.
-    Field names in encoding must match the 'name' values in the query fields exactly.
-    group_col provides enough cardinality to keep individual points distinct.
-    """
-    return {
-        "name": name,
-        "queries": [{"name": qname, "query": {
-            "datasetName": dataset,
-            "disaggregated": False,
-            "fields": [
-                {"expression": f"`{group_col}`",       "name": group_col},
-                {"expression": f"`{color_col}`",       "name": color_col},
-                {"expression": f"MAX(`{x_col}`)",      "name": f"max({x_col})"},
-                {"expression": f"MAX(`{y_col}`)",      "name": f"max({y_col})"},
-            ],
-        }}],
-        "spec": {
-            "widgetType": "scatter",
-            "version": 3,
-            "encodings": {
-                "x": {"fieldName": f"max({x_col})", "displayName": x_display,
-                      "scale": {"type": "quantitative"}, "axis": {"title": x_display}},
-                "y": {"fieldName": f"max({y_col})", "displayName": y_display,
-                      "scale": {"type": "quantitative"}, "axis": {"title": y_display}},
-                "color": {"fieldName": color_col, "displayName": color_display,
-                          "scale": {"type": "categorical"}},
-            },
-            "frame": {"showTitle": True, "title": title},
-        },
-    }
 
 
 # ── datasets ───────────────────────────────────────────────────────────────
@@ -250,48 +216,41 @@ DATASETS = [
         ),
     },
     {
-        # GROUP BY (name, amenity_type) naturally deduplicates repeat-named amenities.
-        # LIMIT caps total rows so Lakeview's scatter renderer doesn't time out.
-        "name": "ds_amenities_scatter",
-        "displayName": "Amenities geographic scatter (lat/lon, max 1000 rows)",
+        "name": "ds_bar_region_afford",
+        "displayName": "Bar: avg rent-to-income by region",
         "query": (
-            "SELECT amenity_type, name, lat, lon\n"
-            "FROM housing.gold.amenity__h3\n"
-            "WHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')\n"
-            "  AND lat IS NOT NULL AND lon IS NOT NULL\n"
-            "LIMIT 1000"
-        ),
-    },
-    {
-        "name": "ds_transit_scatter",
-        "displayName": "Transit stops geographic scatter (lat/lon, max 1000 rows)",
-        "query": (
-            "SELECT feed_source, stop_name, stop_lat, stop_lon\n"
-            "FROM housing.gold.transit_stop\n"
-            "WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL\n"
-            "LIMIT 1000"
-        ),
-    },
-    {
-        # Pre-filtered scatter dataset: suburbs with both rent affordability and crime data.
-        # LIMIT 500 keeps the scatter readable; ORDER BY ensures deterministic sample.
-        "name": "ds_scatter_rti_crime",
-        "displayName": "Scatter: rent-to-income vs crime (500 suburbs)",
-        "query": (
-            "SELECT s.suburb_name, s.region,\n"
-            "  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n"
-            "  sc.total_victimisations AS suburb_annual_crime\n"
+            "SELECT s.region,\n"
+            "  ROUND(AVG(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100), 1) AS avg_rent_to_income\n"
             "FROM housing.gold.suburb__year sy\n"
             "JOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\n"
-            "JOIN housing.silver.crime_at_suburb_year sc\n"
-            "  ON sc.suburb_id = s.suburb_id AND sc.crime_year = 2025\n"
             "WHERE sy.census_year = 2023\n"
             "  AND sy.median_weekly_rent IS NOT NULL\n"
             "  AND sy.median_household_income IS NOT NULL\n"
-            "  AND sc.total_victimisations IS NOT NULL\n"
             "  AND s.population_2023 > 500\n"
-            "ORDER BY s.suburb_name\n"
-            "LIMIT 500"
+            "  AND s.region IS NOT NULL\n"
+            "GROUP BY s.region\n"
+            "ORDER BY 2 ASC"
+        ),
+    },
+    {
+        "name": "ds_bar_amenity_type",
+        "displayName": "Bar: amenity count by type (NZ-wide)",
+        "query": (
+            "SELECT amenity_type, COUNT(*) AS amenity_count\n"
+            "FROM housing.gold.amenity__h3\n"
+            "GROUP BY amenity_type\n"
+            "ORDER BY 2 DESC\n"
+            "LIMIT 15"
+        ),
+    },
+    {
+        "name": "ds_bar_transit_network",
+        "displayName": "Bar: transit stops by network (feed_source)",
+        "query": (
+            "SELECT feed_source, COUNT(DISTINCT stop_id) AS stop_count\n"
+            "FROM housing.gold.transit_stop\n"
+            "GROUP BY feed_source\n"
+            "ORDER BY 2 DESC"
         ),
     },
     # Pre-aggregated 25-row datasets for bar charts (ORDER BY + LIMIT baked in)
@@ -443,16 +402,17 @@ place(4, 10, 2, 2, counter_widget(
     "Matching suburbs", "Suburbs matching filters"
 ))
 
-# Row 12–16 — scatter: rent-to-income vs crime (shows affordability/safety tradeoff)
-place(0, 12, 4, 5, scatter_widget(
-    "w_scatter_rti_crime", "q_scatter_rti_crime", "ds_scatter_rti_crime",
-    "rent_to_income_pct", "suburb_annual_crime", "region", "suburb_name",
-    "Rent as % of income", "Annual crime reports", "Region",
-    "Affordability vs safety by region (bottom-left = best)"
+# Row 12–16 — horizontal bar: avg rent-to-income by region (replaces scatter)
+place(0, 12, 4, 5, bar_widget(
+    "w_bar_region_afford", "ds_bar_region_afford",
+    "region", "Region",
+    "MAX(`avg_rent_to_income`)", "max(avg_rent_to_income)",
+    "Avg rent as % of income", "Rent affordability by region (lower = better)", horizontal=True
 ))
 # Vertical bar: least overcrowded
 place(4, 12, 2, 5, bar_widget(
     "w_bar_crowd", "ds_bar_crowd",
+    "suburb_name", "Suburb",
     "MAX(`percent_crowded`)", "max(percent_crowded)",
     "Crowded homes (%)", "Least overcrowded suburbs"
 ))
@@ -460,11 +420,13 @@ place(4, 12, 2, 5, bar_widget(
 # Row 17–21 — horizontal bars: cheapest rent | most schools
 place(0, 17, 3, 5, bar_widget(
     "w_bar_rent", "ds_bar_rent",
+    "suburb_name", "Suburb",
     "MAX(`median_weekly_rent`)", "max(median_weekly_rent)",
     "Weekly Rent ($)", "Cheapest suburbs", horizontal=True
 ))
 place(3, 17, 3, 5, bar_widget(
     "w_bar_schools", "ds_bar_schools",
+    "suburb_name", "Suburb",
     "MAX(`education_nearby`)", "max(education_nearby)",
     "Schools & ECE centres", "Most schools nearby", horizontal=True
 ))
@@ -472,30 +434,30 @@ place(3, 17, 3, 5, bar_widget(
 # Row 22–26 — horizontal bars: best affordability ratio | best transit
 place(0, 22, 3, 5, bar_widget(
     "w_bar_afford", "ds_bar_afford",
+    "suburb_name", "Suburb",
     "MAX(`rent_to_income_pct`)", "max(rent_to_income_pct)",
     "Rent as % of income", "Most affordable (rent vs income)", horizontal=True
 ))
 place(3, 22, 3, 5, bar_widget(
     "w_bar_transit", "ds_bar_transit",
+    "suburb_name", "Suburb",
     "MAX(`transit_stops`)", "max(transit_stops)",
     "Public transport stops", "Best connected suburbs", horizontal=True
 ))
 
-# Row 27–32 — geographic scatter plots (lat/lon) replacing point-map
-# point-map shows "Visualization has no fields selected" in this workspace despite valid spec.
-# Scatter on raw lat/lon coordinates shows geographic distribution by type.
-# group_col=name/stop_name keeps points distinct; disaggregated:false + MAX satisfies Lakeview.
-place(0, 27, 3, 6, scatter_widget(
-    "w_scatter_amenities", "q_scatter_amenities", "ds_amenities_scatter",
-    "lon", "lat", "amenity_type", "name",
-    "Longitude", "Latitude", "Amenity Type",
-    "Amenity locations by type"
+# Row 27–32 — bar charts: amenity mix + transit networks
+# scatter (widgetType: "scatter") is not functional in this Lakeview workspace.
+place(0, 27, 3, 6, bar_widget(
+    "w_bar_amenity_type", "ds_bar_amenity_type",
+    "amenity_type", "Amenity Type",
+    "MAX(`amenity_count`)", "max(amenity_count)",
+    "Number of amenities", "Amenities by type (NZ-wide)"
 ))
-place(3, 27, 3, 6, scatter_widget(
-    "w_scatter_transit", "q_scatter_transit", "ds_transit_scatter",
-    "stop_lon", "stop_lat", "feed_source", "stop_name",
-    "Longitude", "Latitude", "Transit Network",
-    "Transit stop locations by network"
+place(3, 27, 3, 6, bar_widget(
+    "w_bar_transit_network", "ds_bar_transit_network",
+    "feed_source", "Transit Network",
+    "MAX(`stop_count`)", "max(stop_count)",
+    "Number of stops", "Transit stops by network"
 ))
 
 # ── assemble and write ─────────────────────────────────────────────────────
