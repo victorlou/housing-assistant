@@ -8,12 +8,12 @@
     {
       "name": "ds_amenities_map",
       "displayName": "Amenities Map (lat/lon points)",
-      "query": "SELECT\n  amenity_type,\n  name,\n  suburb_id,\n  h3_centeraslat(h3_cell) AS lat,\n  h3_centeraslng(h3_cell) AS lon\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')"
+      "query": "SELECT\n  osm_id,\n  amenity_type,\n  name,\n  lat,\n  lon,\n  suburb_id\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')"
     },
     {
       "name": "ds_transit_map",
       "displayName": "Transit Stops Map (lat/lon points)",
-      "query": "SELECT\n  ts.stop_id,\n  ts.stop_name,\n  ts.lat,\n  ts.lon,\n  ts.feed_source,\n  hc.suburb_id\nFROM housing.gold.transit_stop ts\nLEFT JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell"
+      "query": "SELECT\n  ts.stop_id,\n  ts.stop_name,\n  ts.stop_lat,\n  ts.stop_lon,\n  ts.feed_source,\n  hc.suburb_id\nFROM housing.gold.transit_stop ts\nLEFT JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell"
     },
     {
       "name": "ds_bar_rent",
@@ -1512,11 +1512,11 @@
                   "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`lat`",
+                      "expression": "`stop_lat`",
                       "name": "latitude"
                     },
                     {
-                      "expression": "`lon`",
+                      "expression": "`stop_lon`",
                       "name": "longitude"
                     },
                     {
