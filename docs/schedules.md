@@ -49,9 +49,10 @@ Every scheduled job follows a "fetch (hash-skip if nothing changed) → bronze �
 
 ## Cross-pipeline dependencies
 
-Most bundles are independent — they don't consume another's gold tables in their own pipeline. Three real dependencies exist:
+Most bundles are independent — they don't consume another's gold tables in their own pipeline. Four real dependencies exist:
 
 - **`places_gold` reads `housing.silver.census_sa2_features`** (produced by `census_2023_silver`). Order matters: run `census_2023_ingest` before refreshing `places_gold` if you want fresh census demographics on `gold.suburb`. If `census_sa2_features` is missing entirely, `places_gold` materialises `gold.suburb` with null census columns.
+- **`census_2023_gold` reads `housing.silver.crime_at_suburb_year`** (produced by `police_recorded_crime_silver`). Crime allocated to SA2s via the one-off AU2013→SA2 bridge in `housing.silver.area_unit_to_suburb`. Order: run `police_recorded_crime_ingest` before refreshing `census_2023_gold` for fresh crime totals on `gold.suburb__year.total_victimisations_2023`. Missing crime silver → null crime column (graceful degradation).
 - **`compute_amenities.py` (local)** reads `housing.gold.h3_cell` (from `places_gold`) to stamp `suburb_id` onto each amenity. Re-run after `places_ingest` if SA2 polygons changed.
 - **`compute_isochrones.py` (local)** reads `housing.gold.transit_stop` (from `gtfs_gold`) for its origin/destination cell set, and pulls each region's latest GTFS zip from `bronze.gtfs_files._zip/<feed>/`. After a GTFS refresh that changes the stop set, isochrones are stale until manually re-run.
 

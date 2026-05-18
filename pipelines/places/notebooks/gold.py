@@ -26,7 +26,18 @@ H3_RESOLUTION = 8
 
 
 def _census_features_df():
-    if not spark.catalog.tableExists(CENSUS_FEATURES):
+    """
+    Return the census enrichment DataFrame if `silver.census_sa2_features`
+    exists, otherwise None so `gold.suburb` materialises with null census
+    columns instead of failing the whole pipeline.
+
+    DLT serverless blocks `spark.catalog.tableExists` (Py4J whitelist) so
+    we probe with a zero-row read instead — same pattern as
+    `census_2023/notebooks/silver.py::_resolve_bronze_table`.
+    """
+    try:
+        spark.read.table(CENSUS_FEATURES).limit(0).collect()
+    except Exception:
         return None
     return spark.read.table(CENSUS_FEATURES).select(
         F.col("sa2_code"),

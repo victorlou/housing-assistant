@@ -2,6 +2,8 @@
 
 This document describes how Housing Assistant is built end-to-end. It is the canonical reference for design decisions and trade-offs. If something here disagrees with code, update one or the other within the same PR.
 
+**New to the codebase?** See [docs/internal-workings/](internal-workings/) for step-by-step guides on LangGraph, MLflow, and agent design.
+
 ## Goals and non-goals
 
 **Goals.**
@@ -72,8 +74,7 @@ flowchart TB
 - `hazard`. Flood, coastal, liquefaction risk per H3 cell.
 - `isochrone`. Pre-computed travel time from H3 origin cell to commercial centres, by mode and minute bucket. This is the table that makes the consumer demo feel fast.
 - `rent__month__suburb`. Median rent, p25/p75, dwelling type, sample size.
-- `suburb__year`. Census metrics per suburb per census year — income, tenure, rent, crowding, dwelling quality, demographics.
-- `area_unit__month`. Recorded-crime victimisations per area unit per month.
+- `suburb__year`. Census metrics per suburb per census year — income, tenure, rent, crowding, dwelling quality, demographics, plus allocated annual crime totals (via the AU2013→SA2 bridge in silver).
 - `ta__month` / `ta__quarter`. HUD price, rent, MSD, and affordability indices per territorial authority.
 
 **Pipelines.** All transformations are Lakeflow Declarative Pipelines. We prefer SQL over Python where the transformation is expressible in SQL. Each source has a dedicated pipeline. A top-level "marts" pipeline depends on them and refreshes the gold tables.

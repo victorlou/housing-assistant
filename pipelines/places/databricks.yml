@@ -54,6 +54,7 @@ resources:
         project: housing-assistant
         source: places
         layer: bronze
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/bronze.py
@@ -71,6 +72,7 @@ resources:
         project: housing-assistant
         source: places
         layer: silver
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/silver.py
@@ -88,6 +90,7 @@ resources:
         project: housing-assistant
         source: places
         layer: gold
+        pipelines.maxFlowRetryAttempts: "0"
       libraries:
         - notebook:
             path: ./notebooks/gold.py

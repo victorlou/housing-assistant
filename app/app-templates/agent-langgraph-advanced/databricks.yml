@@ -1,0 +1,90 @@
+bundle:
+  name: agent_langgraph_advanced
+
+resources:
+  apps:
+    agent_langgraph_advanced:
+      name: "housing-assistant-dev"
+      description: "Housing Assistant consumer surface"
+      source_code_path: ./
+      config:
+        command: ["uv", "run", "start-app"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "databricks"
+          - name: MLFLOW_REGISTRY_URI
+            value: "databricks-uc"
+          - name: API_PROXY
+            value: "http://localhost:8000/invocations"
+          - name: CHAT_APP_PORT
+            value: "3000"
+          - name: CHAT_PROXY_TIMEOUT_SECONDS
+            value: "300"
+          - name: MLFLOW_EXPERIMENT_ID
+            value_from: "experiment"
+          - name: LAKEBASE_AUTOSCALING_ENDPOINT
+            value_from: "postgres"
+          - name: LAKEBASE_AGENT_MEMORY_SCHEMA
+            value: "agent_langgraph_memory"
+          - name: LOG_LEVEL
+            value: "INFO"
+          - name: DATABRICKS_EMBEDDING_ENDPOINT
+            value: "databricks-gte-large-en"
+          - name: HOUSING_CATALOG
+            value: "housing"
+          - name: HOUSING_SCHEMA
+            value: "gold"
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: "warehouse_secret"
+          - name: DATABRICKS_GENIE_SPACE_ID
+            value: "01f150e43bb31de198a7f9e01a945f64"
+
+      # Resources which this app has access to
+      resources:
+        - name: 'experiment'
+          experiment:
+            experiment_id: "1855383292840058"
+            permission: 'CAN_MANAGE'
+        - name: 'postgres'
+          postgres:
+            branch: "projects/housing-assistant-dev/branches/production"
+            database: "projects/housing-assistant-dev/branches/production/databases/db-e4ns-8mz53om54c" # had to debug datbricks ui -> network requests to get this id😭
+            permission: 'CAN_CONNECT_AND_CREATE'
+        - name: 'app_db'
+          postgres:
+            branch: "projects/housing-assistant-dev/branches/production"
+            database: "projects/housing-assistant-dev/branches/production/databases/housing-assistant-dev-db"
+            permission: 'CAN_CONNECT_AND_CREATE'
+        - name: 'warehouse_secret'
+          secret:
+            scope: "housing-assistant"
+            key: "WAREHOUSE_ID"
+            permission: 'READ'
+        - name: 'sql_warehouse'
+          sql_warehouse:
+            id: "f21913d784edd9ad"
+            permission: "CAN_MANAGE"
+        - name: 'genie-space'
+          genie_space:
+            name: "Suburban Demographics and Housing Risks"
+            space_id: "01f150e43bb31de198a7f9e01a945f64"
+            permission: CAN_MANAGE
+
+
+# Shadow resource: App Service Principal to be granted permissions to catalogs using UI or Terraform
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # workspace:
+    #   host: https://...
+
+  prod:
+    mode: production
+    # workspace:
+    #   host: https://...
+    resources:
+      apps:
+        agent_langgraph_advanced:
+          name: agent-langgraph-advanced
