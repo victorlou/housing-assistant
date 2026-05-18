@@ -95,3 +95,7 @@ You will need Databricks credentials in the environment (for example `databricks
 - [Developer runbook](docs/runbook.md)
 - [Gold-table naming conventions](docs/conventions.md)
 - [Pipeline schedules](docs/schedules.md)
+- [Gold-table semantic layer](docs/lakehouse-gold-schema.md)
+- [Genie space](docs/genie-space.md)
+- [Agent backend architecture](docs/agent-backend-architecture.md)
+- [Agent tool extension guide](docs/agent-tool-extension-guide.md)

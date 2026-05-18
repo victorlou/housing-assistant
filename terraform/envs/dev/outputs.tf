@@ -67,3 +67,9 @@ output "secret_scope_name" {
   description = "Databricks-backed secret scope name."
   value       = module.secrets.scope_name
 }
+
+# Genie space ID is not a Terraform output today — the space is created
+# manually in the UI (Terraform provider doesn't support the resource yet,
+# see docs/genie-space.md). After creating, grab the ID from the URL
+# (`/genie/rooms/<space_id>`) and paste into the agent's .env as
+# DATABRICKS_GENIE_SPACE_ID.

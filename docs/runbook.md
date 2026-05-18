@@ -82,6 +82,8 @@ Conventions:
 - Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
 - Naming conventions for gold tables live in [`docs/conventions.md`](conventions.md).
 - All scheduled jobs, their cron, and the rationale for each cadence live in [`docs/schedules.md`](schedules.md) — update both the bundle and that doc when changing a schedule.
+- Column-level definitions for every `housing.gold.*` table live in [`docs/lakehouse-gold-schema.md`](lakehouse-gold-schema.md).
+- The Genie space wired over gold (consumed by the agent's `query_genie` tool) is documented in [`docs/genie-space.md`](genie-space.md). Edits to instructions / tables / sample questions happen in Terraform — see that doc.
 
 ## Working on the agent
 
