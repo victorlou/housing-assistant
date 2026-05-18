@@ -77,18 +77,27 @@ def table_widget(name, qname, dataset, col_specs, title):
     }
 
 
-def counter_widget(name, qname, dataset, expr, field_name, display, title):
+def counter_widget(name, qname, dataset, src_col, display, title):
+    """
+    Uses a pre-aggregated dataset (1 row) + MAX() in the widget query.
+    Same confirmed-working pattern as bar charts: disaggregated:false + explicit aggregation.
+    """
+    agg_name = f"max({src_col})"
     return {
         "name": name,
         "queries": [{"name": qname, "query": {
             "datasetName": dataset,
             "disaggregated": False,
-            "fields": [{"expression": expr, "name": field_name}],
+            "fields": [{"expression": f"MAX(`{src_col}`)", "name": agg_name}],
         }}],
         "spec": {
             "widgetType": "counter",
-            "version": 1,
-            "encodings": {"value": {"fieldName": field_name, "displayName": display}},
+            "version": 2,
+            "encodings": {"value": {
+                "fieldName": agg_name,
+                "displayName": display,
+                "queryName": qname,
+            }},
             "frame": {"showTitle": True, "title": title},
         },
     }
@@ -213,6 +222,20 @@ DATASETS = [
             "LEFT JOIN suburb_crime sc ON sc.suburb_id = s.suburb_id\n"
             "WHERE s.population_2023 > 500\n"
             "ORDER BY s.territorial_authority, s.suburb_name"
+        ),
+    },
+    {
+        "name": "ds_counters",
+        "displayName": "Counter values: avg rent, avg affordability, suburb count",
+        "query": (
+            "SELECT\n"
+            "  ROUND(AVG(sy.median_weekly_rent), 0) AS avg_rent,\n"
+            "  ROUND(AVG(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100), 1) AS avg_afford,\n"
+            "  COUNT(*) AS suburb_count\n"
+            "FROM housing.gold.suburb__year sy\n"
+            "JOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\n"
+            "WHERE sy.census_year = 2023\n"
+            "  AND s.population_2023 > 500"
         ),
     },
     {
@@ -386,20 +409,18 @@ place(0, 2, 6, 8, table_widget(
 ))
 
 # Row 10–11 — counters: avg rent | avg rent-to-income | suburb count
+# Uses ds_counters (1 pre-aggregated row) + MAX() — same pattern as working bar charts.
 place(0, 10, 2, 2, counter_widget(
-    "w_c_rent", "q_c_rent", DS,
-    "ROUND(AVG(`median_weekly_rent`), 0)", "avg_rent",
-    "Avg weekly rent ($)", "Avg weekly rent"
+    "w_c_rent", "q_c_rent", "ds_counters",
+    "avg_rent", "Avg weekly rent ($)", "Avg weekly rent"
 ))
 place(2, 10, 2, 2, counter_widget(
-    "w_c_afford", "q_c_afford", DS,
-    "ROUND(AVG(`rent_to_income_pct`), 1)", "avg_afford",
-    "Avg rent-to-income (%)", "Avg rent-to-income"
+    "w_c_afford", "q_c_afford", "ds_counters",
+    "avg_afford", "Avg rent-to-income (%)", "Avg rent-to-income"
 ))
 place(4, 10, 2, 2, counter_widget(
-    "w_c_count", "q_c_count", DS,
-    "COUNT(*)", "suburb_count",
-    "Matching suburbs", "Suburbs matching filters"
+    "w_c_count", "q_c_count", "ds_counters",
+    "suburb_count", "Matching suburbs", "Suburbs matching filters"
 ))
 
 # Row 12–16 — horizontal bar: avg rent-to-income by region (replaces scatter)
