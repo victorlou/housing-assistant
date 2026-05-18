@@ -21,6 +21,17 @@ from flood_layer_meta import (
     REGIONAL_FLOOD_SOURCES,
 )
 
+# Quarantined hazard sources. Excluded at the gold boundary while we wait for
+# an upstream fix; silver retains the raw rows so debugging stays possible.
+# Each entry should describe the bug and reference a tracking issue.
+#
+# - hamilton_100yr: source polygon was ingested as the Hamilton City TA
+#   boundary instead of the actual 100-year flood plain — every cell in
+#   Hamilton (including hill suburbs like Hillcrest, Pukete, Glenview) got
+#   flagged. Drop until the correct Waikato Regional Council layer is
+#   re-ingested. See docs/runbook.md ("Quarantined hazard sources").
+UNTRUSTED_SOURCES: set[str] = {"hamilton_100yr","auckland_flood_plains","auckland_flood_prone_areas","auckland_coastal_inundation_100yr"}
+
 # COMMAND ----------
 
 
@@ -44,6 +55,9 @@ from flood_layer_meta import (
 )
 def hazard():
     h3 = spark.read.table(f"{SILVER}.flood_hazard_h3")
+
+    if UNTRUSTED_SOURCES:
+        h3 = h3.filter(~F.col("hazard_source").isin(*sorted(UNTRUSTED_SOURCES)))
 
     def _flag(source_set):
         return F.max(

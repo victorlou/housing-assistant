@@ -14,7 +14,7 @@ HAZARD_CATEGORY_BY_SOURCE: dict[str, str] = {
     "auckland_coastal_inundation_100yr": "coastal_inundation_100yr",
     "greater_wellington_100yr_outline": "regional_flood_zone",
     "wellington_city_100yr": "regional_flood_zone",
-    "hamilton_100yr": "flood_plain",
+    "hamilton_100yr": "flood_plain",  # NB: currently quarantined in gold.py (UNTRUSTED_SOURCES).
     "queenstown_lakes_orc_hazard": "regional_flood_zone",
     "queenstown_lakes_wanaka_100yr": "flood_plain",
     "canterbury_selwyn_flood_zones": "regional_flood_zone",
