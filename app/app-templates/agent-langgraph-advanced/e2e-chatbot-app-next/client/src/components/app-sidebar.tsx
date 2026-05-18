@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Bookmark, SlidersHorizontal } from 'lucide-react';
+import { Bookmark, LayoutDashboard, SlidersHorizontal } from 'lucide-react';
 
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
@@ -168,6 +168,28 @@ export function AppSidebar({
 
       {/* ── User nav ────────────────────────────────────────────────── */}
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton
+                  type="button"
+                  className="h-8 p-1 md:p-2 cursor-pointer"
+                  onClick={() => {
+                    setOpenMobile(false);
+                    navigate('/dashboard');
+                  }}
+                >
+                  <LayoutDashboard className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    Dashboard
+                  </span>
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>Dashboard</TooltipContent>
+            </Tooltip>
+          </SidebarMenuItem>
+        </SidebarMenu>
         {user && (
           <SidebarUserNav user={user} preferredUsername={preferredUsername} />
         )}
