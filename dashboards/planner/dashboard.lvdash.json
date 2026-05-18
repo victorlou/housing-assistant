@@ -7,13 +7,18 @@
     },
     {
       "name": "ds_amenities_scatter",
-      "displayName": "Amenities geographic scatter (lat/lon)",
-      "query": "SELECT amenity_type, name, lat, lon\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')\n  AND lat IS NOT NULL AND lon IS NOT NULL"
+      "displayName": "Amenities geographic scatter (lat/lon, max 1000 rows)",
+      "query": "SELECT amenity_type, name, lat, lon\nFROM housing.gold.amenity__h3\nWHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')\n  AND lat IS NOT NULL AND lon IS NOT NULL\nLIMIT 1000"
     },
     {
       "name": "ds_transit_scatter",
-      "displayName": "Transit stops geographic scatter (lat/lon)",
-      "query": "SELECT feed_source, stop_name, stop_lat, stop_lon\nFROM housing.gold.transit_stop\nWHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL"
+      "displayName": "Transit stops geographic scatter (lat/lon, max 1000 rows)",
+      "query": "SELECT feed_source, stop_name, stop_lat, stop_lon\nFROM housing.gold.transit_stop\nWHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL\nLIMIT 1000"
+    },
+    {
+      "name": "ds_scatter_rti_crime",
+      "displayName": "Scatter: rent-to-income vs crime (500 suburbs)",
+      "query": "SELECT s.suburb_name, s.region,\n  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n  sc.total_victimisations AS suburb_annual_crime\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nJOIN housing.silver.crime_at_suburb_year sc\n  ON sc.suburb_id = s.suburb_id AND sc.crime_year = 2025\nWHERE sy.census_year = 2023\n  AND sy.median_weekly_rent IS NOT NULL\n  AND sy.median_household_income IS NOT NULL\n  AND sc.total_victimisations IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY s.suburb_name\nLIMIT 500"
     },
     {
       "name": "ds_bar_rent",
@@ -671,20 +676,24 @@
               {
                 "name": "q_scatter_rti_crime",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_scatter_rti_crime",
+                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`rent_to_income_pct`",
-                      "name": "rent_to_income_pct"
-                    },
-                    {
-                      "expression": "`suburb_annual_crime`",
-                      "name": "suburb_annual_crime"
+                      "expression": "`suburb_name`",
+                      "name": "suburb_name"
                     },
                     {
                       "expression": "`region`",
                       "name": "region"
+                    },
+                    {
+                      "expression": "MAX(`rent_to_income_pct`)",
+                      "name": "max(rent_to_income_pct)"
+                    },
+                    {
+                      "expression": "MAX(`suburb_annual_crime`)",
+                      "name": "max(suburb_annual_crime)"
                     }
                   ]
                 }
@@ -695,7 +704,7 @@
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "rent_to_income_pct",
+                  "fieldName": "max(rent_to_income_pct)",
                   "displayName": "Rent as % of income",
                   "scale": {
                     "type": "quantitative"
@@ -705,7 +714,7 @@
                   }
                 },
                 "y": {
-                  "fieldName": "suburb_annual_crime",
+                  "fieldName": "max(suburb_annual_crime)",
                   "displayName": "Annual crime reports",
                   "scale": {
                     "type": "quantitative"
@@ -1058,19 +1067,23 @@
                 "name": "q_scatter_amenities",
                 "query": {
                   "datasetName": "ds_amenities_scatter",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`lon`",
-                      "name": "lon"
-                    },
-                    {
-                      "expression": "`lat`",
-                      "name": "lat"
+                      "expression": "`name`",
+                      "name": "name"
                     },
                     {
                       "expression": "`amenity_type`",
                       "name": "amenity_type"
+                    },
+                    {
+                      "expression": "MAX(`lon`)",
+                      "name": "max(lon)"
+                    },
+                    {
+                      "expression": "MAX(`lat`)",
+                      "name": "max(lat)"
                     }
                   ]
                 }
@@ -1081,7 +1094,7 @@
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "lon",
+                  "fieldName": "max(lon)",
                   "displayName": "Longitude",
                   "scale": {
                     "type": "quantitative"
@@ -1091,7 +1104,7 @@
                   }
                 },
                 "y": {
-                  "fieldName": "lat",
+                  "fieldName": "max(lat)",
                   "displayName": "Latitude",
                   "scale": {
                     "type": "quantitative"
@@ -1129,19 +1142,23 @@
                 "name": "q_scatter_transit",
                 "query": {
                   "datasetName": "ds_transit_scatter",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`stop_lon`",
-                      "name": "stop_lon"
-                    },
-                    {
-                      "expression": "`stop_lat`",
-                      "name": "stop_lat"
+                      "expression": "`stop_name`",
+                      "name": "stop_name"
                     },
                     {
                       "expression": "`feed_source`",
                       "name": "feed_source"
+                    },
+                    {
+                      "expression": "MAX(`stop_lon`)",
+                      "name": "max(stop_lon)"
+                    },
+                    {
+                      "expression": "MAX(`stop_lat`)",
+                      "name": "max(stop_lat)"
                     }
                   ]
                 }
@@ -1152,7 +1169,7 @@
               "version": 3,
               "encodings": {
                 "x": {
-                  "fieldName": "stop_lon",
+                  "fieldName": "max(stop_lon)",
                   "displayName": "Longitude",
                   "scale": {
                     "type": "quantitative"
@@ -1162,7 +1179,7 @@
                   }
                 },
                 "y": {
-                  "fieldName": "stop_lat",
+                  "fieldName": "max(stop_lat)",
                   "displayName": "Latitude",
                   "scale": {
                     "type": "quantitative"

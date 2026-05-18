@@ -126,26 +126,32 @@ def bar_widget(name, dataset, y_expr, y_name, y_display, title, horizontal=False
     }
 
 
-def scatter_widget(name, qname, dataset, x_col, y_col, color_col,
+def scatter_widget(name, qname, dataset, x_col, y_col, color_col, group_col,
                    x_display, y_display, color_display, title):
+    """
+    disaggregated:false + explicit MAX aggregation on x/y, GROUP BY color_col + group_col.
+    Field names in encoding must match the 'name' values in the query fields exactly.
+    group_col provides enough cardinality to keep individual points distinct.
+    """
     return {
         "name": name,
         "queries": [{"name": qname, "query": {
             "datasetName": dataset,
-            "disaggregated": True,
+            "disaggregated": False,
             "fields": [
-                {"expression": f"`{x_col}`", "name": x_col},
-                {"expression": f"`{y_col}`", "name": y_col},
-                {"expression": f"`{color_col}`", "name": color_col},
+                {"expression": f"`{group_col}`",       "name": group_col},
+                {"expression": f"`{color_col}`",       "name": color_col},
+                {"expression": f"MAX(`{x_col}`)",      "name": f"max({x_col})"},
+                {"expression": f"MAX(`{y_col}`)",      "name": f"max({y_col})"},
             ],
         }}],
         "spec": {
             "widgetType": "scatter",
             "version": 3,
             "encodings": {
-                "x": {"fieldName": x_col, "displayName": x_display,
+                "x": {"fieldName": f"max({x_col})", "displayName": x_display,
                       "scale": {"type": "quantitative"}, "axis": {"title": x_display}},
-                "y": {"fieldName": y_col, "displayName": y_display,
+                "y": {"fieldName": f"max({y_col})", "displayName": y_display,
                       "scale": {"type": "quantitative"}, "axis": {"title": y_display}},
                 "color": {"fieldName": color_col, "displayName": color_display,
                           "scale": {"type": "categorical"}},
@@ -244,22 +250,48 @@ DATASETS = [
         ),
     },
     {
+        # GROUP BY (name, amenity_type) naturally deduplicates repeat-named amenities.
+        # LIMIT caps total rows so Lakeview's scatter renderer doesn't time out.
         "name": "ds_amenities_scatter",
-        "displayName": "Amenities geographic scatter (lat/lon)",
+        "displayName": "Amenities geographic scatter (lat/lon, max 1000 rows)",
         "query": (
             "SELECT amenity_type, name, lat, lon\n"
             "FROM housing.gold.amenity__h3\n"
             "WHERE amenity_type IN ('school','early_childhood','supermarket','park','hospital','pharmacy','gp_clinic','library')\n"
-            "  AND lat IS NOT NULL AND lon IS NOT NULL"
+            "  AND lat IS NOT NULL AND lon IS NOT NULL\n"
+            "LIMIT 1000"
         ),
     },
     {
         "name": "ds_transit_scatter",
-        "displayName": "Transit stops geographic scatter (lat/lon)",
+        "displayName": "Transit stops geographic scatter (lat/lon, max 1000 rows)",
         "query": (
             "SELECT feed_source, stop_name, stop_lat, stop_lon\n"
             "FROM housing.gold.transit_stop\n"
-            "WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL"
+            "WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL\n"
+            "LIMIT 1000"
+        ),
+    },
+    {
+        # Pre-filtered scatter dataset: suburbs with both rent affordability and crime data.
+        # LIMIT 500 keeps the scatter readable; ORDER BY ensures deterministic sample.
+        "name": "ds_scatter_rti_crime",
+        "displayName": "Scatter: rent-to-income vs crime (500 suburbs)",
+        "query": (
+            "SELECT s.suburb_name, s.region,\n"
+            "  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct,\n"
+            "  sc.total_victimisations AS suburb_annual_crime\n"
+            "FROM housing.gold.suburb__year sy\n"
+            "JOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\n"
+            "JOIN housing.silver.crime_at_suburb_year sc\n"
+            "  ON sc.suburb_id = s.suburb_id AND sc.crime_year = 2025\n"
+            "WHERE sy.census_year = 2023\n"
+            "  AND sy.median_weekly_rent IS NOT NULL\n"
+            "  AND sy.median_household_income IS NOT NULL\n"
+            "  AND sc.total_victimisations IS NOT NULL\n"
+            "  AND s.population_2023 > 500\n"
+            "ORDER BY s.suburb_name\n"
+            "LIMIT 500"
         ),
     },
     # Pre-aggregated 25-row datasets for bar charts (ORDER BY + LIMIT baked in)
@@ -413,8 +445,8 @@ place(4, 10, 2, 2, counter_widget(
 
 # Row 12–16 — scatter: rent-to-income vs crime (shows affordability/safety tradeoff)
 place(0, 12, 4, 5, scatter_widget(
-    "w_scatter_rti_crime", "q_scatter_rti_crime", DS,
-    "rent_to_income_pct", "suburb_annual_crime", "region",
+    "w_scatter_rti_crime", "q_scatter_rti_crime", "ds_scatter_rti_crime",
+    "rent_to_income_pct", "suburb_annual_crime", "region", "suburb_name",
     "Rent as % of income", "Annual crime reports", "Region",
     "Affordability vs safety by region (bottom-left = best)"
 ))
@@ -450,18 +482,18 @@ place(3, 22, 3, 5, bar_widget(
 ))
 
 # Row 27–32 — geographic scatter plots (lat/lon) replacing point-map
-# Note: point-map widget shows "Visualization has no fields selected" in this workspace
-# (spec is valid but the map renderer appears to require a workspace-level feature).
-# Scatter on raw coordinates gives the same geographic distribution view.
+# point-map shows "Visualization has no fields selected" in this workspace despite valid spec.
+# Scatter on raw lat/lon coordinates shows geographic distribution by type.
+# group_col=name/stop_name keeps points distinct; disaggregated:false + MAX satisfies Lakeview.
 place(0, 27, 3, 6, scatter_widget(
     "w_scatter_amenities", "q_scatter_amenities", "ds_amenities_scatter",
-    "lon", "lat", "amenity_type",
+    "lon", "lat", "amenity_type", "name",
     "Longitude", "Latitude", "Amenity Type",
     "Amenity locations by type"
 ))
 place(3, 27, 3, 6, scatter_widget(
     "w_scatter_transit", "q_scatter_transit", "ds_transit_scatter",
-    "stop_lon", "stop_lat", "feed_source",
+    "stop_lon", "stop_lat", "feed_source", "stop_name",
     "Longitude", "Latitude", "Transit Network",
     "Transit stop locations by network"
 ))
