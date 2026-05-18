@@ -367,9 +367,16 @@ locals {
     {
       table        = "suburb__year"
       name         = "is_rent_affordable_at_median_income"
-      code         = "median_weekly_rent * 52.0 <= median_household_income * 0.30"
+      code         = "population_total >= 200 AND renting_households_stated >= 30 AND median_weekly_rent * 52.0 <= median_household_income * 0.30"
       synonyms     = "affordable rent, rent affordable, rent under 30 percent, rent affordable to locals"
-      instructions = "Standard NZ housing affordability test: median weekly rent (annualised) is no more than 30% of median household income. True / false for each suburb. Pairs naturally with `is_residential` on the suburb dim."
+      instructions = "Standard NZ housing affordability test: median weekly rent (annualised) is no more than 30% of median household income. Returns FALSE for SA2s with <200 residents or <30 bonds — too noisy for a meaningful median. Pairs naturally with `is_residential` on the suburb dim."
+    },
+    {
+      table        = "suburb__year"
+      name         = "is_rent_unaffordable_at_median_income"
+      code         = "population_total >= 200 AND renting_households_stated >= 30 AND median_weekly_rent * 52.0 > median_household_income * 0.30"
+      synonyms     = "rent stressed, unaffordable rent, rent burden, housing stress, rent above 30 percent"
+      instructions = "Standard NZ / HUD housing-cost-overburden line: median weekly rent (annualised) exceeds 30% of median household income. At the SA2 median this captures ~13% of NZ suburbs (~12% of population, ~290 SA2s). Returns FALSE for SA2s with <200 residents or <30 bonds (too noisy for medians). Mirror of `is_rent_affordable_at_median_income`."
     },
     {
       table        = "suburb"
@@ -452,9 +459,9 @@ locals {
     {
       table        = "suburb__year"
       name         = "rent_to_income_ratio"
-      code         = "median_weekly_rent * 52.0 / NULLIF(median_household_income, 0)"
+      code         = "CASE WHEN population_total < 200 THEN NULL WHEN renting_households_stated < 30 THEN NULL ELSE median_weekly_rent * 52.0 / NULLIF(median_household_income, 0) END"
       synonyms     = "rent burden, rent-to-income, rent share of income, how unaffordable"
-      instructions = "Median weekly rent annualised, divided by median household income. > 0.30 is the standard NZ 'unaffordable' threshold. Companion to the `is_rent_affordable_at_median_income` filter."
+      instructions = "Median weekly rent annualised, divided by median household income. > 0.30 is the standard NZ 'unaffordable' threshold. NULL for SA2s with <200 residents or <30 bonds — a median over too few samples is noise (drops ~200 tiny SA2s, mostly under 18k people total). Calibration on 2023 data: p50 = 0.24, p90 = 0.31; ~12% of suburbs exceed 0.30. Companion to the `is_rent_unaffordable_at_median_income` filter."
     },
   ]
 
