@@ -14,6 +14,41 @@
       "name": "ds_transit_map",
       "displayName": "Transit Stops Map (lat/lon points)",
       "query": "SELECT\n  ts.stop_id,\n  ts.stop_name,\n  ts.stop_lat,\n  ts.stop_lon,\n  ts.feed_source,\n  hc.suburb_id\nFROM housing.gold.transit_stop ts\nLEFT JOIN housing.gold.h3_cell hc ON hc.h3_cell = ts.h3_cell"
+    },
+    {
+      "name": "ds_bar_rent",
+      "displayName": "Bar: 25 cheapest suburbs by weekly rent",
+      "query": "SELECT s.suburb_name, sy.median_weekly_rent\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nWHERE sy.census_year = 2023\n  AND sy.median_weekly_rent IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY sy.median_weekly_rent ASC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_afford",
+      "displayName": "Bar: 25 most affordable suburbs (rent-to-income)",
+      "query": "SELECT s.suburb_name,\n  ROUND(sy.median_weekly_rent * 52 / NULLIF(sy.median_household_income, 0) * 100, 1) AS rent_to_income_pct\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nWHERE sy.census_year = 2023\n  AND sy.median_weekly_rent IS NOT NULL\n  AND sy.median_household_income IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY 2 ASC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_crowd",
+      "displayName": "Bar: 25 least crowded suburbs",
+      "query": "SELECT s.suburb_name,\n  ROUND(sy.percent_crowded * 100, 1) AS percent_crowded\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nWHERE sy.census_year = 2023\n  AND sy.percent_crowded IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY 2 ASC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_damp",
+      "displayName": "Bar: 25 suburbs with fewest damp homes",
+      "query": "SELECT s.suburb_name,\n  ROUND(sy.dwellings_always_damp * 100.0 / NULLIF(sy.dwellings_damp_total_stated, 0), 1) AS pct_always_damp\nFROM housing.gold.suburb__year sy\nJOIN housing.gold.suburb s ON s.suburb_id = sy.suburb_id\nWHERE sy.census_year = 2023\n  AND sy.dwellings_always_damp IS NOT NULL\n  AND sy.dwellings_damp_total_stated > 0\n  AND s.population_2023 > 500\nORDER BY 2 ASC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_crime",
+      "displayName": "Bar: 25 safest suburbs by crime reports",
+      "query": "SELECT s.suburb_name, sc.total_victimisations AS suburb_annual_crime\nFROM housing.silver.crime_at_suburb_year sc\nJOIN housing.gold.suburb s ON s.suburb_id = sc.suburb_id\nWHERE sc.crime_year = 2025\n  AND sc.total_victimisations IS NOT NULL\n  AND s.population_2023 > 500\nORDER BY 2 ASC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_schools",
+      "displayName": "Bar: 25 suburbs with most schools nearby",
+      "query": "SELECT s.suburb_name,\n  COUNT(CASE WHEN a.amenity_type IN ('school','early_childhood') THEN 1 END) AS education_nearby\nFROM housing.gold.suburb s\nLEFT JOIN housing.gold.amenity__h3 a ON a.suburb_id = s.suburb_id\nWHERE s.population_2023 > 500\nGROUP BY s.suburb_name\nORDER BY 2 DESC\nLIMIT 25"
+    },
+    {
+      "name": "ds_bar_transit",
+      "displayName": "Bar: 25 suburbs with most transit stops",
+      "query": "SELECT s.suburb_name, COUNT(DISTINCT ts.stop_id) AS transit_stops\nFROM housing.gold.suburb s\nLEFT JOIN housing.gold.h3_cell hc ON hc.suburb_id = s.suburb_id\nLEFT JOIN housing.gold.transit_stop ts ON ts.h3_cell = hc.h3_cell\nWHERE s.population_2023 > 500\nGROUP BY s.suburb_name\nORDER BY 2 DESC\nLIMIT 25"
     }
   ],
   "pages": [
@@ -438,24 +473,18 @@
             "name": "w_p1_bar_rent",
             "queries": [
               {
-                "name": "q_bar_rent",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_rent",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`median_weekly_rent`",
-                      "name": "median_weekly_rent"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "median_weekly_rent",
-                      "direction": "ASC"
+                      "expression": "MAX(`median_weekly_rent`)",
+                      "name": "max(median_weekly_rent)"
                     }
                   ]
                 }
@@ -477,7 +506,7 @@
                 },
                 "y": {
                   "displayName": "Weekly Rent ($)",
-                  "fieldName": "median_weekly_rent",
+                  "fieldName": "max(median_weekly_rent)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -669,24 +698,18 @@
             "name": "w_p2_bar_rent",
             "queries": [
               {
-                "name": "q_p2_rent",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_rent",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`median_weekly_rent`",
-                      "name": "median_weekly_rent"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "median_weekly_rent",
-                      "direction": "ASC"
+                      "expression": "MAX(`median_weekly_rent`)",
+                      "name": "max(median_weekly_rent)"
                     }
                   ]
                 }
@@ -708,7 +731,7 @@
                 },
                 "y": {
                   "displayName": "Weekly Rent ($)",
-                  "fieldName": "median_weekly_rent",
+                  "fieldName": "max(median_weekly_rent)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -738,24 +761,18 @@
             "name": "w_p2_bar_afford",
             "queries": [
               {
-                "name": "q_p2_afford",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_afford",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`rent_to_income_pct`",
-                      "name": "rent_to_income_pct"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "rent_to_income_pct",
-                      "direction": "ASC"
+                      "expression": "MAX(`rent_to_income_pct`)",
+                      "name": "max(rent_to_income_pct)"
                     }
                   ]
                 }
@@ -777,7 +794,7 @@
                 },
                 "y": {
                   "displayName": "Rent as % of local income",
-                  "fieldName": "rent_to_income_pct",
+                  "fieldName": "max(rent_to_income_pct)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -807,24 +824,18 @@
             "name": "w_p2_bar_crowd",
             "queries": [
               {
-                "name": "q_p2_crowd",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_crowd",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`percent_crowded`",
-                      "name": "percent_crowded"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "percent_crowded",
-                      "direction": "ASC"
+                      "expression": "MAX(`percent_crowded`)",
+                      "name": "max(percent_crowded)"
                     }
                   ]
                 }
@@ -846,7 +857,7 @@
                 },
                 "y": {
                   "displayName": "% of homes overcrowded",
-                  "fieldName": "percent_crowded",
+                  "fieldName": "max(percent_crowded)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -876,24 +887,18 @@
             "name": "w_p2_bar_damp",
             "queries": [
               {
-                "name": "q_p2_damp",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_damp",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`pct_always_damp`",
-                      "name": "pct_always_damp"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "pct_always_damp",
-                      "direction": "ASC"
+                      "expression": "MAX(`pct_always_damp`)",
+                      "name": "max(pct_always_damp)"
                     }
                   ]
                 }
@@ -915,7 +920,7 @@
                 },
                 "y": {
                   "displayName": "% of homes with damp issues",
-                  "fieldName": "pct_always_damp",
+                  "fieldName": "max(pct_always_damp)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -1211,18 +1216,18 @@
             "name": "w_p3_bar_crime",
             "queries": [
               {
-                "name": "q_p3_crime",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_crime",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`suburb_annual_crime`",
-                      "name": "suburb_annual_crime"
+                      "expression": "MAX(`suburb_annual_crime`)",
+                      "name": "max(suburb_annual_crime)"
                     }
                   ]
                 }
@@ -1244,7 +1249,7 @@
                 },
                 "y": {
                   "displayName": "Crime reports (2025)",
-                  "fieldName": "suburb_annual_crime",
+                  "fieldName": "max(suburb_annual_crime)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -1558,24 +1563,18 @@
             "name": "w_p4_bar_schools",
             "queries": [
               {
-                "name": "q_p4_schools",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_schools",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`education_nearby`",
-                      "name": "education_nearby"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "education_nearby",
-                      "direction": "DESC"
+                      "expression": "MAX(`education_nearby`)",
+                      "name": "max(education_nearby)"
                     }
                   ]
                 }
@@ -1597,7 +1596,7 @@
                 },
                 "y": {
                   "displayName": "Schools and early childhood centres",
-                  "fieldName": "education_nearby",
+                  "fieldName": "max(education_nearby)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -1627,24 +1626,18 @@
             "name": "w_p4_bar_transit",
             "queries": [
               {
-                "name": "q_p4_transit",
+                "name": "main_query",
                 "query": {
-                  "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "datasetName": "ds_bar_transit",
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
                       "name": "suburb_name"
                     },
                     {
-                      "expression": "`transit_stops`",
-                      "name": "transit_stops"
-                    }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "transit_stops",
-                      "direction": "DESC"
+                      "expression": "MAX(`transit_stops`)",
+                      "name": "max(transit_stops)"
                     }
                   ]
                 }
@@ -1666,7 +1659,7 @@
                 },
                 "y": {
                   "displayName": "Public transport stops",
-                  "fieldName": "transit_stops",
+                  "fieldName": "max(transit_stops)",
                   "scale": {
                     "type": "quantitative"
                   },
