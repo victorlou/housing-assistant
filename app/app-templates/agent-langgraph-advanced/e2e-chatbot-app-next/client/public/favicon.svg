@@ -1,6 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- background circle -->
-  <rect width="32" height="32" rx="8" fill="#0d9488"/>
-  <!-- house shape -->
-  <path d="M16 7L5 16.5h3V25h7v-6h2v6h7v-8.5h3L16 7z" fill="white" opacity="0.95"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img">
+  <title>Kāinga</title>
+  <!-- Charcoal rounded background -->
+  <rect width="32" height="32" rx="5.5" fill="#2C2C2C"/>
+  <!--
+    Mark re-expressed at 32×32 scale.
+    Original g transform: translate(343,295) in a 680×680 viewBox.
+    Mark content spans ~(-116,-108) to (80,140) in g-local coords → width 196, height 248.
+    Scale factor: 28/248 ≈ 0.113 (height-limited, 2px padding each side).
+    Effective transform: translate(20.1, 14.2) scale(0.113)
+    Stroke widths adjusted: original_w / 0.113 so they render at target px after scale.
+      target 1.2px → sw = 10.6   (main form, walls)
+      target 0.85px → sw = 7.5   (door)
+      target 0.45px → sw = 4.0   (accent leaf)
+      target 0.28px → sw = 2.5   (tiny frond)
+  -->
+  <g transform="translate(20.1,14.2) scale(0.113)">
+    <!-- Main unified house-koru form -->
+    <path d="M -100,120 L -100,10 L 0,-100 Q 8,-108 16,-100 L 80,-30 Q 110,0 110,40 Q 110,90 70,100 Q 30,110 20,75 Q 12,48 38,42 Q 58,38 62,56 Q 66,72 52,76 Q 42,78 40,66"
+          fill="none" stroke="#F5ECD7" stroke-width="10.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Left wall to ground -->
+    <line x1="-100" y1="120" x2="-100" y2="140" stroke="#F5ECD7" stroke-width="10.6" stroke-linecap="round"/>
+    <!-- Ground line -->
+    <line x1="-116" y1="140" x2="20" y2="140" stroke="#F5ECD7" stroke-width="10.6" stroke-linecap="round"/>
+    <!-- Door arch -->
+    <path d="M -72,140 L -72,90 Q -72,60 -48,60 Q -24,60 -24,90 L -24,140"
+          fill="none" stroke="#2D6A4F" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Koru tip dot -->
+    <circle cx="40" cy="66" r="5.5" fill="#F5ECD7"/>
+    <!-- Accent leaf -->
+    <path d="M 20,140 Q 40,128 52,140" fill="none" stroke="#2D6A4F" stroke-width="4.0" stroke-linecap="round" opacity="0.7"/>
+    <!-- Chimney -->
+    <rect x="-80" y="-48" width="14" height="34" rx="3" fill="#2D6A4F" opacity="0.85" transform="rotate(-5,-73,-31)"/>
+  </g>
 </svg>

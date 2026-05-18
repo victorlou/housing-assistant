@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Any, AsyncGenerator, Optional, Sequence, TypedDict
 
@@ -55,7 +56,40 @@ def get_current_time() -> str:
 def render_visualization(title: str, mermaid_code: str, description: str) -> dict:
     """Trigger a Mermaid diagram modal on the frontend. Call this after presenting
     multi-suburb comparisons, affordability decision trees, or hazard matrices to give
-    users a visual summary. Returns immediately — the frontend handles rendering."""
+    users a visual summary. Validates the mermaid_code and returns an error with a
+    fix hint if the syntax is structurally broken — fix and retry when that happens."""
+    code = mermaid_code.strip()
+
+    if not code.startswith("flowchart"):
+        return {
+            "status": "error",
+            "error": "mermaid_code must start with 'flowchart TD' or 'flowchart LR'.",
+            "hint": "Change the first line to 'flowchart TD' or 'flowchart LR' and call render_visualization again.",
+        }
+
+    lines = [ln.strip() for ln in code.splitlines() if ln.strip()]
+    if len(lines) < 3:
+        return {
+            "status": "error",
+            "error": "Diagram is too short — must have at least 2 nodes and 1 edge.",
+            "hint": "Add more nodes/edges and call render_visualization again.",
+        }
+
+    for kw in ("classDef", "style ", "linkStyle", "subgraph", "click "):
+        if kw in code:
+            return {
+                "status": "error",
+                "error": f"'{kw.strip()}' is not allowed — use plain nodes and arrows only.",
+                "hint": f"Remove all '{kw.strip()}' lines and call render_visualization again.",
+            }
+
+    if re.search(r"(?<!-)->(?!>)", code):
+        return {
+            "status": "error",
+            "error": "Wrong arrow syntax: found '->' instead of '-->'.",
+            "hint": "Replace every '->' with '-->' and call render_visualization again.",
+        }
+
     return {"status": "rendered"}
 
 

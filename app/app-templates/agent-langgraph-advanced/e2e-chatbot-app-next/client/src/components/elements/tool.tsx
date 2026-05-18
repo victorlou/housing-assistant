@@ -9,7 +9,7 @@ import type { ToolUIPart } from 'ai';
 import { useContext, useState, type ComponentProps, type ReactNode } from 'react';
 import { CodeBlock } from './code-block';
 import { createContext } from 'react';
-import { ChevronUpIcon, ShieldCheckIcon, ShieldOffIcon as ShieldXIcon, XCircleIcon, CircleOutlineIcon as CircleIcon, ClockIcon, ChevronDownIcon, WrenchIcon, CheckCircleIcon } from '../icons';
+import { ChevronUpIcon, ShieldCheckIcon, ShieldOffIcon as ShieldXIcon, XCircleIcon, CircleOutlineIcon as CircleIcon, ClockIcon, ChevronDownIcon, WrenchIcon, CheckCircleIcon, DatabaseIcon } from '../icons';
 
 // Shared types - uses AI SDK's native tool states
 export type ToolState = ToolUIPart['state'];
@@ -159,7 +159,7 @@ export const ToolOutput = ({
   );
 };
 
-// Human-readable labels for known tools
+// Human-readable labels for known tools (exact match)
 export const TOOL_LABELS: Record<string, string> = {
   compute_isochrone:       'Calculating commute times…',
   score_affordability:     'Analysing affordability…',
@@ -169,6 +169,25 @@ export const TOOL_LABELS: Record<string, string> = {
   delete_user_memory:      'Removing preference…',
   get_current_time:        'Checking current time…',
 };
+
+// Prefix-pattern labels for tools whose names include dynamic IDs (e.g. Genie MCP tools)
+const TOOL_LABEL_PREFIXES: Array<[string, string]> = [
+  ['query_space_',    'Querying housing & demographics data…'],
+  ['poll_response_',  'Fetching query results…'],
+  ['ask_',            'Asking data space…'],
+];
+
+export function getToolLabel(toolName: string): string {
+  if (TOOL_LABELS[toolName]) return TOOL_LABELS[toolName];
+  for (const [prefix, label] of TOOL_LABEL_PREFIXES) {
+    if (toolName.startsWith(prefix)) return label;
+  }
+  return toolName;
+}
+
+export function isGenieToolName(toolName: string): boolean {
+  return TOOL_LABEL_PREFIXES.some(([prefix]) => toolName.startsWith(prefix));
+}
 
 // Standard tool components (non-MCP)
 export const Tool = ToolContainer;
@@ -195,9 +214,12 @@ export const ToolHeader = ({
       {...props}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+        {isGenieToolName(type as string)
+          ? <DatabaseIcon className="size-4 shrink-0 text-sky-500 dark:text-sky-400" />
+          : <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+        }
         <span className="truncate font-medium text-sm">
-          {TOOL_LABELS[type as string] ?? type}
+          {getToolLabel(type as string)}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-2">

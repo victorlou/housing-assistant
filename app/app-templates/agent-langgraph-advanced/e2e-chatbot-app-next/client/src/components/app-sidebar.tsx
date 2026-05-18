@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Home, Bookmark, SlidersHorizontal } from 'lucide-react';
+import { Bookmark, SlidersHorizontal } from 'lucide-react';
 
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
@@ -54,7 +54,12 @@ export function AppSidebar({
             onClick={() => setOpenMobile(false)}
             className="flex items-center gap-2 overflow-hidden px-1"
           >
-            <Home className="size-4 text-primary shrink-0" />
+            <img
+              src="/favicon.svg"
+              alt="Kāinga"
+              className="size-5 rounded shrink-0"
+              draggable={false}
+            />
             <span className="font-semibold text-foreground tracking-tight">
               Kāinga
             </span>

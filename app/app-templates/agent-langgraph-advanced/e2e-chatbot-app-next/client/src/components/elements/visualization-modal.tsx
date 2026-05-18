@@ -1,22 +1,40 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-import { Download, BarChart2, ChevronUp, ChevronDown } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { Download, BarChart2, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
- * Pre-process mermaid code to fix common LLM-generated syntax issues before
- * passing to the renderer. Specifically: node labels like [text] that contain
- * special chars ( ) + ~ / % must be wrapped in double quotes per Mermaid spec.
+ * Pre-process LLM-generated Mermaid code to fix common syntax issues before
+ * passing to the renderer. Applied in order so earlier fixes don't interfere
+ * with later ones.
  */
 function sanitizeMermaidCode(code: string): string {
+  const SPECIAL = /[()$%~+/&`#@!]/;
+
   return (
     code
       .trim()
+      // Strip ```mermaid / ``` code fences if the LLM wrapped output in them
+      .replace(/^```(?:mermaid)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      // Convert escaped \n sequences into actual newlines (some LLMs stringify them)
+      .replace(/\\n/g, '\n')
+      // Normalize wrong arrow variants to -->
+      .replace(/—>/g, '-->')        // em dash arrow
+      .replace(/→/g, '-->')          // unicode arrow
+      .replace(/(?<!-)->(?!>)/g, '-->') // single -> not already part of -->
+      // Strip forbidden directive lines entirely (classDef, style X, linkStyle, click)
+      .replace(/^\s*(classDef\s+|style\s+\w|linkStyle\s|click\s).*/gm, '')
+      // Guard reserved words used as node IDs — prefix with underscore
+      .replace(/\b(end|class|default|graph|style|subgraph)\[/g, '_$1[')
+      // Remove trailing semicolons from node/edge lines
+      .replace(/;(\s*)$/gm, '$1')
       // Wrap unquoted [...] node labels in double quotes when they contain
       // special chars that Mermaid's lexer treats as shape tokens.
       .replace(/\[([^"\]\[]+)\]/g, (_, inner: string) => {
-        if (/[()~+/%&`]/.test(inner)) {
+        if (SPECIAL.test(inner)) {
           const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
           return `["${escaped}"]`;
         }
@@ -24,11 +42,19 @@ function sanitizeMermaidCode(code: string): string {
       })
       // Same treatment for (...) rounded-rect labels
       .replace(/\(([^"()]+)\)/g, (_, inner: string) => {
-        if (/[()~+/%&`]/.test(inner)) {
+        if (SPECIAL.test(inner)) {
           const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
           return `("${escaped}")`;
         }
         return `(${inner})`;
+      })
+      // Same treatment for {...} diamond labels
+      .replace(/\{([^"{}]+)\}/g, (_, inner: string) => {
+        if (SPECIAL.test(inner)) {
+          const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+          return `{"${escaped}"}`;
+        }
+        return `{${inner}}`;
       })
   );
 }
@@ -50,15 +76,14 @@ export function VisualizationCard({
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     if (!diagramRef.current || !mermaidCode) return;
 
-    const isDark = document.documentElement.classList.contains('dark');
-
     mermaid.initialize({
       startOnLoad: false,
-      theme: isDark ? 'dark' : 'default',
+      theme: resolvedTheme === 'dark' ? 'dark' : 'default',
       securityLevel: 'loose',
     });
 
@@ -86,10 +111,25 @@ export function VisualizationCard({
       .finally(() => {
         setIsRendering(false);
       });
-  }, [mermaidCode, diagramId]);
+  }, [mermaidCode, diagramId, resolvedTheme]);
 
-  // Silently suppress failed renders — don't show error cards in chat
-  if (!isRendering && renderError) return null;
+  if (!isRendering && renderError) {
+    return (
+      <div className="my-2 rounded-xl border border-destructive/30 bg-destructive/5 text-sm">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-destructive/20 rounded-t-xl">
+          <AlertTriangle className="size-4 shrink-0 text-destructive/60" />
+          <span className="flex-1 font-medium text-destructive/70 truncate">{title}</span>
+          <span className="text-xs text-destructive/40">diagram unavailable</span>
+        </div>
+        <details className="px-4 py-3">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none">
+            Show Mermaid source
+          </summary>
+          <pre className="mt-2 text-xs overflow-auto rounded bg-muted/50 p-2 font-mono whitespace-pre-wrap break-all">{mermaidCode}</pre>
+        </details>
+      </div>
+    );
+  }
 
   function handleDownload() {
     const svgEl = diagramRef.current?.querySelector('svg');

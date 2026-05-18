@@ -267,11 +267,12 @@ const PurePreviewMessage = ({
                     mermaid_code: string;
                     description: string;
                   };
+                  if (!vizInput.mermaid_code?.trim()) return null;
                   return (
                     <VisualizationModalTrigger
                       key={toolCallId}
                       title={vizInput.title ?? ''}
-                      mermaidCode={vizInput.mermaid_code ?? ''}
+                      mermaidCode={vizInput.mermaid_code}
                       description={vizInput.description ?? ''}
                     />
                   );
