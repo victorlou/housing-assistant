@@ -441,7 +441,7 @@
                 "name": "q_bar_rent",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -673,7 +673,7 @@
                 "name": "q_p2_rent",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -743,7 +743,7 @@
                 "name": "q_p2_afford",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -813,7 +813,7 @@
                 "name": "q_p2_crowd",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -883,7 +883,7 @@
                 "name": "q_p2_damp",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -1229,12 +1229,6 @@
                       "expression": "`suburb_annual_crime`",
                       "name": "suburb_annual_crime"
                     }
-                  ],
-                  "orderBy": [
-                    {
-                      "name": "ta_avg_monthly_crime",
-                      "direction": "ASC"
-                    }
                   ]
                 }
               }
@@ -1247,7 +1241,8 @@
                   "displayName": "Suburb",
                   "fieldName": "suburb_name",
                   "scale": {
-                    "type": "categorical"
+                    "type": "categorical",
+                    "sort": "asc_measure"
                   },
                   "axis": {
                     "title": "Suburb"
@@ -1454,11 +1449,11 @@
                   "fields": [
                     {
                       "expression": "`lat`",
-                      "name": "lat"
+                      "name": "latitude"
                     },
                     {
                       "expression": "`lon`",
-                      "name": "lon"
+                      "name": "longitude"
                     },
                     {
                       "expression": "`amenity_type`",
@@ -1477,10 +1472,10 @@
               "version": 1,
               "encodings": {
                 "latitude": {
-                  "fieldName": "lat"
+                  "fieldName": "latitude"
                 },
                 "longitude": {
-                  "fieldName": "lon"
+                  "fieldName": "longitude"
                 },
                 "color": {
                   "fieldName": "amenity_type",
@@ -1515,11 +1510,11 @@
                   "fields": [
                     {
                       "expression": "`stop_lat`",
-                      "name": "stop_lat"
+                      "name": "latitude"
                     },
                     {
                       "expression": "`stop_lon`",
-                      "name": "stop_lon"
+                      "name": "longitude"
                     },
                     {
                       "expression": "`feed_source`",
@@ -1538,10 +1533,10 @@
               "version": 1,
               "encodings": {
                 "latitude": {
-                  "fieldName": "stop_lat"
+                  "fieldName": "latitude"
                 },
                 "longitude": {
-                  "fieldName": "stop_lon"
+                  "fieldName": "longitude"
                 },
                 "color": {
                   "fieldName": "feed_source",
@@ -1572,7 +1567,7 @@
                 "name": "q_p4_schools",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
@@ -1642,7 +1637,7 @@
                 "name": "q_p4_transit",
                 "query": {
                   "datasetName": "ds_suburb_sarah",
-                  "disaggregated": true,
+                  "disaggregated": false,
                   "fields": [
                     {
                       "expression": "`suburb_name`",
