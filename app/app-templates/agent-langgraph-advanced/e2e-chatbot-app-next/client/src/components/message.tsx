@@ -8,6 +8,7 @@ import {
   ToolContent,
   ToolInput,
   ToolOutput,
+  TOOL_LABELS,
   type ToolState,
 } from './elements/tool';
 import {
@@ -38,6 +39,11 @@ import { MessageOAuthError } from './message-oauth-error';
 import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
 import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
+import { Brain } from 'lucide-react';
+import { VisualizationModalTrigger } from './elements/visualization-modal';
+import { SavedSearchCard } from './elements/saved-search-card';
+
+const MEMORY_TOOLS = ['get_user_memory', 'save_user_memory', 'delete_user_memory'];
 
 const PurePreviewMessage = ({
   message,
@@ -128,6 +134,10 @@ const PurePreviewMessage = ({
       >
         {partSegments.length === 0 && errorParts.length === 0 && message.role === 'assistant' && (
           <AwaitingResponseMessage />
+        )}
+
+        {message.role === 'assistant' && partSegments.length > 0 && (
+          <AnimatedAssistantIcon size={16} isLoading={isLoading} />
         )}
 
         <div
@@ -253,6 +263,67 @@ const PurePreviewMessage = ({
                 }
                 return state;
               })();
+
+              // render_visualization — intercept and open Mermaid modal
+              if (toolName === 'render_visualization') {
+                if (state === 'input-available' || state === 'output-available') {
+                  const vizInput = input as {
+                    title: string;
+                    mermaid_code: string;
+                    description: string;
+                  };
+                  if (!vizInput.mermaid_code?.trim()) return null;
+                  return (
+                    <VisualizationModalTrigger
+                      key={toolCallId}
+                      title={vizInput.title ?? ''}
+                      mermaidCode={vizInput.mermaid_code}
+                      description={vizInput.description ?? ''}
+                    />
+                  );
+                }
+                return null;
+              }
+
+              // suggest_saved_search — inline save prompt card
+              if (toolName === 'suggest_saved_search') {
+                if (state === 'input-available' || state === 'output-available') {
+                  const s = input as {
+                    suburb_name: string;
+                    median_rent_weekly: number;
+                    commute_minutes: number;
+                    commute_mode: string;
+                    hazard_risk: string;
+                    affordability_band: string;
+                  };
+                  if (!s.suburb_name) return null;
+                  return (
+                    <SavedSearchCard
+                      key={toolCallId}
+                      suburb_name={s.suburb_name}
+                      median_rent_weekly={s.median_rent_weekly}
+                      commute_minutes={s.commute_minutes}
+                      commute_mode={s.commute_mode}
+                      hazard_risk={s.hazard_risk}
+                      affordability_band={s.affordability_band}
+                    />
+                  );
+                }
+                return null;
+              }
+
+              // Memory tools — distinct violet card (full MemoryTool component added in Pillar 5)
+              if (MEMORY_TOOLS.includes(toolName)) {
+                return (
+                  <div
+                    key={toolCallId}
+                    className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-700 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                  >
+                    <Brain className="size-4 shrink-0" />
+                    <span>{TOOL_LABELS[toolName] ?? toolName}</span>
+                  </div>
+                );
+              }
 
               // Render MCP tool calls with special styling
               if (isMcpApproval) {

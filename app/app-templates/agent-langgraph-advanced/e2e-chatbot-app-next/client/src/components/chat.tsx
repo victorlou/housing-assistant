@@ -304,7 +304,7 @@ export function Chat({
         <ChatHeader empty />
         <div className="flex min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y p-4">
           <div className="m-auto flex w-full max-w-4xl flex-col">
-            <Greeting />
+            <Greeting onSend={(text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })} />
             {inputElement}
           </div>
         </div>

@@ -37,7 +37,9 @@ resources:
           - name: DATABRICKS_WAREHOUSE_ID
             value_from: "warehouse_secret"
           - name: DATABRICKS_GENIE_SPACE_ID
-            value: "01f150e43bb31de198a7f9e01a945f64"
+            value: "01f152668dcc14a7adb7e558769d9308"
+          - name: DATABRICKS_DASHBOARD_ID
+            value: "01f1526f81831b699771747499d91b7c"
 
       # Resources which this app has access to
       resources:
@@ -66,8 +68,8 @@ resources:
             permission: "CAN_MANAGE"
         - name: 'genie-space'
           genie_space:
-            name: "Suburban Demographics and Housing Risks"
-            space_id: "01f150e43bb31de198a7f9e01a945f64"
+            name: "Natural-language assistant surface over `housing.gold.*`"
+            space_id: "01f152668dcc14a7adb7e558769d9308"
             permission: CAN_MANAGE
 
 

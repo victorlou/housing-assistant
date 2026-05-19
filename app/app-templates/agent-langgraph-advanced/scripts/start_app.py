@@ -33,7 +33,11 @@ BACKEND_READY = [
     r"Application startup complete",
     r"Started server process",
 ]
-FRONTEND_READY = [r"Server is running on http://localhost"]
+FRONTEND_READY = [
+    r"Server is running on http://localhost",
+    r"Ready in",
+    r"Local:\s+http://localhost",
+]
 
 
 def check_port_available(port: int) -> bool:
@@ -48,7 +52,7 @@ def check_port_available(port: int) -> bool:
 
 
 class ProcessManager:
-    def __init__(self, port=8000, no_ui=False):
+    def __init__(self, port=8000, no_ui=False, dev=False):
         self.backend_process = None
         self.frontend_process = None
         self.backend_ready = False
@@ -58,6 +62,7 @@ class ProcessManager:
         self.frontend_log = None
         self.port = port
         self.no_ui = no_ui
+        self.dev = dev
 
     def check_ports(self):
         """Check that required ports are available before starting processes."""
@@ -267,10 +272,11 @@ class ProcessManager:
             if not self.no_ui:
                 # Setup and start frontend
                 frontend_dir = Path("e2e-chatbot-app-next")
-                for cmd, desc in [
-                    ("npm install", "install"),
-                    ("npm run build", "build"),
-                ]:
+                frontend_setup_commands = [("npm install", "install")]
+                if not self.dev:
+                    frontend_setup_commands.append(("npm run build", "build"))
+
+                for cmd, desc in frontend_setup_commands:
                     print(f"Running npm {desc}...")
                     result = subprocess.run(
                         cmd.split(), cwd=frontend_dir, capture_output=True, text=True
@@ -279,8 +285,9 @@ class ProcessManager:
                         print(f"npm {desc} failed: {result.stderr}")
                         return 1
 
+                frontend_cmd = ["npm", "run", "dev" if self.dev else "start"]
                 self.frontend_process = self.start_process(
-                    ["npm", "run", "start"],
+                    frontend_cmd,
                     "frontend",
                     self.frontend_log,
                     FRONTEND_READY,
@@ -345,6 +352,11 @@ def main():
         action="store_true",
         help="Run backend only, skip frontend UI",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Run the frontend with 'npm run dev' instead of 'npm run start'",
+    )
     args, backend_args = parser.parse_known_args()
 
     # Extract port from backend_args if specified
@@ -357,7 +369,9 @@ def main():
                 pass
             break
 
-    sys.exit(ProcessManager(port=port, no_ui=args.no_ui).run(backend_args))
+    sys.exit(
+        ProcessManager(port=port, no_ui=args.no_ui, dev=args.dev).run(backend_args)
+    )
 
 
 if __name__ == "__main__":

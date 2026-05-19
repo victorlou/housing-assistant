@@ -17,10 +17,10 @@ interface SuggestedActionsProps {
 function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
   const { chatHistoryEnabled } = useAppConfig();
   const suggestedActions = [
-    'I work in Britomart, $750/week budget, don\'t drive — what suburbs work for me?',
-    'Is Onehunga affordable for a household earning $85k/year?',
-    'What\'s the flood risk in Henderson and nearby suburbs?',
-    'Which Auckland suburbs have the highest rent-to-income pressure?',
+    'Best suburbs within 30 min transit of Newmarket under $650 a week',
+    'Is Takanini at high flood or coastal risk?',
+    'Compare rent and affordability in Avondale and New Lynn',
+    'Which suburbs near Manukau have the lowest income deciles?',
   ];
 
   return (

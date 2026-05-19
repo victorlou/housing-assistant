@@ -1,5 +1,6 @@
 import { PreviewMessage, AwaitingResponseMessage } from './message';
 import { memo, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import equal from 'fast-deep-equal';
 import type { UseChatHelpers } from '@ai-sdk/react';
 import { useMessages } from '@/hooks/use-messages';
@@ -66,23 +67,29 @@ function PureMessages({
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-4 py-4 md:gap-6">
           {messages.map((message, index) => (
-            <PreviewMessage
+            <motion.div
               key={message.id}
-              message={message}
-              allMessages={messages}
-              isLoading={
-                status === 'streaming' && messages.length - 1 === index
-              }
-              setMessages={setMessages}
-              addToolApprovalResponse={addToolApprovalResponse}
-              sendMessage={sendMessage}
-              regenerate={regenerate}
-              isReadonly={isReadonly}
-              requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
-              }
-              initialFeedback={feedback[message.id]}
-            />
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <PreviewMessage
+                message={message}
+                allMessages={messages}
+                isLoading={
+                  status === 'streaming' && messages.length - 1 === index
+                }
+                setMessages={setMessages}
+                addToolApprovalResponse={addToolApprovalResponse}
+                sendMessage={sendMessage}
+                regenerate={regenerate}
+                isReadonly={isReadonly}
+                requiresScrollPadding={
+                  hasSentMessage && index === messages.length - 1
+                }
+                initialFeedback={feedback[message.id]}
+              />
+            </motion.div>
           ))}
 
           {status === 'submitted' &&

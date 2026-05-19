@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Any, AsyncGenerator, Optional, Sequence, TypedDict
 
@@ -21,7 +22,6 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
-from agent_server.tools.find_affordable_suburbs import find_affordable_suburbs
 from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
@@ -52,6 +52,63 @@ def get_current_time() -> str:
     return datetime.now().isoformat()
 
 
+@tool
+def suggest_saved_search(
+    suburb_name: str,
+    median_rent_weekly: int,
+    commute_minutes: int,
+    commute_mode: str,
+    hazard_risk: str,
+    affordability_band: str,
+) -> dict:
+    """Frontend trigger: suggest saving a suburb recommendation to the user.
+    Call once after recommending a specific suburb with concrete data (rent, commute,
+    hazard, affordability band). Only call for data-backed recommendations — not for
+    vague mentions or suburb lists. Do not call more than once per suburb per response."""
+    return {"saved": True}
+
+
+@tool
+def render_visualization(title: str, mermaid_code: str, description: str) -> dict:
+    """Trigger a Mermaid diagram modal on the frontend. Call this after presenting
+    multi-suburb comparisons, affordability decision trees, or hazard matrices to give
+    users a visual summary. Validates the mermaid_code and returns an error with a
+    fix hint if the syntax is structurally broken — fix and retry when that happens."""
+    code = mermaid_code.strip()
+
+    if not code.startswith("flowchart"):
+        return {
+            "status": "error",
+            "error": "mermaid_code must start with 'flowchart TD' or 'flowchart LR'.",
+            "hint": "Change the first line to 'flowchart TD' or 'flowchart LR' and call render_visualization again.",
+        }
+
+    lines = [ln.strip() for ln in code.splitlines() if ln.strip()]
+    if len(lines) < 3:
+        return {
+            "status": "error",
+            "error": "Diagram is too short — must have at least 2 nodes and 1 edge.",
+            "hint": "Add more nodes/edges and call render_visualization again.",
+        }
+
+    for kw in ("classDef", "style ", "linkStyle", "subgraph", "click "):
+        if kw in code:
+            return {
+                "status": "error",
+                "error": f"'{kw.strip()}' is not allowed — use plain nodes and arrows only.",
+                "hint": f"Remove all '{kw.strip()}' lines and call render_visualization again.",
+            }
+
+    if re.search(r"(?<!-)->(?!>)", code):
+        return {
+            "status": "error",
+            "error": "Wrong arrow syntax: found '->' instead of '-->'.",
+            "hint": "Replace every '->' with '-->' and call render_visualization again.",
+        }
+
+    return {"status": "rendered"}
+
+
 class StatefulAgentState(TypedDict, total=False):
     messages: Annotated[Sequence[AnyMessage], add_messages]
     custom_inputs: dict[str, Any]
@@ -64,10 +121,11 @@ async def init_agent(
 ):
     tools = [
         get_current_time,
-        find_affordable_suburbs,
         compute_isochrone,
         score_affordability,
         lookup_hazards,
+        suggest_saved_search,
+        render_visualization,
     ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     mcp_client = init_mcp_client(sp_workspace_client)

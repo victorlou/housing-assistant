@@ -1,0 +1,38 @@
+<svg width="100%" viewBox="0 0 680 680" role="img" xmlns="http://www.w3.org/2000/svg" style="">
+<title style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Kāinga logo with wordmark – square</title>
+<desc style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">The Kāinga house-koru mark with wordmark below, compact square layout on charcoal background.</desc>
+
+<rect x="115" y="115" width="450" height="450" rx="48" fill="#2C2C2C" style="fill:rgb(44, 44, 44);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<g transform="translate(343, 295)" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">
+
+<!-- Main unified house-koru form -->
+<path d="&#10;  M -100, 120&#10;  L -100, 10&#10;  L 0, -100&#10;  Q 8, -108  16, -100&#10;  L 80, -30&#10;  Q 110, 0  110, 40&#10;  Q 110, 90  70, 100&#10;  Q 30, 110  20, 75&#10;  Q 12, 48  38, 42&#10;  Q 58, 38  62, 56&#10;  Q 66, 72  52, 76&#10;  Q 42, 78  40, 66&#10;" fill="none" stroke="#F5ECD7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" style="fill:none;stroke:rgb(245, 236, 215);color:rgb(255, 255, 255);stroke-width:8px;stroke-linecap:round;stroke-linejoin:round;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Left wall to ground -->
+<line x1="-100" y1="120" x2="-100" y2="140" stroke="#F5ECD7" stroke-width="8" stroke-linecap="round" style="fill:rgb(0, 0, 0);stroke:rgb(245, 236, 215);color:rgb(255, 255, 255);stroke-width:8px;stroke-linecap:round;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Ground line -->
+<line x1="-116" y1="140" x2="20" y2="140" stroke="#F5ECD7" stroke-width="8" stroke-linecap="round" style="fill:rgb(0, 0, 0);stroke:rgb(245, 236, 215);color:rgb(255, 255, 255);stroke-width:8px;stroke-linecap:round;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Door arch -->
+<path d="&#10;  M -72, 140&#10;  L -72, 90&#10;  Q -72, 60  -48, 60&#10;  Q -24, 60  -24, 90&#10;  L -24, 140&#10;" fill="none" stroke="#2D6A4F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="fill:none;stroke:rgb(45, 106, 79);color:rgb(255, 255, 255);stroke-width:6px;stroke-linecap:round;stroke-linejoin:round;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Koru tip dot -->
+<circle cx="40" cy="66" r="5.5" fill="#F5ECD7" stroke="none" style="fill:rgb(245, 236, 215);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Accent leaf from base -->
+<path d="&#10;  M 20, 140&#10;  Q 40, 128  52, 140&#10;" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" opacity="0.6" style="fill:none;stroke:rgb(45, 106, 79);color:rgb(255, 255, 255);stroke-width:3px;stroke-linecap:round;stroke-linejoin:miter;opacity:0.6;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Second tiny frond -->
+<path d="&#10;  M 52, 140&#10;  Q 62, 130  72, 136&#10;" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" opacity="0.4" style="fill:none;stroke:rgb(45, 106, 79);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:round;stroke-linejoin:miter;opacity:0.4;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+<!-- Chimney -->
+<rect x="-80" y="-48" width="14" height="34" rx="3" fill="#2D6A4F" opacity="0.8" stroke="none" transform="rotate(-5, -73, -31)" style="fill:rgb(45, 106, 79);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:0.8;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+</g>
+
+<!-- Wordmark – tucked closer below the mark -->
+<text x="340" y="510" text-anchor="middle" font-family="'Anthropic Sans', sans-serif" font-size="34" font-weight="400" letter-spacing="5" fill="#F5ECD7" style="fill:rgb(245, 236, 215);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, sans-serif;font-size:34px;font-weight:400;text-anchor:middle;dominant-baseline:auto">Kāinga</text>
+
+</svg>

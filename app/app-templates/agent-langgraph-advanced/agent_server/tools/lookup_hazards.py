@@ -5,6 +5,7 @@ from langchain_core.tools import tool
 
 from agent_server.tools.utils import CATALOG as _CATALOG
 from agent_server.tools.utils import SCHEMA as _SCHEMA
+from agent_server.tools.utils import build_in_params as _build_in_params
 from agent_server.tools.utils import execute_statement as _execute
 from agent_server.tools.utils import resolve_suburb_fuzzy as _resolve
 
@@ -38,6 +39,10 @@ def lookup_hazards(suburb_name: str) -> dict:
     both housing-stressed (from score_affordability) and high-risk (from this tool).
     Double-burden suburbs are the strongest candidates for council intervention.
 
+    When a colloquial name matches multiple Stats NZ SA2 areas (e.g. "Takanini" covers
+    several SA2s), worst-case risk is computed across ALL matched areas and H3 cells —
+    giving the most conservative (safest) risk assessment for the neighbourhood.
+
     Trigger phrases: "flood zone", "flood risk", "coastal", "natural disaster",
     "safe area", "not near water", "post-Cyclone Gabrielle".
 
@@ -49,29 +54,28 @@ def lookup_hazards(suburb_name: str) -> dict:
 
     Returns:
         Dict with:
-          - suburb: suburb name
-          - flood_risk: worst-case flood risk — "high" (in flood plain),
-                        "medium" (flood-prone/sensitive/regional overlay), or "low"
-          - coastal_risk: worst-case coastal inundation risk — "high" (1% AEP),
-                          "medium" (100-year return), or "low"
-          - overall_risk: single worst level across flood and coastal.
-                          Use this as the top-line safety signal.
-          - hazard_sources: deduplicated list of data layer IDs contributing a hazard
-                            flag at this suburb (e.g. ["auckland_flood_plain_100yr"]).
-                            Empty list if no hazard layers triggered.
-          - cells_examined: number of H3 cells assessed (coverage indicator)
-          - error: present only if the suburb was not found in the data
+          - suburb: suburb name (or colloquial name when multiple SA2s were merged)
+          - matched_areas: list of SA2 names included in the assessment
+          - flood_risk: worst-case flood risk across all matched areas
+          - coastal_risk: worst-case coastal inundation risk across all matched areas
+          - overall_risk: single worst level across flood and coastal
+          - hazard_sources: deduplicated hazard layer IDs that triggered a flag
+          - cells_examined: total H3 cells assessed across all matched areas
+          - error: present only if the suburb was not found or has no hazard data
     """
-    # Step 1: resolve suburb name → suburb_id (fuzzy: exact first, ILIKE fallback)
     suburb_rows = _resolve(suburb_name)
     if not suburb_rows or not suburb_rows[0][0]:
         return {
             "suburb": suburb_name,
             "error": f"Suburb '{suburb_name}' not found. Check suburb name spelling.",
         }
-    suburb_id, matched_name = suburb_rows[0][0], suburb_rows[0][1]
 
-    # Step 2: join h3_cell → hazard to get all boolean hazard flags for this suburb
+    suburb_ids = [row[0] for row in suburb_rows]
+    matched_names = [row[1] for row in suburb_rows]
+    display_name = matched_names[0] if len(suburb_ids) == 1 else suburb_name
+
+    id_placeholders, id_params = _build_in_params(suburb_ids, "hid")
+
     hazard_rows = _execute(
         f"""
         SELECT h.in_flood_plain, h.in_flood_prone_area, h.in_flood_sensitive_area,
@@ -79,17 +83,17 @@ def lookup_hazards(suburb_name: str) -> dict:
                h.in_regional_flood_zone, h.hazard_sources
         FROM {_CATALOG}.{_SCHEMA}.h3_cell hc
         JOIN {_CATALOG}.{_SCHEMA}.hazard h ON hc.h3_cell = h.h3_cell
-        WHERE hc.suburb_id = :suburb_id
+        WHERE hc.suburb_id IN ({id_placeholders})
         """,
-        [{"name": "suburb_id", "value": suburb_id, "type": "STRING"}],
+        id_params,
     )
     if not hazard_rows:
         return {
-            "suburb": matched_name,
-            "error": f"No hazard data found for '{matched_name}'. The suburb may be outside hazard data coverage.",
+            "suburb": display_name,
+            "matched_areas": matched_names,
+            "error": f"No hazard data found for '{display_name}'. The suburb may be outside hazard data coverage.",
         }
 
-    # Derive risk levels from boolean flags (worst-case across all H3 cells)
     flood_risk = (
         "high"
         if any(_bool(r[0]) for r in hazard_rows)
@@ -106,7 +110,6 @@ def lookup_hazards(suburb_name: str) -> dict:
     )
     overall_risk = _worst([flood_risk, coastal_risk])
 
-    # Flatten and deduplicate hazard_sources arrays across all cells
     all_sources: list[str] = []
     for row in hazard_rows:
         raw = row[6]
@@ -120,12 +123,11 @@ def lookup_hazards(suburb_name: str) -> dict:
                 all_sources.append(raw)
         else:
             all_sources.extend(raw)
-    hazard_sources = list(
-        dict.fromkeys(s for s in all_sources if s)
-    )  # dedupe, preserve order
+    hazard_sources = list(dict.fromkeys(s for s in all_sources if s))
 
     return {
-        "suburb": matched_name,
+        "suburb": display_name,
+        "matched_areas": matched_names,
         "flood_risk": flood_risk,
         "coastal_risk": coastal_risk,
         "overall_risk": overall_risk,
