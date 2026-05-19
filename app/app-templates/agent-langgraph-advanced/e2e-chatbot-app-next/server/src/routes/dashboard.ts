@@ -1,4 +1,4 @@
-import { Router, type Router as RouterType } from 'express';
+import { Router, type Request, type Response, type Router as RouterType } from 'express';
 import { authMiddleware, requireAuth } from '../middleware/auth';
 import { getWorkspaceHostname } from '@chat-template/ai-sdk-providers';
 
@@ -11,15 +11,20 @@ interface TokenInfo {
   [key: string]: unknown;
 }
 
-async function mintDashboardToken(): Promise<string> {
+interface UserContext {
+  externalViewerId: string; // unique user identifier for access auditing
+  externalValue: string;    // user attribute for row-level security filtering
+}
+
+async function mintDashboardToken(user: UserContext): Promise<string> {
   const workspaceUrl = await getWorkspaceHostname();
-  const spClientId = process.env.DASHBOARD_SERVICE_PRINCIPAL_ID;
-  const spToken = process.env.DASHBOARD_SERVICE_PRINCIPAL_TOKEN;
+  const spClientId = process.env.DATABRICKS_CLIENT_ID || process.env.DASHBOARD_SERVICE_PRINCIPAL_ID;
+  const spToken = process.env.DATABRICKS_CLIENT_SECRET ||  process.env.DASHBOARD_SERVICE_PRINCIPAL_TOKEN;
   const dashboardId = process.env.DATABRICKS_DASHBOARD_ID;
 
   if (!workspaceUrl || !spClientId || !spToken || !dashboardId) {
     throw new Error(
-      'Missing required env vars: DATABRICKS_HOST, DASHBOARD_SERVICE_PRINCIPAL_ID, DASHBOARD_SERVICE_PRINCIPAL_TOKEN, DATABRICKS_DASHBOARD_ID',
+      'Missing required env vars: DATABRICKS_HOST, (DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET) or (DASHBOARD_SERVICE_PRINCIPAL_ID, DASHBOARD_SERVICE_PRINCIPAL_TOKEN), DATABRICKS_DASHBOARD_ID',
     );
   }
 
@@ -46,11 +51,16 @@ async function mintDashboardToken(): Promise<string> {
     access_token: string;
   };
 
-  // Step 2: Get token info for the dashboard (no user scoping — dashboard is not user-scoped)
-  const tokenInfoRes = await fetch(
+  // Step 2: Get token info with user context for RLS (external_value) and auditing (external_viewer_id)
+  const tokenInfoUrl = new URL(
     `${workspaceUrl}/api/2.0/lakeview/dashboards/${dashboardId}/published/tokeninfo`,
-    { headers: { Authorization: `Bearer ${oidcToken}` } },
   );
+  tokenInfoUrl.searchParams.set('external_viewer_id', user.externalViewerId);
+  tokenInfoUrl.searchParams.set('external_value', user.externalValue);
+
+  const tokenInfoRes = await fetch(tokenInfoUrl.toString(), {
+    headers: { Authorization: `Bearer ${oidcToken}` },
+  });
 
   if (!tokenInfoRes.ok) {
     throw new Error(
@@ -71,6 +81,9 @@ async function mintDashboardToken(): Promise<string> {
   }
   scopedParams.set('grant_type', 'client_credentials');
   scopedParams.set('authorization_details', JSON.stringify(authorization_details));
+  // dashboard_id must be an explicit top-level JWT claim; /published/embedded checks it
+  // directly and does not inspect authorization_details for it.
+  scopedParams.set('dashboard_id', dashboardId);
 
   const scopedRes = await fetch(`${workspaceUrl}/oidc/v1/token`, {
     method: 'POST',
@@ -89,30 +102,30 @@ async function mintDashboardToken(): Promise<string> {
   return access_token;
 }
 
-dashboardRouter.get('/embed-config', requireAuth, async (_req, res) => {
+dashboardRouter.get('/embed-config', requireAuth, async (req: Request, res: Response) => {
   try {
-    const embedToken = await mintDashboardToken();
-
-    const config: Record<string, string> = {
-      workspace_url: process.env.DATABRICKS_HOST ?? '',
-      dashboard_id: process.env.DATABRICKS_DASHBOARD_ID ?? '',
-      embed_token: embedToken,
-    };
+    const userEmail = req.session?.user.email ?? '';
+    const embedToken = await mintDashboardToken({
+      externalViewerId: userEmail,
+      externalValue: userEmail,
+    });
 
     const workspaceUrl = await getWorkspaceHostname();
 
     if (!workspaceUrl) {
       throw new Error('Failed to determine workspace URL');
-    } else {
-      config.workspace_url = workspaceUrl;
     }
 
-    res.json(config);
+    res.json({
+      workspace_url: workspaceUrl,
+      dashboard_id: process.env.DATABRICKS_DASHBOARD_ID ?? '',
+      embed_token: embedToken,
+    });
   } catch (err) {
     console.error('[dashboard] Token minting failed:', err);
     res.status(502).json({
       error: 'Failed to generate dashboard embed token',
       message: err instanceof Error ? err.message : String(err),
     });
-  }``
+  }
 });

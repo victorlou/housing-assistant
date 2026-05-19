@@ -46,7 +46,7 @@ export function SavedSearchCard({
   const alreadySaved = isSaved(suburb_name);
   const CommuteIcon = COMMUTE_ICONS[commute_mode] ?? Car;
 
-  if (status === 'dismissed') return null;
+  if (status === 'dismissed' || alreadySaved) return null;
 
   const handleSave = async () => {
     setStatus('saving');

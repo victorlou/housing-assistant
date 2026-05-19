@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Bookmark, LayoutDashboard, SlidersHorizontal } from 'lucide-react';
+import { Bookmark, LayoutDashboard } from 'lucide-react';
 
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
@@ -138,26 +138,6 @@ export function AppSidebar({
             </Tooltip>
           </SidebarMenuItem>
 
-          <SidebarMenuItem>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <SidebarMenuButton
-                  type="button"
-                  className="h-8 p-1 md:p-2 cursor-pointer"
-                  onClick={() => {
-                    setOpenMobile(false);
-                    navigate('/constraints');
-                  }}
-                >
-                  <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="group-data-[collapsible=icon]:hidden">
-                    My Constraints
-                  </span>
-                </SidebarMenuButton>
-              </TooltipTrigger>
-              <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>My Constraints</TooltipContent>
-            </Tooltip>
-          </SidebarMenuItem>
         </SidebarMenu>
       </div>
 

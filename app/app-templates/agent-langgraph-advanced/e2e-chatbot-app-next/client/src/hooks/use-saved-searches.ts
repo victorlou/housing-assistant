@@ -1,5 +1,5 @@
-import useSWR, { useSWRConfig } from 'swr';
 import { toast } from 'sonner';
+import useSWR from 'swr';
 
 export interface SuburbSave {
   id: string;

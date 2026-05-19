@@ -10,7 +10,6 @@ import ChatLayout from '@/layouts/ChatLayout';
 import NewChatPage from '@/pages/NewChatPage';
 import ChatPage from '@/pages/ChatPage';
 import SavedSearchesPage from '@/pages/SavedSearchesPage';
-import ConstraintsPage from '@/pages/ConstraintsPage';
 import DashboardPage from '@/pages/DashboardPage';
 
 function AppRoutes() {
@@ -24,7 +23,6 @@ function AppRoutes() {
             <Route index element={<NewChatPage />} />
             <Route path="chat/:id" element={<ChatPage />} />
             <Route path="saved" element={<SavedSearchesPage />} />
-            <Route path="constraints" element={<ConstraintsPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
           </Route>
         </Route>
