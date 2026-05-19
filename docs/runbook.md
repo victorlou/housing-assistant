@@ -82,6 +82,8 @@ Conventions:
 - Every pipeline writes to `housing.bronze.*` / `housing.silver.*` / `housing.gold.*` only. Never directly to `housing.app.*`.
 - Naming conventions for gold tables live in [`docs/conventions.md`](conventions.md).
 - All scheduled jobs, their cron, and the rationale for each cadence live in [`docs/schedules.md`](schedules.md) — update both the bundle and that doc when changing a schedule.
+- Column-level definitions for every `housing.gold.*` table live in [`docs/lakehouse-gold-schema.md`](lakehouse-gold-schema.md).
+- The Genie space wired over gold (consumed by the agent's `query_genie` tool) is documented in [`docs/genie-space.md`](genie-space.md). Edits to instructions / tables / sample questions happen in Terraform — see that doc.
 
 ## Working on the agent
 
@@ -250,6 +252,22 @@ auth_header_name: Ocp-Apim-Subscription-Key
 ```
 
 `notebooks/fetch.py` reads those parameters, calls `dbutils.secrets.get(...)`, and sends the value as an HTTP header. If you add a new auth-required source, add the same three parameters to its task and run one `put-secret`. No code change.
+
+### Quarantined hazard sources
+
+The flood pipeline carries a small deny-list for individual upstream layers. When a source polygon turns out to be wrong (e.g. ingested as a TA boundary instead of a flood extent), we **exclude it at the gold boundary** rather than pretend the data is good. Silver retains the raw rows for debugging.
+
+The deny-list lives in `pipelines/flood/notebooks/gold.py` as `UNTRUSTED_SOURCES`. Each entry should describe the bug and reference a tracking issue. Cells whose only source was untrusted disappear from `housing.gold.hazard`; cells with multiple sources keep their other contributions intact. **No schema change at any step** — the table contract holds.
+
+To quarantine a source:
+
+1. Add the layer ID to `UNTRUSTED_SOURCES` with a comment explaining the bug.
+2. Trigger a refresh of the flood pipeline (`databricks bundle run flood --target dev`).
+3. Verify gold dropped to the expected shape with a count query against `housing.gold.hazard` for the affected TA.
+
+To un-quarantine once upstream is fixed: remove the entry and refresh. The cells reappear automatically.
+
+Currently quarantined: `hamilton_100yr`. The source polygon was ingested as the Hamilton City TA boundary instead of the actual 100-year flood plain — every cell in Hamilton, including hill suburbs (Hillcrest, Pukete, Glenview), got flagged. Drop until the correct Waikato Regional Council layer is re-ingested.
 
 ### Watch the cost dashboard
 
