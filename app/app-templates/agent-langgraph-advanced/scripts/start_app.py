@@ -369,7 +369,9 @@ def main():
                 pass
             break
 
-    sys.exit(ProcessManager(port=port, no_ui=args.no_ui, dev=args.dev).run(backend_args))
+    sys.exit(
+        ProcessManager(port=port, no_ui=args.no_ui, dev=args.dev).run(backend_args)
+    )
 
 
 if __name__ == "__main__":

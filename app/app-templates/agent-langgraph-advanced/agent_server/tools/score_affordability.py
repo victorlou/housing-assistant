@@ -163,9 +163,9 @@ def score_affordability(
         inc_pop = sum(float(r[3]) for r in income_rows)
         household_income = sum(float(r[1]) * float(r[3]) for r in income_rows) / inc_pop
         # Population-weighted decile (round to nearest integer)
-        income_decile = int(round(
-            sum(float(r[2]) * float(r[3]) for r in income_rows) / inc_pop
-        ))
+        income_decile = int(
+            round(sum(float(r[2]) * float(r[3]) for r in income_rows) / inc_pop)
+        )
         income_source = "suburb_median"
 
     annual_rent = weighted_rent * 52
