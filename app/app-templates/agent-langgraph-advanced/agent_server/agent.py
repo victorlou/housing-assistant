@@ -53,6 +53,22 @@ def get_current_time() -> str:
 
 
 @tool
+def suggest_saved_search(
+    suburb_name: str,
+    median_rent_weekly: int,
+    commute_minutes: int,
+    commute_mode: str,
+    hazard_risk: str,
+    affordability_band: str,
+) -> dict:
+    """Frontend trigger: suggest saving a suburb recommendation to the user.
+    Call once after recommending a specific suburb with concrete data (rent, commute,
+    hazard, affordability band). Only call for data-backed recommendations — not for
+    vague mentions or suburb lists. Do not call more than once per suburb per response."""
+    return {"saved": True}
+
+
+@tool
 def render_visualization(title: str, mermaid_code: str, description: str) -> dict:
     """Trigger a Mermaid diagram modal on the frontend. Call this after presenting
     multi-suburb comparisons, affordability decision trees, or hazard matrices to give
@@ -108,6 +124,7 @@ async def init_agent(
         compute_isochrone,
         score_affordability,
         lookup_hazards,
+        suggest_saved_search,
         render_visualization,
     ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:

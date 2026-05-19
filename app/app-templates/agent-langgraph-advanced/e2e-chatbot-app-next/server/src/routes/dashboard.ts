@@ -114,5 +114,5 @@ dashboardRouter.get('/embed-config', requireAuth, async (_req, res) => {
       error: 'Failed to generate dashboard embed token',
       message: err instanceof Error ? err.message : String(err),
     });
-  }
+  }``
 });

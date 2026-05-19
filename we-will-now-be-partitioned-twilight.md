@@ -122,6 +122,7 @@ Done -
 
 ---
 
+Done — saves to Lakebase `suburb_saves` table via `/api/saved-searches`; inline card in chat; `use-saved-searches` hook (SWR-backed)
 ## Pillar 6 — Smart Saved Search Detection + Auto-Save Modal ⭐ New
 
 **Concept**: When the agent's response contains suburb recommendations that a user might want to save, the agent calls a special frontend-trigger tool `suggest_saved_search(suburb_name, median_rent_weekly, commute_minutes, commute_mode, hazard_risk, affordability_band)`. The frontend intercepts this tool call (invisible in chat — not rendered as a tool card), shows a "Save this suburb?" modal, and if confirmed, persists it to localStorage.
@@ -178,6 +179,7 @@ Done
 
 ---
 
+Done — `SuburbCard` + `SavedSearchesPage` with grid, empty state, "Clear all", "Start Chat" → `/?query=...`
 ## Pillar 8 — Suburb Card Component + Saved Searches Page
 
 **New files:**

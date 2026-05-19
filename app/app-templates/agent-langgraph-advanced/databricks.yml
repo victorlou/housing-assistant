@@ -38,6 +38,8 @@ resources:
             value_from: "warehouse_secret"
           - name: DATABRICKS_GENIE_SPACE_ID
             value: "01f152668dcc14a7adb7e558769d9308"
+          - name: DATABRICKS_DASHBOARD_ID
+            value: "01f1526f81831b699771747499d91b7c"
 
       # Resources which this app has access to
       resources:

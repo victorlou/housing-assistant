@@ -41,6 +41,7 @@ import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
 import { Brain } from 'lucide-react';
 import { VisualizationModalTrigger } from './elements/visualization-modal';
+import { SavedSearchCard } from './elements/saved-search-card';
 
 const MEMORY_TOOLS = ['get_user_memory', 'save_user_memory', 'delete_user_memory'];
 
@@ -133,6 +134,10 @@ const PurePreviewMessage = ({
       >
         {partSegments.length === 0 && errorParts.length === 0 && message.role === 'assistant' && (
           <AwaitingResponseMessage />
+        )}
+
+        {message.role === 'assistant' && partSegments.length > 0 && (
+          <AnimatedAssistantIcon size={16} isLoading={isLoading} />
         )}
 
         <div
@@ -280,8 +285,32 @@ const PurePreviewMessage = ({
                 return null;
               }
 
-              // suggest_saved_search — invisible until Pillar 6
-              if (toolName === 'suggest_saved_search') return null;
+              // suggest_saved_search — inline save prompt card
+              if (toolName === 'suggest_saved_search') {
+                if (state === 'input-available' || state === 'output-available') {
+                  const s = input as {
+                    suburb_name: string;
+                    median_rent_weekly: number;
+                    commute_minutes: number;
+                    commute_mode: string;
+                    hazard_risk: string;
+                    affordability_band: string;
+                  };
+                  if (!s.suburb_name) return null;
+                  return (
+                    <SavedSearchCard
+                      key={toolCallId}
+                      suburb_name={s.suburb_name}
+                      median_rent_weekly={s.median_rent_weekly}
+                      commute_minutes={s.commute_minutes}
+                      commute_mode={s.commute_mode}
+                      hazard_risk={s.hazard_risk}
+                      affordability_band={s.affordability_band}
+                    />
+                  );
+                }
+                return null;
+              }
 
               // Memory tools — distinct violet card (full MemoryTool component added in Pillar 5)
               if (MEMORY_TOOLS.includes(toolName)) {

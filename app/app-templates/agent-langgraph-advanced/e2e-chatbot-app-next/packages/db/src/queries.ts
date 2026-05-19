@@ -21,6 +21,7 @@ import {
   type Chat,
   type Vote,
 } from './schema';
+import { suburbSaves, type SuburbSave } from './schema-housing';
 import type { VisibilityType } from '@chat-template/utils';
 import { ChatSDKError } from '@chat-template/core/errors';
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
@@ -494,4 +495,49 @@ export async function getVotesByChatId({ id }: { id: string }): Promise<Vote[]> 
 
   const db = await ensureDb();
   return db.select().from(vote).where(eq(vote.chatId, id));
+}
+
+export async function getSuburbSaves(userId: string): Promise<SuburbSave[]> {
+  if (!isDatabaseAvailable()) return [];
+  const db = await ensureDb();
+  return db
+    .select()
+    .from(suburbSaves)
+    .where(eq(suburbSaves.user_id, userId))
+    .orderBy(desc(suburbSaves.saved_at));
+}
+
+export async function upsertSuburbSave(
+  data: Omit<SuburbSave, 'saved_at'>,
+): Promise<void> {
+  if (!isDatabaseAvailable()) return;
+  const db = await ensureDb();
+  await db
+    .insert(suburbSaves)
+    .values({ ...data, saved_at: new Date() })
+    .onConflictDoUpdate({
+      target: [suburbSaves.user_id, suburbSaves.suburb_name],
+      set: {
+        median_rent_weekly: data.median_rent_weekly,
+        commute_minutes: data.commute_minutes,
+        commute_mode: data.commute_mode,
+        hazard_risk: data.hazard_risk,
+        affordability_band: data.affordability_band,
+        saved_at: sql`now()`,
+      },
+    });
+}
+
+export async function deleteSuburbSave(userId: string, suburbName: string): Promise<void> {
+  if (!isDatabaseAvailable()) return;
+  const db = await ensureDb();
+  await db
+    .delete(suburbSaves)
+    .where(and(eq(suburbSaves.user_id, userId), eq(suburbSaves.suburb_name, suburbName)));
+}
+
+export async function clearSuburbSaves(userId: string): Promise<void> {
+  if (!isDatabaseAvailable()) return;
+  const db = await ensureDb();
+  await db.delete(suburbSaves).where(eq(suburbSaves.user_id, userId));
 }

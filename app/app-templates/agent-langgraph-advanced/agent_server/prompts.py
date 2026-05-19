@@ -111,6 +111,12 @@ PRE-GENERATION SELF-CHECK (do this mentally before calling the tool): \
 6. Are there zero classDef / style / linkStyle / subgraph lines? \
 If any check fails — fix it before calling the tool.
 
+**suggest_saved_search(suburb_name, median_rent_weekly, commute_minutes, commute_mode, hazard_risk, affordability_band)**
+Call this tool once after recommending a **specific suburb with concrete data** (rent, commute time, \
+hazard risk, affordability band). The frontend will show the user a prompt to save the suburb. \
+Only call for concrete, data-backed recommendations — not for vague mentions or suburb lists. \
+Do not call it more than once per suburb per response.
+
 **get_user_memory(query)** — Call at the start of every conversation.
 
 **save_user_memory(key, data)** — Call after any turn where new durable facts emerge.

@@ -138,6 +138,7 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
 
         titlePromise = generateTitleFromUserMessage({ message })
           .then(async (title) => {
+            console.log(`[chat] Generated title: "${title}" for chat ${id}`);
             await updateChatTitleById({ chatId: id, title });
             return title;
           })
@@ -585,24 +586,132 @@ async function generateTitleFromUserMessage({
     .join(' ')
     .trim();
 
-  const { text: title } = await generateText({
-    model,
-    system: `You generate short chat titles. Output only the title — no explanation, no punctuation at the end, no quotes, no markdown.
-- 4 to 7 words
-- Plain English, capture the specific topic (place names, dollar amounts, hazard type)
-- Write like a human labels a folder
+  const fallbackTitle = createFallbackTitleFromUserText(userText);
 
-Good examples: Suburbs near Newmarket under 650, Flood risk in Takanini, Avondale vs New Lynn affordability, Henderson low income suburbs`,
-    prompt: userText || truncatedMessage.parts.map((p) => (p as any).text ?? '').join(' '),
+  console.log(`[chat] Generating title for message: "${userText}" using model:`, model);
+  const { text: generatedTitle } = await generateText({
+    model,
+    temperature: 0,
+    maxOutputTokens: 16,
+    system: `You generate concise chat titles.
+Rules:
+- Output exactly one title and nothing else.
+- Use 4 to 7 words.
+- No explanation, bullets, markdown, quotes, or trailing punctuation.
+- Capture the user's request, not the assistant's answer.
+- Prefer place names and the main topic.
+Good examples:
+Suburbs near Newmarket under 650
+Flood risk in Takanini
+Avondale vs New Lynn affordability
+Henderson low income suburbs`,
+    prompt: `User message: ${userText || truncatedMessage.parts.map((p) => (p as any).text ?? '').join(' ')}\nTitle:`,
   });
 
-  return title
-    .trim()
+  const title = sanitizeGeneratedTitle(generatedTitle);
+
+  if (isUsableGeneratedTitle(title)) {
+    return title;
+  }
+
+  console.warn('[chat] Title model returned unusable output; using fallback title:', {
+    generatedTitle,
+    fallbackTitle,
+  });
+
+  return fallbackTitle;
+}
+
+const MAX_TITLE_WORDS = 7;
+const MAX_TITLE_LENGTH = 80;
+
+function sanitizeGeneratedTitle(title: string): string {
+  const firstUsefulLine = title
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) ?? '';
+
+  return firstUsefulLine
+    .replace(/^[-*•\d.)\s]+/, '')
     .replace(/^["'`]+|["'`]+$/g, '')
     .replace(/\*+/g, '')
     .replace(/#+\s*/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/[.!?;:]+$/g, '')
     .trim();
+}
+
+function isUsableGeneratedTitle(title: string): boolean {
+  const words = countTitleWords(title);
+
+  if (words < 2 || words > MAX_TITLE_WORDS) return false;
+  if (title.length > MAX_TITLE_LENGTH) return false;
+
+  // These usually indicate the model wrote an answer instead of a title.
+  return !/(?:rent-to-income|key takeaway|tradeoff|want me to|median rent|affordable band|moderate stress|\b\d+(?:\.\d+)?%\b)/i.test(
+    title,
+  );
+}
+
+function createFallbackTitleFromUserText(userText: string): string {
+  const cleanedText = sanitizeGeneratedTitle(userText)
+    .replace(/\s+using\s+model\b.*$/i, '')
+    .replace(/\s+using\s+.*$/i, '')
+    .trim();
+
+  const comparisonTitle = createComparisonFallbackTitle(cleanedText);
+  if (comparisonTitle) return comparisonTitle;
+
+  return limitTitleWords(cleanedText || 'New chat');
+}
+
+function createComparisonFallbackTitle(userText: string): string | null {
+  const comparison = userText.match(
+    /\bcompare\b\s+(.+?)\s+in\s+(.+?)\s+(?:and|vs\.?|versus)\s+(.+)$/i,
+  );
+
+  if (!comparison) return null;
+
+  const [, rawTopic, rawFirstPlace, rawSecondPlace] = comparison;
+  const firstPlace = cleanTitleSegment(rawFirstPlace);
+  const secondPlace = cleanTitleSegment(rawSecondPlace);
+  const topic = simplifyTitleTopic(rawTopic);
+
+  if (!firstPlace || !secondPlace) return null;
+
+  return limitTitleWords(`${firstPlace} vs ${secondPlace} ${topic}`);
+}
+
+function cleanTitleSegment(segment: string): string {
+  return segment
+    .replace(/\s+using\s+.*$/i, '')
+    .replace(/\s+with\s+.*$/i, '')
+    .replace(/\s+based\s+on\s+.*$/i, '')
+    .replace(/[.!?;:]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function simplifyTitleTopic(topic: string): string {
+  const normalizedTopic = topic.toLowerCase();
+
+  if (normalizedTopic.includes('afford')) return 'affordability';
+  if (normalizedTopic.includes('rent')) return 'rent comparison';
+  if (normalizedTopic.includes('flood')) return 'flood risk';
+  if (normalizedTopic.includes('income')) return 'income comparison';
+
+  return cleanTitleSegment(topic);
+}
+
+function limitTitleWords(title: string): string {
+  const words = title.split(/\s+/).filter(Boolean);
+  const limitedTitle = words.slice(0, MAX_TITLE_WORDS).join(' ');
+
+  return limitedTitle.replace(/[.!?;:]+$/g, '').trim();
+}
+
+function countTitleWords(title: string): number {
+  return title.split(/\s+/).filter(Boolean).length;
 }
 
 function truncatePreserveWords(input: string, maxLength: number): string {
@@ -628,4 +737,3 @@ function truncatePreserveWords(input: string, maxLength: number): string {
 
   return slice.slice(0, lastSpaceIndex);
 }
-
