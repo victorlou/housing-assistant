@@ -88,6 +88,10 @@ targets:
     default: true
     # workspace:
     #   host: https://...
+    resources:
+      apps:
+        agent_langgraph_advanced:
+          name: "housing-assistant-app"
 
   prod:
     mode: production

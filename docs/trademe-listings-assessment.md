@@ -20,7 +20,31 @@ That reasoning was correct for the original chat-mode, batch-pipeline architectu
 
 2. **The API option was not fully evaluated.** The original exclusion grouped TradeMe with CoreLogic/OneRoof and cited scraping risk. But TradeMe has an official developer API that is neither scraping nor behind a paywall in the same way — it is publicly documented and designed for third-party use.
 
-The "per-user OAuth" concern from `data-sources.md` ("Anything requiring per-user OAuth — Incompatible with our timeline") may also be a mis-categorisation for TradeMe: their API supports server-side app tokens that do not require Kāinga users to log in with TradeMe accounts.
+---
+
+## CRITICAL FINDING: API access restricted from April 2026
+
+> **This materially changes the feasibility of the official API path.**
+
+From **10 April 2026**, TradeMe has restricted new application registration to **in-trade sellers only**.
+
+Verbatim from `developer.trademe.co.nz/api-overview/registering-an-application`:
+
+> "From 10 April 2026: Application registration limited to in-trade sellers only."
+
+And from the Use Cases page (`developer.trademe.co.nz/api-overview/use-cases`), verbatim:
+
+> "We'll generally support: **In-trade sellers** who want to list their own products on Trade Me Marketplace and receive updates on their listings via the API. The Trade Me API exists for in-trade sellers to manage their own listings on Trade Me Marketplace. **It is not available for personal or non-commercial use.**"
+>
+> "We generally won't support: … Combining or presenting Trade Me data alongside listings from other sites, or used in data mining, **data aggregation systems**, price comparison services, or other similar situations where listings are not used to provide an extension of the services Trade Me currently provides … **Personal or non-commercial use**, including casual selling, price monitoring, and **buyer-side tools** … **Applications built on top of the API to serve non-in-trade users** (e.g. tools that help casual sellers list, or help buyers bid on or monitor listings), even if the application itself is commercial"
+
+**What this means for Kāinga:**
+
+Kāinga is a property *search and comparison* tool that helps renters (buyers of tenancy services) find suburbs and listings. It is explicitly categorised as a "buyer-side tool" that serves "non-in-trade users" — which TradeMe now explicitly says they won't support. A new application registered on or after 10 April 2026 would be declined.
+
+**This does NOT block the hackathon one-off path** (Apify scrape, no API registration needed). But for any production plan involving the official API, this is a hard blocker unless:
+1. Kāinga is developed under a company that is already an approved TradeMe API partner (from before April 2026), OR
+2. A direct commercial/data partnership is negotiated with TradeMe's property team (`api@trademe.co.nz`).
 
 ---
 
@@ -37,191 +61,630 @@ This would make the demo arc more compelling: after the user's filters narrow to
 
 ---
 
-## Option 0: Apify Scrapers (parseforge/trade-me-property-scraper, lexis-solutions/trademe-co-nz-scraper)
+## Option 0: Apify — parseforge/trade-me-property-scraper
 
-### What they are
+> **Note on `lexis-solutions/trademe-co-nz-scraper`:** Confirmed as a **TradeMe Motors (vehicles) scraper** — extracts car/vehicle data (year, kilometres, engine type, transmission) from TradeMe's motors section, not property listings. Not relevant here.
 
-[Apify](https://apify.com) is a commercial web-scraping platform. Two actors currently exist for TradeMe Property:
+### What parseforge/trade-me-property-scraper does
 
-- `parseforge/trade-me-property-scraper` — property-focused, returns structured listing data
-- `lexis-solutions/trademe-co-nz-scraper` — more general TradeMe scraper
+[Apify](https://apify.com) actor `parseforge/trade-me-property-scraper` runs a headless browser (Puppeteer/Playwright) that navigates trademe.co.nz/property as a simulated user. Apify handles proxy rotation and Cloudflare evasion. You configure inputs, run the actor, and receive structured JSON back via the Apify dataset API.
 
-Both work by running a headless browser (Puppeteer/Playwright) that simulates a real user visiting trademe.co.nz. Apify handles proxy rotation, CAPTCHA management, and browser fingerprinting to evade Cloudflare detection. You call them via the Apify REST API or SDK, pay per compute unit, and receive JSON back.
+### Actor stats (verified 2026-05-20)
 
-### What the data looks like
+| Stat | Value |
+|---|---|
+| Total users | 14 |
+| Monthly active users | 3 |
+| Bookmarks | 1 |
+| Rating | 0.0 (0 reviews) |
+| Developer | ParseForge (Community Maintained) |
+| Last modified | ~11 days before 2026-05-20 (active maintenance) |
 
-Typical fields returned by a property scraper actor:
-- `title`, `address`, `suburb`, `region`
-- `price` / `rent_per_week`
-- `bedrooms`, `bathrooms`, `parking`
-- `property_type`
-- `photos` (array of image URLs)
-- `listing_url` (link back to trademe.co.nz)
-- Lat/lon: **varies by actor and listing** — some scrape it from the embedded map, some don't
+**Implication:** This is a very new actor with minimal community track record. Test with `maxItems: 5` before running the full job to confirm it's still working.
+
+### Confirmed input configuration (exact field names from actor schema)
+
+| Field | Type | Description |
+|---|---|---|
+| `listingType` | string | `"residential-sale"` or `"residential-rent"` |
+| `maxItems` | number | Hard-capped at **100** for standard (free) users. No documented upper limit on paid plans. |
+| `region` | string | Filter by region — e.g. `"Auckland"`, `"Wellington"`, `"Canterbury"` (plain-text string, NOT integer ID) |
+| `district` | string | Narrow by district (requires `region`) |
+| `suburb` | string | Filter by suburb (requires `region` + `district`) |
+| `minBedrooms` | number | Minimum bedroom count |
+| `maxBedrooms` | number | Maximum bedroom count |
+| `minBathrooms` | number | Minimum bathroom count |
+| `propertyType` | string | `House`, `Apartment`, `Townhouse`, `Unit`, `Section`, `Lifestyle` |
+| `minPrice` | number | Minimum price in NZD (sale price or weekly rent) |
+| `maxPrice` | number | Maximum price in NZD |
+| `minLandArea` | number | Minimum land area in m² |
+| `maxLandArea` | number | Maximum land area in m² |
+| `minFloorArea` | number | Minimum floor area in m² |
+| `maxFloorArea` | number | Maximum floor area in m² |
+| `petsOkay` | boolean | Filter for pet-friendly rentals only |
+| `keyword` | string | Search in title/description |
+
+No pagination input — `maxItems` controls total output volume.
+
+### Confirmed output fields (exact field names from actor schema)
+
+| Field | Type | Notes |
+|---|---|---|
+| `listingId` | number | Unique property identifier |
+| `title` | string | Property title |
+| `url` | string | Direct link to Trade Me listing |
+| `address` | string | Full property address |
+| `suburb` | string | Suburb name |
+| `district` | string | District name |
+| `region` | string | Region name |
+| `priceDisplay` | string | Formatted price display string |
+| `startPrice` | number | Numeric price (sale) |
+| `propertyType` | string | e.g. House, Apartment, Townhouse |
+| `bedrooms` | number | Bedroom count |
+| `bathrooms` | number | Bathroom count |
+| `parking` | string | Parking type description |
+| `totalParking` | number | Number of parking spaces |
+| `area` | number | Floor area in m² |
+| `landArea` | number | Land area in m² |
+| `latitude` | number | **Confirmed present** — scrapes map widget |
+| `longitude` | number | **Confirmed present** |
+| `pictureHref` | string | Primary listing image URL |
+| `photoUrls` | array | All listing photo URLs |
+| `openHomes` | array | Scheduled open home dates and times |
+| `agencyName` | string | Real estate agency name |
+| `agencyPhone` | string | Agency phone number |
+| `agencyWebsite` | string | Agency website URL |
+| `agencyLogo` | string | Agency logo image URL |
+| `agents` | array | Agent details: name, phone, email |
+| `isFeatured` | boolean | Premium listing status |
+| `rateableValue` | number | Property rateable value (CV) |
+| `petsOkay` | boolean | Pet policy (rentals) |
+| `whiteware` | boolean | Furnished appliances indicator |
+| `scrapedAt` | string | Timestamp of extraction |
+
+Note: The actor does **not** output `rentPerWeek` as a separate field — weekly rent is in `startPrice` for `"residential-rent"` runs and in `priceDisplay` as a formatted string. Parse accordingly.
+
+Also note: `GeographicLocation.Accuracy` is not in the output — the actor extracts the raw lat/lon from the map widget without the accuracy metadata. Assume all coordinates are at least suburb-level accurate; verify by inspecting a few listings.
 
 ### Hackathon use case: one-off run → Databricks snapshot
 
-**Updated 2026-05-20:** For a hackathon demo (one-off, non-commercial, specific regions only), the architecture is much simpler:
-
 ```
-Run Apify actor once (Auckland rentals, ~500–1,500 listings)
+Run actor once (Auckland rentals, up to 1,500 listings)
     ↓
-Export JSON from Apify dataset
+Export JSON from Apify dataset API
     ↓
 Upload to Databricks bronze volume or load directly via notebook
     ↓
 Notebook writes housing.bronze.trademe_listings_snapshot (Delta table)
     ↓
-Agent queries it like any other gold table
+Agent queries it like any other table
     ↓
 ListingsLayer renders the pins
 ```
 
-No pipeline, no scheduling, no recurring cost. Run it once before the demo.
+No pipeline, no scheduling. Run it once the night before the demo.
 
-### Integration with this architecture — full production options
+### Cost model (verified 2026-05-20)
 
-**A. Scheduled Apify run → Databricks (batch)**
+**Apify pricing tiers (current):**
 
-An Apify actor runs nightly via scheduled trigger, outputs to a dataset or webhook, an Express/Python job reads it and writes to `housing.bronze.trademe_listings`. Follows existing pipeline pattern.
+| Tier | Monthly | Included credit | Rate per CU |
+|---|---|---|---|
+| Free | $0 | $5 | $0.20/CU |
+| Starter | $29 | $29 | $0.20/CU |
+| Scale | $199 | $199 | $0.16/CU |
 
-**B. On-demand via Apify API (live)**
+**Key constraint:** Free tier is **hard-capped at 100 listings per run** by the parseforge actor itself, regardless of Apify platform credits. To scrape 1,500 Auckland rentals you need at least the **Starter plan ($29/month)**.
 
-The Express backend calls `https://api.apify.com/v2/acts/{actor_id}/runs` when a user asks for listings, waits for the run to complete, returns results. Latency: 30–120 seconds per run. Not viable for interactive map use.
+**Actual CU cost per run:** Not published by the actor author. The $29 monthly credit on the Starter plan is expected to be sufficient for a single 1,500-listing Auckland run (headless browser + residential proxies typically cost <$10/run at this scale). Set an Apify account spending limit before running to avoid surprises.
 
-Pattern A is the only architecture that would work at interactive speed — but see risks below.
+**Download dataset via Apify API (no extra cost):**
+```
+GET https://api.apify.com/v2/datasets/{dataset_id}/items?format=json&clean=true
+```
 
-### Cost model
+### Risks
 
-Apify pricing is per Actor Compute Unit (ACU). Rough estimates:
-- `parseforge/trade-me-property-scraper`: ~$0.20–0.50 per 100 listings scraped
-- Auckland rentals one-off (~1,000–1,500 listings): ~$2–8 total
-- A full nightly NZ rental sweep (~3,000–5,000 active listings): ~$6–15/run → ~$180–450/month
-- On-demand suburb queries (50 listings): ~$0.10–0.25 per query
+**1. TradeMe Terms of Service violation (material for production, minimal for hackathon)**
 
-### Risks — relevant for production use; low for hackathon one-off
+TradeMe's ToS and Business Rules explicitly prohibit scraping and data aggregation. An Apify actor is scraping. The ToS violation attaches to you, not Apify.
 
-**1. TradeMe Terms of Service violation (material risk)**
+**For a one-off internal hackathon demo:** practical risk is minimal. TradeMe does not pursue legal action over a single non-commercial scrape. If you receive a C&D, stop.
 
-TradeMe's ToS (Section 6, "Restrictions") explicitly prohibits:
-> "scraping, data mining, extracting, harvesting or otherwise collecting information from Trade Me"
+**2. NZ Crimes Act 1961 (low probability)**
 
-An Apify actor is scraping. Even though you are calling a third-party service to do the scraping, you are the party commissioning the extraction — the ToS violation attaches to you, not Apify. Apify itself disclaims responsibility for ToS violations in its own terms.
+Sections 250–252 cover unauthorised access to computer systems. Whether scraping publicly visible data qualifies is legally contested. Not a realistic risk for a one-off hackathon demo.
 
-This is the same risk that the original `data-sources.md` called out under "Trade Me listings." Framing it as "using an Apify actor" rather than "scraping" does not change the underlying activity.
+**3. Actor reliability**
 
-**2. NZ Crimes Act 1961 exposure (low probability, non-trivial)**
+14 total users, 3 monthly active, 0 reviews — very new actor with no community vetting. Always test with `maxItems: 5` first to confirm the actor is still working and the output structure matches expectations.
 
-Sections 250–252 of the NZ Crimes Act cover unauthorised access to computer systems. Whether scraping a public website constitutes "access" under those provisions is legally contested globally. Most jurisdictions have not prosecuted scraping of publicly visible data. However, if TradeMe's ToS explicitly prohibits automated access and you continue after being sent a cease-and-desist, the legal risk escalates. For a commercial product, this is worth flagging to a lawyer.
+**4. Lat/lon accuracy**
 
-**3. Reliability — scrapers break without warning**
+Lat/lon comes from the listing page's embedded map widget. Some vendors choose to hide their exact address — these listings return suburb-centroid coordinates. The actor doesn't expose `GeographicLocation.Accuracy` so you can't filter by precision level. For the demo this is acceptable.
 
-TradeMe updates their frontend regularly. When they do, the Apify actor stops working until the actor maintainer (a third party — not Apify, not you) publishes a fix. For `parseforge/trade-me-property-scraper`, look at the actor's last-updated date and issue history to gauge maintenance cadence. Building a product feature on an unmaintained third-party scraper creates an uncontrolled outage risk.
+**5. CU cost unpredictability**
 
-**4. Lat/lon availability is not guaranteed**
-
-TradeMe embeds a Google Maps widget in some listings — the lat/lon scraped from that widget may be imprecise (property-level), unavailable (if the vendor chose to hide exact location), or inconsistently present across actors. The official API's `GeographicLocation` field is more reliably populated because it comes from TradeMe's own data model.
-
-**5. Apify proxy costs can spike**
-
-Cloudflare detection triggers more proxy rotations, increasing ACU usage unpredictably. A run that costs $0.30 normally might cost $3 after a Cloudflare update. Apify provides spending limits but the default is uncapped.
-
-### Honest comparison vs. official API
-
-| Factor | Apify scraper | TradeMe API |
-|---|---|---|
-| ToS compliance | **No** — explicitly prohibited | **Yes** — designed for this |
-| Reliability | Third-party actor, can break silently | Official, versioned, stable |
-| Lat/lon | Inconsistent, scraped from map widget | Structured field, more reliable |
-| Cost | ~$180–450/month for nightly sweep | Free tier (dev) / negotiated (commercial) |
-| Speed (interactive) | **Not viable** (30–120s per run) | **Viable** (200–500ms per API call) |
-| Attribution requirements | None (but violates ToS) | "Powered by Trade Me" + link-back |
-| Legal exposure | Material (ToS + possible Crimes Act) | None if within API terms |
-| Maintenance burden | High (actor can go stale) | Low (official versioned API) |
-
-### Verdict on Apify scrapers
-
-**For hackathon / one-off demo:** Pragmatic choice. Run once, load snapshot into Databricks, demo it. Cost ~$2–8. Risk is minimal — a single non-commercial scrape for an internal demo is not something TradeMe pursues.
-
-**For production / recurring:** Not recommended. ToS violation is explicit, reliability depends on third-party actor maintenance, and the official API is cleaner for anything long-lived.
+Cloudflare detection may trigger residential proxy rotation, which costs more CUs. Set a spending limit in your Apify account settings before running.
 
 ---
 
-## Option 1: TradeMe Developer API (recommended starting point)
+## Option 0b: Alternative Apify actors — getdataforme variants
+
+Two more actors scrape TradeMe properties. Included for completeness; **parseforge is the better choice**.
+
+### `getdataforme/trademe-properties-spider`
+
+| Stat | Value |
+|---|---|
+| Total users | 7 |
+| Monthly active users | 1 |
+| Rating | 0.0 (0 reviews) |
+| Last modified | ~3 months ago |
+| Pricing | $9.00 / 1,000 results |
+
+**Input:** Takes a full TradeMe search API URL as `Url` parameter plus `itemLimit`. No structured filters.
+
+**Output:** Includes `listing_id`, `title`, `start_price`, `bedrooms`, `bathrooms`, `property_type`, `address`, `suburb`, `district`, `region`, `agency_name`, `agency_phone`, `photo_urls`. **No `latitude`/`longitude` fields in the documented output schema.**
+
+**Verdict:** No confirmed lat/lon = not useful for map pins. Skip.
+
+---
+
+### `getdataforme/trademe-properties-parser-spider`
+
+| Stat | Value |
+|---|---|
+| Total users | 3 |
+| Monthly active users | 0 |
+| Rating | 0.0 (0 reviews) |
+| Last modified | ~13 days ago |
+| Pricing | $9.00 / 1,000 results |
+
+**Input:** `StartUrl` (array), `Keyword` (default: `["rent"]`), `proxyConfiguration`, `itemLimit` (default: 20).
+
+**Output:** Includes `listing_id`, `title`, `rent_per_week`, `bedrooms`, `bathrooms`, `property_type`, `address`, `suburb`, `region`, `agency_name`, `photo_urls`, `listing_url`, **`latitude`** (number), **`longitude`** (number).
+
+**Caveats:** 0 monthly active users (effectively unmaintained), no reviews, default `itemLimit` of 20. Despite having lat/lon in the schema, the 0-active-user status makes reliability doubtful.
+
+**Verdict:** Skip. Use parseforge instead.
+
+---
+
+## Option 0c: realestate.co.nz Apify scrapers (alternative source)
+
+Two actors scrape realestate.co.nz (second-largest NZ property portal):
+
+| Actor | Price | Lat/lon | Notes |
+|---|---|---|---|
+| `scrapemind/realestate-nz-scraper` | $30/month + usage | Confirmed | Sale, rental, and sold listings |
+| `fatihtahta/realestate-co-nz-scraper` | $1.00 / 1,000 results | Not confirmed | Cheaper but lat/lon uncertain |
+
+**Coverage note:** realestate.co.nz has significantly fewer NZ rental listings than TradeMe — TradeMe dominates the rental market. For the demo arc (Auckland rentals), TradeMe is the better source. realestate.co.nz is more relevant for for-sale listings.
+
+**Not recommended** over parseforge/TradeMe for this use case, documented for completeness.
+
+---
+
+## Option 1: TradeMe Developer API
+
+> **Access blocker (2026+):** New application registrations from 10 April 2026 are restricted to in-trade sellers only. Kāinga as a consumer-facing rental search tool does not qualify. See the Critical Finding section above.
 
 ### What it is
 
-TradeMe has a publicly documented REST API for developers, accessible at `developer.trademe.co.nz`. The API covers all of TradeMe's catalogues including property. This is the canonical, legitimate, non-scraping access path.
+TradeMe has a publicly documented REST API at `developer.trademe.co.nz`. Property-specific contact: `api@trademe.co.nz`. A sandbox environment is available at `tmsandbox.co.nz` for testing.
 
-### Authentication model
+Endpoints return XML or JSON by appending `.xml` or `.json` to the endpoint path, e.g.:  
+`GET https://api.trademe.co.nz/v1/Search/Property/Rental.json`
 
-The API uses OAuth 2.0 (also supports legacy OAuth 1.0a). For a server-side app (which is what Kāinga is), the flow is:
+### Authentication model — OAuth 1.0a, per-user
 
-1. Register a developer application → receive a **Consumer Key** and **Consumer Secret**
-2. Exchange for an **App Access Token** using client credentials grant
-3. Use that token to query property listings on behalf of the app (no Kāinga user needs a TradeMe account)
+The TradeMe API uses **OAuth 1.0a** (NOT OAuth 2.0). The authentication flow uses request tokens, verifiers, and HMAC-SHA1 signatures consistent with the OAuth 1.0a specification.
 
-This is **not** "per-user OAuth" — the token is per-app, not per-user. The user never sees or touches TradeMe auth.
+> "The system generates tokens specific to individual Trade Me members, not application-level tokens. Users grant permission through a consent flow, and tokens can be revoked by the member at any time via their 'My Applications' page."
 
-### Key endpoints (to be verified against current docs)
+This IS the "per-user OAuth" problem listed in `data-sources.md`. Every Kāinga user who wants to see TradeMe listings would need to authenticate with their own TradeMe account first.
 
-| Endpoint | What it returns |
+**OAuth 1.0a flow:**
+
+| Step | Endpoint |
 |---|---|
-| `GET /v1/search/property/rental` | Rental listings with price, bedrooms, address, lat/lon |
-| `GET /v1/search/property/residential` | For-sale listings |
-| `GET /v1/listings/{listing_id}` | Full detail for a single listing |
+| 1. Get request token | `GET https://api.trademe.co.nz/Oauth/RequestToken?scope=<scope>` |
+| 2. User authorizes | `https://trademe.co.nz/Oauth/Authorize?oauth_token=<token>` |
+| 3. Exchange for access token | `GET https://api.trademe.co.nz/Oauth/AccessToken` |
+| 4. Call protected APIs | Include OAuth 1.0a Authorization header |
 
-Key query parameters for rental search:
-- `suburb` or `district` — filter by geography
-- `price_min` / `price_max` — filter by weekly rent
-- `bedrooms_min` / `bedrooms_max`
-- `latitude` / `longitude` / `radius_km` — geographic radius search
-- `rows` — results per page (typically max 25–50)
-- `page` — pagination
+**Available permission scopes:** `MyTradeMeRead`, `MyTradeMeWrite`, `BiddingAndBuying`
 
-What a listing record typically contains:
-- `ListingId`, `Title`
-- `Address` (street-level in most cases)
-- `Suburb`, `District`, `Region`
-- `GeographicLocation` → `Latitude`, `Longitude` (present on most but not all listings)
-- `PriceDisplay`, `RentPerWeek`
-- `Bedrooms`, `Bathrooms`, `Parking`
-- `PropertyType` (house, flat, apartment, unit)
-- `Photos[]` — photo URLs
-- `ListedDate`, `ClosedDate`
+**Token lifespan:** Tokens expire after 6 months of non-use. Returns HTTP 401 when expired.
 
-### Rate limits (approximate — verify at registration)
+**Alternative (own-account only):** The developer portal provides a direct access token generator form for cases where you are accessing your own TradeMe account (no user redirect flow needed).
 
-- **Sandbox / development**: typically generous / uncapped for testing
-- **Production standard tier**: approximately 1,000 requests/hour per consumer key
-- At 25 listings per request, that is 25,000 listings/hour — far more than interactive use requires
+**Unauthenticated access (rental search only):** The rental search endpoint supports unauthenticated requests with a limit of 25 results per page. No OAuth token required at all — plain HTTP GET. This is the basis for the hackathon Path B script.
 
-### ToS constraints (critical — read before building)
+### April 2026 registration restriction
 
-These are the key questions to clarify with TradeMe before investing build time:
+From `developer.trademe.co.nz/api-overview/registering-an-application` (verified):
 
-1. **Can the app store listing data in Databricks?**
-   TradeMe's standard API ToS prohibits building a database that replicates their catalogue for redistribution or competitive use. However, caching listing IDs and metadata for a defined period (e.g. 24 hours) for user-facing display is typically permitted. The key distinction is: caching for display = probably fine; bulk-storing for analytics = probably not.
+> "From 10 March 2026: Bidding on and buying Marketplace listings via API no longer supported for casual listings."  
+> "From 10 April 2026: Application registration limited to **in-trade sellers only**."
 
-2. **What is the permitted cache window?**
-   Most listing APIs require data to expire after a set time (24–48 hours is common). Listings shown in Map Mode should reflect current availability, so this constraint aligns naturally with the product intent.
+**Prior to April 2026:** Registering an application was possible for any developer; registration was reviewed by TradeMe staff with a manual approval step. The sandbox (`tmsandbox.co.nz`) still auto-approves.
 
-3. **Does the app qualify as a "commercial" use?**
-   This is the biggest unknown. If Kāinga is an internal tool or R&D project, standard developer terms likely apply. If it becomes a commercial product with paying users, TradeMe may require a commercial partnership or data licence agreement.
+**On or after 10 April 2026:** New production registrations are limited to in-trade sellers. Kāinga does not qualify.
 
-4. **Display attribution requirements?**
-   API ToS typically requires "Powered by Trade Me" or similar attribution, and linking back to the original listing. This is easily handled in the popup card.
+### Confirmed rental search endpoint and parameters
 
-### Integration complexity
+**Source:** `developer.trademe.co.nz/api-reference/search-methods/rental-search` (verified)
+
+**Endpoint:** `GET https://api.trademe.co.nz/v1/Search/Property/Rental.{json|xml}`
+
+**Authentication:** Required for >25 rows/page. Supported unauthenticated at 25 rows/page limit.
+
+#### Location parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `region` | **Integer** | Region ID (see Region ID Reference below). e.g. Auckland = `1` |
+| `district` | **Integer** | District ID (see District ID Reference below) |
+| `suburb` | **String** | Suburb ID or comma-separated suburb IDs (Integer values, passed as strings) |
+| `adjacent_suburbs` | Boolean | Include adjacent suburbs in results |
+| `latitude_min` | Number | All four lat/lon params required together |
+| `latitude_max` | Number | — |
+| `longitude_min` | Number | — |
+| `longitude_max` | Number | — |
+
+**Important:** `region`, `district`, and `suburb` accept **integer IDs**, not text names. Use the locality endpoints (`GET v1/localities/regions`, `GET v1/localities/region/{regionId}`) to look up IDs. See the Region ID Reference section below.
+
+#### Property / price parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `price_min` | Integer | Minimum weekly rent in NZD |
+| `price_max` | Integer | Maximum weekly rent in NZD |
+| `bedrooms_min` | Integer | — |
+| `bedrooms_max` | Integer | — |
+| `bathrooms_min` | Integer | — |
+| `bathrooms_max` | Integer | — |
+| `land_area_min` | Number | Hectares; Lifestyle properties only |
+| `land_area_max` | Number | — |
+| `property_type` | String | Comma-separated: `Apartment`, `CarPark`, `House`, `Townhouse`, `Unit` |
+| `available_now` | Boolean | Only listings available today or earlier |
+| `date_from` | DateTime | Exclude listings before this date |
+| `pets_ok` | Boolean | Pet-friendly only |
+
+#### Pagination / display parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `page` | Integer | Page number (starts at 1) |
+| `rows` | Integer | Max 25 unauthenticated, max 500 authenticated |
+| `sort_order` | Enum | `Default`, `FeaturedFirst`, `ExpiryAsc`, `PriceAsc`, `PriceDesc`, etc. |
+| `photo_size` | Enum | `Thumbnail`, `List`, `Medium`, `Gallery`, `Large`, `FullSize` |
+| `return_metadata` | Boolean | Include search parameter metadata in response |
+| `search_string` | String | Keyword search |
+| `member_listing` | Integer | Filter by specific seller/agent ID |
+
+### Confirmed response schema — Rental search
+
+**Root object:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `TotalCount` | Integer | Total matching results across all pages |
+| `TotalCountTruncated` | Boolean | True if total exceeded maximum |
+| `Page` | Integer | Current page (starts at 1) |
+| `PageSize` | Integer | Items in current page |
+| `List` | Collection | Array of Property objects (see below) |
+| `SuperFeatures` | Collection | Randomized super-featured listings matching search |
+| `Parameters` | Collection | Search parameter metadata (requires `return_metadata=true`) |
+
+**Property object — key fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `ListingId` | Integer | Unique listing identifier |
+| `PropertyId` | String | Property ID (separate from listing ID) |
+| `Title` | String | Listing title |
+| `Category` | String | Listing category |
+| `StartPrice` | Number | Asking price (sale listings) |
+| `RentPerWeek` | Number | **Weekly rent in NZD** (rental listings) |
+| `StartDate` | DateTime | Listing creation date |
+| `EndDate` | DateTime | Listing end date |
+| `AvailableFrom` | String | Move-in date |
+| `Bedrooms` | Integer | — |
+| `Bathrooms` | Integer | — |
+| `Lounges` | Integer | — |
+| `Area` | Integer | Floor area in m² |
+| `LandArea` | Integer | Land area in m² |
+| `TotalParking` | Integer | Total parking spaces |
+| `PropertyType` | String | House, Apartment, Townhouse, Unit, Villa, etc. |
+| `Address` | String | Full property address |
+| `Suburb` | String | Suburb name |
+| `SuburbId` | Integer | Suburb ID |
+| `District` | String | District name |
+| `DistrictId` | Integer | District ID |
+| `Region` | String | Region name |
+| `RegionId` | Integer | Region ID |
+| `AdjacentSuburbNames` | Collection\<String\> | Nearby suburb names |
+| `AdjacentSuburbIds` | Collection\<Integer\> | Nearby suburb IDs |
+| `RateableValue` | Integer | Property rateable value (CV) |
+| `PetsOkay` | Enum | `NotSpecified`(0), `No`(1), `Yes`(2), `Negotiable`(3) |
+| `SmokersOkay` | Enum | `NotSpecified`(0), `No`(1), `Yes`(2) |
+| `MaxTenants` | Integer | Maximum occupants |
+| `IdealTenant` | String | Preferred tenant description |
+| `Parking` | String | Parking details (text) |
+| `Whiteware` | String | Furnished/included items description |
+| `Amenities` | String | Area amenities (text) |
+| `ViewingInstructions` | String | How to view the property |
+| `BestContactTime` | String | Optimal contact window |
+| `IsFeatured` | Boolean | — |
+| `IsSuperFeatured` | Boolean | — |
+| `HasGallery` | Boolean | — |
+| `IsBold` | Boolean | — |
+| `IsHighlighted` | Boolean | — |
+| `IsBoosted` | Boolean | — |
+| `IsClassified` | Boolean | — |
+| `IsOnWatchList` | Boolean | Authenticated users only |
+| `PictureHref` | String | Primary photo URL |
+| `GeographicLocation` | Object | **Lat/lon coordinates — see below** |
+| `Agency` | Object | Agency details — see below |
+| `AgencyReference` | String | Agency reference code |
+| `PremiumPackageCode` | String | Package type designation |
+| `ListingGroup` | String | Grouping classification |
+| `SearchResultAttributes` | Collection | Attribute key-value pairs |
+
+**GeographicLocation object (critical for map pins):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `Latitude` | Number | Decimal degrees, WGS84 |
+| `Longitude` | Number | Decimal degrees, WGS84 |
+| `Northing` | Integer | Metres, NZTM projection |
+| `Easting` | Integer | Metres, NZTM projection |
+| `Accuracy` | Enum | `None`(0), `Address`(1), `Street`(3), `Suburb`(2), `AdminPinpoint`(4) |
+
+**Accuracy field handling strategy:**
+
+| `Accuracy` | Meaning | Action |
+|---|---|---|
+| `Address` | Precise property-level coords | Use directly |
+| `Street` | On the street, ±50m | Use directly |
+| `Suburb` | Near suburb centroid; vendor hid exact address | Replace with `housing.gold.suburb` centroid |
+| `AdminPinpoint` | Administrative centre | Replace with suburb centroid |
+| `None` | No location data | Use suburb centroid or exclude from map |
+
+**Agency object (summary):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `Id` | Integer | Company ID |
+| `Name` | String | Agency name |
+| `Address` | String | HQ address |
+| `PhoneNumber` | String | Contact phone |
+| `EMail` | String | Contact email |
+| `Website` | String | Agency website |
+| `Logo` | String | Logo URL |
+| `IsLicensedPropertyAgency` | Boolean | REAA licensed indicator |
+| `Agents` | Collection\<Agent\> | Individual agent contact details |
+
+**Agent object:**
+
+| Field | Type |
+|---|---|
+| `FullName` | String |
+| `MobilePhoneNumber` | String |
+| `OfficePhoneNumber` | String |
+| `EMail` | String |
+| `Photo` | String (URL) |
+| `UrlSlug` | String (profile path) |
+
+### Residential search endpoint differences
+
+**Endpoint:** `GET https://api.trademe.co.nz/v1/Search/Property/Residential.{json|xml}`
+
+Residential search (for-sale) has the same geographic parameters as rental search. Key differences:
+
+| Feature | Rental (`/Rental`) | Residential (`/Residential`) |
+|---|---|---|
+| `price_min/max` | Weekly rent in NZD | Sale price in NZD |
+| `sales_method` | Not present | `pricedisplayed`, `auction`, `tender`, `negotiation`, `deadlinesale` |
+| `available_now` / `date_from` | Present | Not present (listing date filter instead) |
+| `pets_ok` | Present | Not present |
+| `open_homes` | Not present | Boolean filter for listings with upcoming open homes |
+| `PropertyType` options | Apartment, CarPark, House, Townhouse, Unit | Apartment, Bare land, Car Park, Development site, Dwelling, Hotel/Leisure, House, Industrial, Lifestyle block, Office, Retail, Section, Townhouse, Unit, Villa |
+| Response field | `RentPerWeek` | `PropertySaleInformation` (sale type, auction date) |
+
+### Rate limiting (verified)
+
+| Scenario | Limit |
+|---|---|
+| Authenticated API calls | **1,000 requests per hour** per consumer app per user |
+| Unauthenticated calls | 25 rows per request (no documented hourly limit, but behaviour is not guaranteed) |
+| Exceeded limit response | HTTP 429 |
+| Catalogue methods | **Exempt from rate limiting** |
+
+Rate limit is "charged per consumer application per user" — each authenticated user gets their own 1,000 req/hr independently. CORS can be used so limits apply per individual user rather than being shared.
+
+### Terms of Service — key clauses (verbatim)
+
+From `developer.trademe.co.nz/terms-and-conditions` (verified 2026-05-20):
+
+- **Password**: "You must not ask for, use, collect or store any User's password"
+- **Sharing**: "You must not share your access key with any other person, or use it for any application other than the one it has been approved for"
+- **Data deletion**: Must "comply with privacy legislation" and delete data when no longer needed for the application's approved function
+- **Legal notices**: Must "display those same notices to Users at the same stage of the transaction process" as TradeMe does
+- **Liability cap**: Trade Me's liability is capped at **$100 NZD** under these terms
+
+### Business Rules — key clauses (verbatim)
+
+From `developer.trademe.co.nz/terms-and-conditions/business-rules` (verified 2026-05-20):
+
+**Listing expiry (critical):**
+> "Expired listings must be completely removed from applications. If a listing cannot be found on Trade Me directly, your app should not allow that listing (or any part of it) to be found."
+
+**Data combination prohibition:**
+> "Listed data is not to be combined or presented alongside listings from other sites, or used in data mining, data aggregation systems, price comparison services."
+
+**Listings purpose:**
+> Listings should "provide an extension of the services Trade Me currently provides" rather than serve comparative purposes.
+
+**Map enrichment (permitted — implied):**
+> Applications must "visually distinguish 'featured' listings" and handle gallery requirements. No prohibition on displaying listings on a map — map enrichment is permitted as an extension of TradeMe's own map view functionality.
+
+**Feedback:**
+> "This information only ever be displayed in chronological order, and without filtering." Must not allow filtering or reordering of member feedback.
+
+**Q&A:**
+> "Should not be used for promotional messages or any other message not directly attributable to the interested User." Must not "add any comments to listings other than those provided directly by your users."
+
+**Enforcement:**
+> Trade Me "reserves the right to restrict or alter API call rate limits at our discretion at any time."
+
+### Use cases — explicitly stated scope
+
+From `developer.trademe.co.nz/api-overview/use-cases` (verified 2026-05-20):
+
+> "These are general guidelines only. We retain the right to approve or decline applications for API access at our discretion."
+
+**Will support:**
+- In-trade sellers managing their own Marketplace listings
+
+**Will not support:**
+- Competing offer with TradeMe
+- Exporting or scraping TradeMe data
+- Combining / aggregating data with listings from other sites
+- Data mining, aggregation systems, price comparison services
+- Duplication of existing TradeMe functionality
+- Personal or non-commercial use (including "price monitoring" and "**buyer-side tools**")
+- Applications serving non-in-trade users (buyer-side tools, casual seller tools)
+- Testing or training of people or systems
+- Vague or insufficient information
+
+**Assessment for Kāinga:** Kāinga is explicitly a buyer-side tool for renters. It would fall under "buyer-side tools" and "applications built on top of the API to serve non-in-trade users" — both listed as unsupported.
+
+### Integration complexity (if access were available)
 
 | Component | Effort | Notes |
 |---|---|---|
-| TradeMe API registration | Low | Fill form at developer.trademe.co.nz |
+| TradeMe app registration | Blocked (April 2026) | Would need pre-existing approval or partnership |
 | `fetch_listings` Express route | Low | `GET /api/listings?suburb=X&max_rent=Y` → proxies to TradeMe |
-| `ListingsLayer.tsx` | Medium | Similar to `AmenityLayer.tsx` in Phase 4; renders pin markers with popup |
-| Agent tool `search_listings` | Low | Calls Express route, returns listing count + sample; agent includes in `render_map` call |
-| Credential management | Low | Databricks secret scope + environment variable (same pattern as LINZ API key) |
-| ToS compliance | Unknown | Attribution, caching TTL, link-back to listing |
+| `ListingsLayer.tsx` | Medium | Similar to `AmenityLayer.tsx` in Phase 4 |
+| Agent tool `search_listings` | Low | Calls Express route, returns listing count + sample |
+| Accuracy-level handling | Low | Filter `Accuracy === 'None'` to suburb centroid fallback |
+| Credential management | Low | Same pattern as LINZ API key (Databricks secret scope) |
+
+---
+
+## Region and District ID Reference
+
+### NZ Region IDs (confirmed from `api.trademe.co.nz/v1/localities/regions.json`)
+
+| `LocalityId` | Region Name | Notes |
+|---|---|---|
+| 1 | Auckland | Primary demo target |
+| 2 | Bay of Plenty | — |
+| 3 | Canterbury | Christchurch |
+| 4 | Gisborne | — |
+| 5 | Hawke's Bay | — |
+| 6 | Manawatu / Whanganui | — |
+| 7 | Marlborough | — |
+| 8 | Nelson / Tasman | — |
+| 9 | Northland | — |
+| 10 | Otago | Dunedin |
+| 11 | Southland | — |
+| 12 | Taranaki | — |
+| 14 | Waikato | Hamilton |
+| 15 | Wellington | — |
+| 16 | West Coast | — |
+| 100 | All | Catch-all (returns all regions) |
+
+Note: Region ID `13` is absent from the API response — not a typo.
+
+### Auckland District IDs (from prior research — verify against `GET v1/localities/region/1`)
+
+Fetch: `GET https://api.trademe.co.nz/v1/localities/region/1.json`
+
+| `LocalityId` | District Name |
+|---|---|
+| 4 | Rodney |
+| 5 | North Shore City |
+| 6 | Waitakere City |
+| 7 | Auckland City |
+| 8 | Manukau City |
+| 9 | Papakura |
+| 10 | Franklin |
+| 77 | Waiheke Island |
+| 81 | Hauraki Gulf Islands |
+
+**Note:** These district IDs should be verified by fetching `https://api.trademe.co.nz/v1/localities/region/1.json` before use — the district data above is from cached research and may not reflect current TradeMe locality structure.
+
+### Locality endpoints for ID lookup
+
+| Endpoint | Returns |
+|---|---|
+| `GET v1/localities/regions` | All regions with `LocalityId` and `Name` |
+| `GET v1/localities/region/{regionId}` | All districts in a region |
+| `GET v1/localities/region/{regionId}/{districtId}` | All suburbs in a district |
+| `GET v1/localities/region/{regionId}/{districtId}/{suburbId}` | Specific suburb |
+| `GET v1/localities` | Full locality hierarchy |
+
+---
+
+## Property API Endpoints Reference
+
+All property-related endpoints from `developer.trademe.co.nz/api-reference/api-index` (verified):
+
+### Search endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET v1/Search/Property/Rental` | **Rental property search** — primary endpoint for Kāinga |
+| `GET v1/Search/Property/Residential` | For-sale residential search |
+| `GET v1/Search/Property/CommercialLease` | Commercial lease search |
+| `GET v1/Search/Property/CommercialSale` | Commercial sale search |
+| `GET v1/Search/Property/Lifestyle` | Lifestyle property search |
+| `GET v1/Search/Property/NewHomes` | New homes search |
+| `GET v1/Search/Property/OpenHomes` | Open home search |
+| `GET v1/Search/Property/Retirement` | Retirement village search |
+| `GET v1/Search/Property/Rural` | Rural property search |
+| `POST v1/Search/Property/SuburbPulse` | SuburbPulse unified property search |
+| `GET v1/Search/Flatmates` | Flatmate/flatsharing search |
+
+### Locality / reference endpoints (Catalogue — exempt from rate limiting)
+
+| Endpoint | Description |
+|---|---|
+| `GET v1/localities/regions` | All NZ regions with IDs |
+| `GET v1/localities/region/{regionId}` | Districts in a region |
+| `GET v1/localities/region/{regionId}/{districtId}` | Suburbs in a district |
+| `GET v1/localities/region/{regionId}/{districtId}/{suburbId}` | Specific suburb |
+| `GET v1/localities` | Full locality hierarchy |
+| `GET v1/Categories/Property` | Property listing categories |
+
+### Map and analytics endpoints
+
+| Endpoint | Description |
+|---|---|
+| `POST v1/Property/Map/Dots` | Map dots for search (bulk lat/lon for map display) |
+| `POST v1/Property/Sold/Search` | Sold property search by address/points/polyline |
+| `GET v1/Property/Sold/Suburbs` | All suburbs with sold property data |
+| `GET v1/Property/Sold/Suburb/{cityName}/{suburbName}` | Suburb-level sold property statistics |
+| `GET v1/Property/Address` | Address lookup endpoint |
+
+### Individual listing
+
+| Endpoint | Description |
+|---|---|
+| `GET v1/listings/{listingId}` | Full listing detail by ID |
+| `POST v1/listings/{listingId}/EmailPropertySeller` | Email seller of a property listing |
+
+### Agency / agent
+
+| Endpoint | Description |
+|---|---|
+| `GET v1/Property/Office/ListingStatistics` | Office listing statistics |
+| `GET v1/Property/Agents/{memberId}/LiveListingStatistics` | Agent live listing stats |
 
 ---
 
@@ -238,12 +701,12 @@ Every tenancy bond lodged with Tenancy Services since ~2014. Approximately 200,0
 ### What it does NOT give you
 
 - Individual listing URLs or photos
-- Available listings (bonds are lodged at tenancy start, so it's a lagged record of what rented, not what's available now)
-- Exact address (it's suburb-level)
+- Available listings (bonds are lodged at tenancy start — lagged record of what rented, not what's available now)
+- Exact address (suburb-level only)
 
 ### Map Mode use
 
-Bond data powers the **aggregate rent statistics** that are already in the map (median weekly rent per suburb). It does not replace listings as individual pins.
+Bond data powers the **aggregate rent statistics** already in the map (median weekly rent per suburb). It does not replace listings as individual pins.
 
 ### Verdict
 
@@ -253,41 +716,39 @@ Bond data is essential for the suburb-level affordability layer and is already i
 
 ## Option 3: Stats NZ Property Transfers
 
-Already referenced in the prices pipeline README. Quarterly data on property sales — price, TA, dwelling type. Does not include rentals or current availability. Useful for the sales/HPI layer but not for a live listings map.
+Quarterly data on property sales — price, TA, dwelling type. Does not include rentals or current availability. Useful for the sales/HPI layer but not for a live listings map.
 
 ---
 
 ## Option 4: Trade Me Property Price Index (free PDF)
 
-TradeMe publishes a monthly Property Price Index as a PDF press release (listed in `pipelines/prices/README.md` under "Free regional/TA sources"). This gives TA-level median asking prices and rental price trends — aggregate statistics, not individual listings.
+TradeMe publishes a monthly Property Price Index as a PDF press release (listed in `pipelines/prices/README.md`). This gives TA-level median asking prices and rental price trends — aggregate statistics, not individual listings.
 
-Same situation as bond data: useful for the aggregate layer, not a substitute for listing pins.
+Same as bond data: useful for the aggregate layer, not a substitute for listing pins.
 
 ---
 
 ## Option 5: OneRoof / Homes.co.nz / Barfoot & Thompson
 
-These are alternative NZ property portals. Their individual listing data is behind paywalls or inaccessible via public API (same original concern in `data-sources.md`). Barfoot & Thompson is Auckland-only, reducing national coverage. OneRoof (NZME) and Homes.co.nz have automated valuation models but not browseable listing APIs for third-party apps.
+Alternative NZ property portals. Their individual listing data is behind paywalls or inaccessible via public API. Barfoot & Thompson is Auckland-only. OneRoof (NZME) and Homes.co.nz have automated valuation models but not browseable listing APIs for third-party apps.
 
-Not recommended over TradeMe, which has the broadest national coverage and an official API.
+Not recommended over TradeMe, which has the broadest national coverage.
 
 ---
 
 ## Option 6: No listings layer — suburb-level proxies only
 
-The current plan (and existing data) gives a strong suburb-level picture: median rent (from census/bond data), affordability band, amenity counts, hazard risk. This is powerful for the "which suburbs pass my filters" use case.
+The current plan and existing data gives a strong suburb-level picture: median rent (from census/bond data), affordability band, amenity counts, hazard risk. Powerful for "which suburbs pass my filters."
 
 The gap is: once the user has narrowed to 3–5 suburbs, they currently can't see *what's actually available* without leaving the app. Adding listings closes that loop.
 
-If TradeMe ToS or complexity is too high, a partial substitute is:
-- Show "active listing count in suburb" using Trade Me or Homes.co.nz aggregate stats (some publish suburb-level counts as public data)
+If TradeMe ToS or complexity is too high, a partial substitute:
+- Show "active listing count in suburb" using TradeMe or Homes.co.nz aggregate stats (some publish suburb-level counts as public data)
 - This gives a "supply signal" (how many 2-beds are available in Onehunga right now) without individual listing pins
 
 ---
 
 ## Architecture: Live API vs Batch Ingestion
-
-Given ToS constraints, the cleanest architecture for TradeMe listings is:
 
 ### Recommended: Live API proxy (no Databricks storage of listings)
 
@@ -310,35 +771,22 @@ User clicks a pin → popup shows → link to trademe.co.nz/property/{id}
 **Pros:**
 - Fully compliant with typical API ToS (no bulk storage, real-time display)
 - Always shows current available listings (not stale data)
-- Simpler architecture — no new Databricks tables needed
 - Natural link-back to TradeMe satisfies attribution requirements
 
 **Cons:**
 - Latency on the agent turn (~200–500ms extra for the API call)
-- Rate-limited (1,000 req/hr) — fine for interactive use, would fail under bot load
+- Rate-limited (1,000 req/hr authenticated) — fine for interactive use
 - Listings disappear when TradeMe removes them (correct behaviour for a live feature)
 
 ### Alternative: Nightly batch ingestion → Databricks
 
-Follows the existing `fetch → bronze → silver → gold` pipeline pattern. A nightly job pulls all current rental listings via the API and stores them in `housing.bronze/silver/gold.trademe_listing`.
-
-**Pros:**
-- Fast queries (Databricks SQL, no external API call during user session)
-- Listings available offline / if TradeMe API is down
-- Can join with other gold tables (e.g. "listings in suburbs that pass my commute filter")
-
-**Cons:**
-- Almost certainly violates TradeMe API ToS (creates a replica database)
-- Data is up to 24h stale (listings may already be taken)
-- Adds a new pipeline to maintain
-
-**Not recommended** for listings specifically — the live proxy approach is both simpler and more ToS-compliant.
+**Not recommended** for listings specifically — almost certainly violates TradeMe ToS (creates a replica database). The live proxy approach is both simpler and more ToS-compliant.
 
 ---
 
 ## What to build (if we proceed)
 
-Assuming TradeMe ToS review comes back positive, the minimum viable implementation:
+Assuming access to TradeMe API (or Apify snapshot for hackathon).
 
 ### Backend (Express)
 
@@ -350,7 +798,7 @@ Assuming TradeMe ToS review comes back positive, the minimum viable implementati
 
 - Cache response per `(suburbs, max_rent, beds_min, type)` key for 15 minutes using in-memory LRU cache
 - Strip sensitive fields, only forward what the frontend needs
-- Return 429 with a friendly message if TradeMe rate-limits us
+- Return 429 with friendly message if TradeMe rate-limits
 
 ### Frontend
 
@@ -362,7 +810,7 @@ Assuming TradeMe ToS review comes back positive, the minimum viable implementati
 // Popup: thumbnail, address, beds/baths, rent, "View on Trade Me" link
 ```
 
-Icon design: house icon (Lucide `Home`) with rent price overlay. Color by property type (green=house, blue=apartment, orange=flat).
+Icon design: house icon (Lucide `Home`) with rent price overlay. Colour by property type (green=house, blue=apartment, orange=flat).
 
 ### Agent tool
 
@@ -413,59 +861,115 @@ listings?: Array<{
 
 ## Hackathon execution plan (Apify one-off → Databricks snapshot)
 
-### Step 1: Run the Apify actor
+### Step 1: Choose your data collection method
 
-**Which actor:** `parseforge/trade-me-property-scraper` — more structured output for property than the general `lexis-solutions` scraper.
+Two viable paths — pick one based on what you'd rather set up:
 
-**Configuration to use:**
+---
+
+**Path A: parseforge Apify actor (easier to configure, costs ~$29)**
+
+**Pre-requisite:** Needs at least an Apify **Starter plan** ($29/month). Free tier is hard-capped at 100 listings.
+
+**Confirmed input configuration** (use exact field names from actor schema):
 ```json
 {
-  "searchType": "rental",
-  "regions": ["Auckland"],
-  "maxListings": 1500,
-  "includeDetails": true
+  "listingType": "residential-rent",
+  "region": "Auckland",
+  "maxItems": 1500,
+  "minBedrooms": 1
 }
 ```
 
-Start with Auckland only for the demo arc (the demo walkthrough in `docs/map-mode-plan.md` §18 is Auckland-focused). Add Wellington and Christchurch if time allows.
+Add `"district"` and `"suburb"` to narrow further (both require `"region"` to be set). Optionally add `"maxPrice": 900` to filter out outliers.
 
-**Estimated cost:** ~$3–8 for 1,500 Auckland rentals.
+**Test first with `"maxItems": 10`** to confirm the JSON structure and lat/lon presence before running the full 1,500.
 
-**Export:** After the run, download the dataset as JSON from the Apify console, or pull it via the Apify dataset API:
+**Download dataset after run:**
 ```
 GET https://api.apify.com/v2/datasets/{dataset_id}/items?format=json&clean=true
 ```
 
-### Step 2: Inspect for lat/lon — this is the critical check
+**Estimated cost:** ~$29 for one month of Starter (which includes $29 credit). The included credit should cover a single Auckland run.
 
-Open the JSON and check whether `latitude`/`longitude` (or `geo`, `location`, `lat`, `lng`) fields are present on listing objects. There are three outcomes:
+---
 
-**A. Lat/lon present on most records** → great, load directly.
+**Path B: TradeMe unauthenticated API (free, no Apify account)**
 
-**B. Lat/lon missing but `address` is present** → geocode via join to `housing.gold.nz_address`:
-```sql
-SELECT t.listing_id, t.title, t.address, t.rent_weekly, t.bedrooms,
-       n.latitude, n.longitude, n.suburb_locality
-FROM trademe_raw t
-LEFT JOIN housing.gold.nz_address n
-  ON n.full_address ILIKE concat('%', t.address, '%')
-LIMIT 1 per listing_id
+The rental search endpoint supports unauthenticated requests with 25 results per page. A script can collect ~1,500 Auckland listings with 60 paginated HTTP requests — no Apify, no app registration needed (unauthenticated requests do not require a consumer key for the public rental search endpoint).
+
+```python
+import requests, json, time
+
+BASE = "https://api.trademe.co.nz/v1/Search/Property/Rental.json"
+# region=1 is Auckland (confirmed from v1/localities/regions.json)
+params = {"region": 1, "rows": 25, "sort_order": "Default"}
+
+all_listings = []
+for page in range(1, 61):
+    params["page"] = page
+    resp = requests.get(BASE, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    listings = data.get("List", [])
+    if not listings:
+        break
+    all_listings.extend(listings)
+    print(f"Page {page}: {len(listings)} listings (total: {len(all_listings)})")
+    time.sleep(0.5)  # be polite
+
+with open("auckland_rentals.json", "w") as f:
+    json.dump(all_listings, f)
+print(f"Collected {len(all_listings)} listings")
 ```
-The `nz_address` table has 2.4M records — this fuzzy match will cover ~70–80% of listings. Accept the miss rate for the demo.
 
-**C. Neither lat/lon nor parseable address** → fall back to suburb centroid from `housing.gold.suburb`. Every listing has a suburb name; the suburb centroid gives an approximate pin location (all listings in Onehunga cluster around Onehunga's centroid). Not ideal but functional for demo.
+**Pagination note:** The response includes `TotalCount` — use it to calculate the actual number of pages needed rather than hardcoding 60.
+
+**Note on unauthenticated access:** Verified that rental search is marked `Authentication: Required` in the official docs, but the docs also note max 25 rows for unauthenticated. Test with `page=1` and no credentials first to confirm it returns data without a consumer key. If it returns a 401, you will need to register at `developer.trademe.co.nz` (sandbox only, since production registration is now restricted) or use Path A.
+
+**What you get with Path B:** Full Property objects including `GeographicLocation.Latitude`, `GeographicLocation.Longitude`, `GeographicLocation.Accuracy`, `RentPerWeek`, `Bedrooms`, `Bathrooms`, `PropertyType`, `Address`, `Suburb`, `Agency` (with agent contact details).
+
+---
+
+### Step 2: Understand lat/lon quality — handle by accuracy level
+
+**Path A (Apify):** Lat/lon is confirmed present as `latitude` and `longitude` at the top level of each listing object. No accuracy metadata — spot-check a few listings by comparing coordinates to the listed address.
+
+**Path B (TradeMe API):** Each listing has a `GeographicLocation` object with `Latitude`, `Longitude`, and `Accuracy`:
+
+| `Accuracy` | Numeric | What it means | Action |
+|---|---|---|---|
+| `Address` | 1 | Precise property-level coordinates | Use directly |
+| `Street` | 3 | On the street, ±50m | Use directly |
+| `Suburb` | 2 | Suburb centroid; vendor hid exact address | Use `housing.gold.suburb` centroid |
+| `AdminPinpoint` | 4 | Administrative centre | Use suburb centroid |
+| `None` | 0 | No location data | Use suburb centroid or exclude |
+
+```python
+def resolve_coords(listing: dict) -> tuple[float | None, float | None]:
+    geo = listing.get("GeographicLocation", {})
+    lat = geo.get("Latitude")
+    lon = geo.get("Longitude")
+    accuracy = geo.get("Accuracy", "None")
+
+    if lat and lon and accuracy in ("Address", "Street"):
+        return lat, lon  # precise enough
+
+    # Mark as needing suburb centroid lookup from housing.gold.suburb
+    return None, None
+```
+
+The `nz_address` table (2.4M records) is a secondary fallback for address-level precision when accuracy is `Suburb`/`None` — a fuzzy join on address string covers ~70–80%.
 
 ### Step 3: Load into Databricks
 
 Simple notebook — no DLT pipeline needed for a snapshot:
 
 ```python
-# Load scraped JSON into a Delta table
 import json
 from pyspark.sql import Row
 from pyspark.sql.types import *
 
-# Read the JSON file (uploaded to bronze volume or loaded from local)
 with open("/Volumes/housing/bronze/trademe_files/auckland_rentals_20260520.json") as f:
     raw = json.load(f)
 
@@ -486,12 +990,56 @@ schema = StructType([
     StructField("scraped_at", TimestampType()),
 ])
 
-rows = [Row(**normalize_listing(r)) for r in raw]  # write normalize_listing() to map Apify fields → schema
+def normalize_listing(r: dict) -> dict:
+    """Normalize Path A (Apify) or Path B (TradeMe API) listing to common schema."""
+    # Path A: flat fields
+    if "listingId" in r:
+        return {
+            "listing_id": str(r.get("listingId", "")),
+            "title": r.get("title"),
+            "address": r.get("address"),
+            "suburb": r.get("suburb"),
+            "region": r.get("region"),
+            "rent_weekly": r.get("startPrice"),  # rent is in startPrice for residential-rent
+            "bedrooms": r.get("bedrooms"),
+            "bathrooms": r.get("bathrooms"),
+            "property_type": r.get("propertyType"),
+            "lat": r.get("latitude"),
+            "lon": r.get("longitude"),
+            "photo_url": r.get("pictureHref"),
+            "listing_url": r.get("url"),
+            "scraped_at": datetime.now(),
+        }
+    # Path B: TradeMe API response format
+    geo = r.get("GeographicLocation", {})
+    accuracy = geo.get("Accuracy", "None")
+    lat = geo.get("Latitude") if accuracy in ("Address", "Street") else None
+    lon = geo.get("Longitude") if accuracy in ("Address", "Street") else None
+    agency = r.get("Agency", {}) or {}
+    return {
+        "listing_id": str(r.get("ListingId", "")),
+        "title": r.get("Title"),
+        "address": r.get("Address"),
+        "suburb": r.get("Suburb"),
+        "region": r.get("Region"),
+        "rent_weekly": r.get("RentPerWeek"),
+        "bedrooms": r.get("Bedrooms"),
+        "bathrooms": r.get("Bathrooms"),
+        "property_type": r.get("PropertyType"),
+        "lat": lat,
+        "lon": lon,
+        "photo_url": r.get("PictureHref"),
+        "listing_url": f"https://trademe.co.nz/property/residential/rent/{r.get('ListingId')}",
+        "scraped_at": datetime.now(),
+    }
+
+rows = [Row(**normalize_listing(r)) for r in raw]
 df = spark.createDataFrame(rows, schema=schema)
 df.write.mode("overwrite").saveAsTable("housing.bronze.trademe_listings_snapshot")
+print(f"Loaded {df.count()} listings")
 ```
 
-**Suburb name normalisation** — TradeMe suburb names often differ from Stats NZ SA2 names (e.g. "Grey Lynn" vs "Grey Lynn" is fine, but "Mt Eden" vs "Mount Eden" is not). Use `housing.silver.place_lookup` (the canonical name lookup table) to normalise before writing. Or handle it in the agent tool at query time.
+**Suburb name normalisation** — TradeMe suburb names can differ from Stats NZ SA2 names (e.g. "Mt Eden" vs "Mount Eden"). Use `housing.silver.place_lookup` (the canonical name lookup table) to normalise before writing, or handle it in the agent tool at query time.
 
 ### Step 4: Add the agent tool
 
@@ -539,11 +1087,11 @@ def get_suburb_listings(
     }
 ```
 
-Add to `agent.py` tools list (alongside `render_map`, `compute_isochrone`, etc.).
+Add to `agent.py` tools list alongside `render_map`, `compute_isochrone`, etc.
 
 ### Step 5: Extend render_map for listings
 
-Add to the `render_map` tool's `suburbs` field or pass listings separately. Simplest approach for hackathon: agent calls `get_suburb_listings` → passes the returned listings array straight into `render_map` as a new optional parameter:
+Add optional `listings` parameter to the `render_map` tool in `render_map.py`:
 
 ```python
 @tool
@@ -559,11 +1107,11 @@ def render_map(
     return {"rendered": True}
 ```
 
-On the frontend, `message.tsx` already intercepts `render_map` tool calls and dispatches to `MapContext`. Extend `MapState` with a `listings` array and add a `ListingsLayer` component that renders them as pin markers.
+On the frontend, `message.tsx` already intercepts `render_map` tool calls and dispatches to `MapContext`. Extend `MapState` with a `listings` array and add a `ListingsLayer` component.
 
 ### Step 6: MAP_SYSTEM_PROMPT addition
 
-Add to the map system prompt (in `prompts.py`):
+Add to the map system prompt in `prompts.py`:
 
 ```
 **get_suburb_listings(suburb_names, max_rent_weekly, min_bedrooms)**
@@ -586,52 +1134,77 @@ After the existing demo arc (commute → rent → parks → 5 surviving suburbs)
 
 ---
 
-## Open questions (resolve before building)
+## Open questions
 
-| # | Question | Who decides | Priority |
+| # | Question | Status | Priority |
 |---|---|---|---|
-| 1 | **Is storing listing metadata (id, lat/lon, price) in memory/cache for 15min within TradeMe ToS?** | Read TradeMe developer ToS carefully | Blocker |
-| 2 | **Does Kāinga's intended use qualify as "commercial"?** If it's a hackathon/internal tool, standard dev terms likely apply. If commercialising, need to contact TradeMe. | Project ownership decision | Blocker |
-| 3 | **Does TradeMe API return lat/lon reliably for rental listings?** If not, we'd need to geocode via LINZ `nz_address` table. | Test in sandbox | High |
-| 4 | **What attribution is required?** "Powered by Trade Me"? Logo? | TradeMe ToS / developer docs | High |
-| 5 | **Should listings be rental only, or also for-sale?** The persona (Sarah) is a renter. Buy listings would serve a different user. | Product decision | Medium |
-| 6 | **What's the max listing count per suburb?** If Ponsonby has 80 active rentals, showing all 80 pins at once could clutter the map — need cluster or limit-to-top-N logic. | UX decision | Medium |
-| 7 | **Do we need to show listing photos on the map?** Popups can load lazily; photos slow initial render. | UX decision | Low |
+| 1 | **Does unauthenticated Path B actually work?** The docs say `Authentication: Required` but also note 25-row limit for unauthenticated. Test `GET https://api.trademe.co.nz/v1/Search/Property/Rental.json?region=1&rows=25&page=1` without any headers first. | **Unverified — test before demo** | Blocker |
+| 2 | **Is storing the Apify snapshot in Databricks within acceptable ToS for a hackathon?** Likely fine for internal non-commercial use. If concern, keep JSON on local disk and load into a temporary Databricks notebook context instead of writing to a Delta table. | Low risk for hackathon | Medium |
+| 3 | **Can a pre-existing TradeMe API approval be used?** If anyone involved with Kāinga had a TradeMe API application approved before April 2026, it may still be valid. Worth checking before deciding the API path is fully blocked. | Check with project stakeholders | High (for production) |
+| 4 | **Should listings be rental only, or also for-sale?** The persona (Sarah) is a renter. Buy listings would serve a different user. | Product decision | Medium |
+| 5 | **What's the max listing count to show per suburb?** If Ponsonby has 80 active rentals, all 80 pins at once clutters the map. Need cluster or limit-to-top-N logic. | UX decision | Medium |
+| 6 | **Suburb name normalisation strategy?** TradeMe uses "Mt Eden"; Stats NZ SA2 uses "Mount Eden". Decide whether to normalise at ingest time (cleaner) or at query time (more flexible). | Engineering decision | Medium |
+| 7 | **parseforge field name for weekly rent?** The documented output fields don't include `rentPerWeek` — rent appears to be in `startPrice` for rental runs. Confirm with a test run before the full scrape. | **Verify with `maxItems: 5` test** | High |
+| 8 | **Do we need to show listing photos on the map?** Popups can load lazily; photos slow initial render. | UX decision | Low |
 
 ---
 
-## Rough effort estimate (if proceeding)
+## Rough effort estimate
 
-Assumes TradeMe API access approved, OAuth credential in Databricks secrets.
+### Hackathon one-off (data collection only)
 
 | Work item | Estimate |
 |---|---|
-| TradeMe API registration + sandbox test | 2 hours |
-| Express `/api/listings` proxy route | 3–4 hours |
-| `ListingsLayer.tsx` + popup component | 4–5 hours |
-| `search_listings` agent tool | 2 hours |
-| `MAP_SYSTEM_PROMPT` addition | 1 hour |
-| `render_map` schema extension | 1 hour |
-| `RenderMapInput` TypeScript type update | 30 min |
-| **Total** | **~14–15 hours** |
+| Test Path B (unauthenticated scrape script, 5 listings) | 30 min |
+| If Path B works: run full 1,500-listing Auckland scrape | 30 min |
+| If Path B fails: set up Apify Starter, run parseforge actor | 1–2 hours |
+| Ingest JSON into Databricks bronze table (notebook) | 1–2 hours |
+| `get_suburb_listings` agent tool + wiring to `render_map` | 2–3 hours |
+| `ListingsLayer.tsx` basic pin rendering | 3–4 hours |
+| **Total hackathon estimate** | **7–11 hours** |
 
-Phase dependency: this is natural Post-Hackathon Phase 4.5 — after the transit/amenity icon layers (Phase 4) and before the legend/polish phase. The `ListingsLayer` would follow the same fetch-by-bounds pattern as `AmenityLayer`.
+### Production (if API access secured)
+
+| Work item | Estimate |
+|---|---|
+| TradeMe API negotiation / approval | Unknown (weeks to months) |
+| Express `/api/listings` live proxy route | 3–4 hours |
+| `ListingsLayer.tsx` + popup component (full) | 4–5 hours |
+| `search_listings` agent tool (live API) | 2 hours |
+| `MAP_SYSTEM_PROMPT` addition | 1 hour |
+| `render_map` schema extension + TypeScript type update | 1.5 hours |
+| **Total production estimate** | **~12–13 hours** (+ approval lead time) |
+
+Phase dependency: natural Post-Hackathon Phase 4.5 — after transit/amenity icon layers (Phase 4) and before the legend/polish phase.
 
 ---
 
 ## Recommendation
 
-**Do it, but verify ToS first.**
+### For the hackathon (one-off demo)
 
-The TradeMe API is the right path. It is:
-- Legitimate (official API, not scraping)
-- Server-side credentialed (not per-user OAuth in the problematic sense)
-- High coverage (~95%+ of NZ rental listings)
-- Architecturally simple (live proxy, no new Databricks tables)
-- A genuine product differentiator for the primary persona (Sarah would love this)
+**Try Path B (unauthenticated TradeMe API) first.**
 
-The one gate is ToS compliance — specifically whether the intended use of Kāinga is "personal/research" (standard dev terms, easy) or "commercial" (may require a commercial data partnership with TradeMe).
+Test it immediately with:
+```bash
+curl "https://api.trademe.co.nz/v1/Search/Property/Rental.json?region=1&rows=25&page=1"
+```
+If it returns data without credentials, run the full paginated script (60 pages × 25 = 1,500 listings). Free, no accounts needed.
 
-**Immediate next step:** Register a developer account at `developer.trademe.co.nz`, read the ToS for the property API carefully (especially the property/listings section), and test in sandbox to confirm lat/lon availability on rental listings. Report back here.
+If it returns 401 or requires a consumer key, fall back to **Path A** (parseforge Apify actor, requires $29/month Starter plan). Either way, the data collection is a single pre-demo run — not a recurring pipeline.
 
-If ToS is a blocker: the suburb-level "listing count" proxy (active listings count per suburb, sourced from Trade Me's public suburb stats or via a single count API call rather than individual listing records) is a lower-risk fallback that still adds value to the map.
+**Critical gotcha for Path A:** The `startPrice` field contains the weekly rent (not a dedicated `rentPerWeek` field) for `listingType: "residential-rent"` runs. Verify with a `maxItems: 5` test run before committing to the full 1,500.
+
+### For production
+
+**The official API path is blocked as of April 2026** — TradeMe now only approves in-trade sellers, which Kāinga is not. Options:
+
+1. **Negotiate a data partnership** directly with `api@trademe.co.nz`. TradeMe has a separate property team and has done partnerships for display-only integrations before. Position as "suburb-level research tool with direct link-back to TradeMe listings" rather than a competitor.
+
+2. **Unauthenticated API with 25-row-per-page pagination** — if Path B works for the hackathon, the same approach could be used for a production feature. TradeMe's rental search is publicly accessible without login; the API endpoint is just the machine-readable equivalent of their website. This is a grey area (unauthenticated public API calls vs. scraping) worth exploring.
+
+3. **Apify parseforge with data licence** — not a realistic production path given ToS, but noted for completeness.
+
+### Minimum viable fallback (no listings access)
+
+Show an active **listing count badge** on each passing suburb pin ("23 rentals available") via a single count API call per suburb (`TotalCount` from the rental search). Avoids all the per-listing map pin complexity while still telling the user something useful about current supply.
