@@ -38,6 +38,8 @@ export const postRequestBodySchema = z.object({
   selectedVisibilityType: z.enum(['public', 'private']),
   // Optional field for ephemeral mode: frontend sends previous conversation history
   previousMessages: z.array(previousMessageSchema).optional(),
+  // Map mode: tells the agent to use the spatial system prompt
+  mode: z.enum(['chat', 'map']).optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

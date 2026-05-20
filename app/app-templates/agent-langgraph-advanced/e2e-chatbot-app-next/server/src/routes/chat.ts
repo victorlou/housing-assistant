@@ -59,6 +59,7 @@ import {
   type VisibilityType,
   CONTEXT_HEADER_CONVERSATION_ID,
   CONTEXT_HEADER_USER_ID,
+  CONTEXT_HEADER_MAP_MODE,
 } from '@chat-template/core';
 import { ChatSDKError } from '@chat-template/core/errors';
 import { storeMessageMeta } from '../lib/message-meta-store';
@@ -258,6 +259,8 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
       ...(req.headers['x-forwarded-access-token']
         ? { 'x-forwarded-access-token': req.headers['x-forwarded-access-token'] as string }
         : {}),
+      // Map mode: triggers spatial system prompt on the agent
+      ...(requestBody.mode === 'map' ? { [CONTEXT_HEADER_MAP_MODE]: 'map' } : {}),
     };
 
     const result = streamText({

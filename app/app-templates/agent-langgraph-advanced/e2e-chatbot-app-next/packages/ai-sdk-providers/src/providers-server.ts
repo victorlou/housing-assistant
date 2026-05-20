@@ -15,6 +15,7 @@ import { shouldInjectContextForEndpoint } from './request-context';
 // Header keys for passing context through streamText headers
 export const CONTEXT_HEADER_CONVERSATION_ID = 'x-databricks-conversation-id';
 export const CONTEXT_HEADER_USER_ID = 'x-databricks-user-id';
+export const CONTEXT_HEADER_MAP_MODE = 'x-map-mode';
 
 // Use centralized authentication - only on server side
 async function getProviderToken(): Promise<string> {
@@ -105,28 +106,33 @@ export const databricksFetch: typeof fetch = async (input, init) => {
   const headers = new Headers(requestInit?.headers);
   const conversationId = headers.get(CONTEXT_HEADER_CONVERSATION_ID);
   const userId = headers.get(CONTEXT_HEADER_USER_ID);
-  // Remove context headers so they don't get sent to the API
+  const mapMode = headers.get(CONTEXT_HEADER_MAP_MODE);
+  // Remove custom headers so they don't get sent to the serving endpoint
   headers.delete(CONTEXT_HEADER_CONVERSATION_ID);
   headers.delete(CONTEXT_HEADER_USER_ID);
+  headers.delete(CONTEXT_HEADER_MAP_MODE);
   requestInit = { ...requestInit, headers };
 
-  // Inject context into request body if appropriate
-  if (
-    conversationId &&
-    userId &&
-    requestInit?.body &&
-    typeof requestInit.body === 'string'
-  ) {
-    if (shouldInjectContext()) {
+  // Inject context and/or custom_inputs into the request body
+  if (requestInit?.body && typeof requestInit.body === 'string') {
+    const hasContext = Boolean(conversationId && userId && shouldInjectContext());
+    const hasMapMode = Boolean(mapMode);
+
+    if (hasContext || hasMapMode) {
       try {
-        const body = JSON.parse(requestInit.body);
+        const body = JSON.parse(requestInit.body as string);
         const enhancedBody = {
           ...body,
-          context: {
-            ...body.context,
-            conversation_id: conversationId,
-            user_id: userId,
-          },
+          ...(hasContext
+            ? {
+                context: {
+                  ...body.context,
+                  conversation_id: conversationId,
+                  user_id: userId,
+                },
+              }
+            : {}),
+          ...(hasMapMode ? { custom_inputs: { mode: mapMode } } : {}),
         };
         requestInit = { ...requestInit, body: JSON.stringify(enhancedBody) };
       } catch {

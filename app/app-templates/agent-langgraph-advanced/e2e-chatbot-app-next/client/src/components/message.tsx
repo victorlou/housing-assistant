@@ -42,6 +42,7 @@ import { useApproval } from '@/hooks/use-approval';
 import { Brain } from 'lucide-react';
 import { VisualizationModalTrigger } from './elements/visualization-modal';
 import { SavedSearchCard } from './elements/saved-search-card';
+import { useOptionalMapDispatch, type SuburbEntry, type IsochroneState } from '@/contexts/MapContext';
 
 const MEMORY_TOOLS = ['get_user_memory', 'save_user_memory', 'delete_user_memory'];
 
@@ -70,6 +71,8 @@ const PurePreviewMessage = ({
 }) => {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [showErrors, setShowErrors] = useState(false);
+
+  const mapDispatch = useOptionalMapDispatch();
 
   // Hook for handling MCP approval requests
   const { submitApproval, isSubmitting, pendingApprovalId } = useApproval({
@@ -263,6 +266,37 @@ const PurePreviewMessage = ({
                 }
                 return state;
               })();
+
+              // render_map — dispatch map state update; render nothing in chat
+              if (toolName === 'render_map') {
+                if (
+                  mapDispatch &&
+                  (state === 'input-available' || state === 'output-available')
+                ) {
+                  const mapInput = input as {
+                    suburbs: SuburbEntry[];
+                    isochrone_suburb: string | null;
+                    isochrone_minutes: number | null;
+                    isochrone_mode: string | null;
+                    filter_summary: string;
+                  };
+                  const isochrone: IsochroneState | null =
+                    mapInput.isochrone_suburb && mapInput.isochrone_minutes
+                      ? {
+                          suburb: mapInput.isochrone_suburb,
+                          minutes: mapInput.isochrone_minutes,
+                          mode: (mapInput.isochrone_mode ?? 'transit') as IsochroneState['mode'],
+                        }
+                      : null;
+                  mapDispatch({
+                    type: 'RENDER_MAP',
+                    suburbs: mapInput.suburbs ?? [],
+                    isochrone,
+                    filterSummary: mapInput.filter_summary ?? '',
+                  });
+                }
+                return null;
+              }
 
               // render_visualization — intercept and open Mermaid modal
               if (toolName === 'render_visualization') {

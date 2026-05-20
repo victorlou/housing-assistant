@@ -558,3 +558,15 @@
     background-position: -100% 50%;
   }
 }
+
+/* Leaflet box-sizing fix — overrides Tailwind's border-box reset inside the map */
+.leaflet-container *,
+.leaflet-container *::before,
+.leaflet-container *::after {
+  box-sizing: content-box;
+}
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .leaflet-popup-tip,
+.leaflet-container .leaflet-control {
+  box-sizing: border-box;
+}

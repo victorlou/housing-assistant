@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Bookmark, LayoutDashboard } from 'lucide-react';
+import { Bookmark, LayoutDashboard, Map } from 'lucide-react';
 
 import { SidebarHistory } from '@/components/sidebar-history';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
@@ -112,6 +112,29 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </TooltipTrigger>
               <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>New chat</TooltipContent>
+            </Tooltip>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton
+                  type="button"
+                  className="h-8 p-1 md:p-2 cursor-pointer"
+                  onClick={() => {
+                    setOpenMobile(false);
+                    navigate('/map');
+                  }}
+                >
+                  <Map className="size-4 shrink-0 text-primary" />
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    Map Mode
+                  </span>
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side="right" style={{ display: open ? 'none' : 'block' }}>Map Mode</TooltipContent>
             </Tooltip>
           </SidebarMenuItem>
         </SidebarMenu>

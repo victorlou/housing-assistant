@@ -7,10 +7,13 @@ import { DataStreamProvider } from '@/components/data-stream-provider';
 import { Toaster } from 'sonner';
 import RootLayout from '@/layouts/RootLayout';
 import ChatLayout from '@/layouts/ChatLayout';
+import MapChatLayout from '@/layouts/MapChatLayout';
 import NewChatPage from '@/pages/NewChatPage';
 import ChatPage from '@/pages/ChatPage';
 import SavedSearchesPage from '@/pages/SavedSearchesPage';
 import DashboardPage from '@/pages/DashboardPage';
+import NewMapChatPage from '@/pages/NewMapChatPage';
+import MapChatPage from '@/pages/MapChatPage';
 
 function AppRoutes() {
   const location = useLocation();
@@ -24,6 +27,10 @@ function AppRoutes() {
             <Route path="chat/:id" element={<ChatPage />} />
             <Route path="saved" element={<SavedSearchesPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
+          </Route>
+          <Route element={<MapChatLayout />}>
+            <Route path="map" element={<NewMapChatPage />} />
+            <Route path="map/:id" element={<MapChatPage />} />
           </Route>
         </Route>
       </Routes>

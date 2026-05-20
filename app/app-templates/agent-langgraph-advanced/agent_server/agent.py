@@ -20,9 +20,10 @@ from mlflow.types.responses import (
 )
 from typing_extensions import Annotated
 
-from agent_server.prompts import SYSTEM_PROMPT
+from agent_server.prompts import MAP_SYSTEM_PROMPT, SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
 from agent_server.tools.lookup_hazards import lookup_hazards
+from agent_server.tools.render_map import render_map
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
     _get_or_create_thread_id,
@@ -118,6 +119,7 @@ class StatefulAgentState(TypedDict, total=False):
 async def init_agent(
     store: BaseStore,
     checkpointer: Optional[Any] = None,
+    system_prompt: str = SYSTEM_PROMPT,
 ):
     tools = [
         get_current_time,
@@ -126,6 +128,7 @@ async def init_agent(
         lookup_hazards,
         suggest_saved_search,
         render_visualization,
+        render_map,
     ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     mcp_client = init_mcp_client(sp_workspace_client)
@@ -141,7 +144,7 @@ async def init_agent(
     return create_agent(
         model=model,
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         checkpointer=checkpointer,
         store=store,
         state_schema=StatefulAgentState,
@@ -177,9 +180,13 @@ async def stream_handler(
     if user_id:
         config["configurable"]["user_id"] = user_id
 
+    custom_inputs = dict(request.custom_inputs or {})
+    mode = custom_inputs.get("mode", "chat")
+    selected_prompt = MAP_SYSTEM_PROMPT if mode == "map" else SYSTEM_PROMPT
+
     input_state: dict[str, Any] = {
         "messages": to_chat_completions_input([i.model_dump() for i in request.input]),
-        "custom_inputs": dict(request.custom_inputs or {}),
+        "custom_inputs": custom_inputs,
     }
 
     try:
@@ -187,7 +194,7 @@ async def stream_handler(
             config["configurable"]["store"] = store
 
             agent = await init_agent(
-                store=store, checkpointer=checkpointer
+                store=store, checkpointer=checkpointer, system_prompt=selected_prompt
             )  # SP client used inside tools
 
             # process_agent_astream_events - works on agent.astream - which emits events and then our below function handles emission on their end
