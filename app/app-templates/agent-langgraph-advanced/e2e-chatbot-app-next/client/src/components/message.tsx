@@ -42,6 +42,7 @@ import { useApproval } from '@/hooks/use-approval';
 import { Brain } from 'lucide-react';
 import { VisualizationModalTrigger } from './elements/visualization-modal';
 import { SavedSearchCard } from './elements/saved-search-card';
+import { ListingLinksCard } from './elements/listing-links-card';
 
 const MEMORY_TOOLS = ['get_user_memory', 'save_user_memory', 'delete_user_memory'];
 
@@ -312,6 +313,11 @@ const PurePreviewMessage = ({
                 return null;
               }
 
+              // generate_listing_links — rendered below all message content, not inline
+              if (toolName === 'generate_listing_links') {
+                return null;
+              }
+
               // Memory tools — distinct violet card (full MemoryTool component added in Pillar 5)
               if (MEMORY_TOOLS.includes(toolName)) {
                 return (
@@ -436,6 +442,39 @@ const PurePreviewMessage = ({
               );
             }
           })}
+
+          {message.parts
+            .filter(
+              (p) =>
+                p.type === 'dynamic-tool' &&
+                (p as { toolName?: string }).toolName ===
+                  'generate_listing_links' &&
+                (p as { output?: unknown }).output != null,
+            )
+            .map((p) => {
+              const tp = p as {
+                toolCallId: string;
+                output: string | { listings?: Array<{ suburb: string; realestate: string; trademe: string; barfoot: string }> };
+              };
+              const parsed =
+                typeof tp.output === 'string'
+                  ? (JSON.parse(tp.output) as { listings?: Array<{ suburb: string; realestate: string; trademe: string; barfoot: string }> })
+                  : tp.output;
+              if (!parsed?.listings?.length) return null;
+              return (
+                <div key={tp.toolCallId} className="flex flex-col gap-1">
+                  {parsed.listings.map((item) => (
+                    <ListingLinksCard
+                      key={item.suburb}
+                      suburb={item.suburb}
+                      realestate={item.realestate}
+                      trademe={item.trademe}
+                      barfoot={item.barfoot}
+                    />
+                  ))}
+                </div>
+              );
+            })}
 
           {!isReadonly && !hasOnlyErrors && (
             <MessageActions

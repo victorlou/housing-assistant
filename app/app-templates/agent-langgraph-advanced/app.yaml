@@ -18,3 +18,17 @@ env:
     valueFrom: "postgres"
   - name: LAKEBASE_AGENT_MEMORY_SCHEMA
     value: "agent_langgraph_memory"
+  - name: LOG_LEVEL
+    value: "INFO"
+  - name: DATABRICKS_EMBEDDING_ENDPOINT
+    value: "databricks-gte-large-en"
+  - name: HOUSING_CATALOG
+    value: "housing"
+  - name: HOUSING_SCHEMA
+    value: "gold"
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: "warehouse_secret"
+  - name: DATABRICKS_GENIE_SPACE_ID
+    value: "01f152668dcc14a7adb7e558769d9308"
+  - name: DATABRICKS_DASHBOARD_ID
+    value: "01f1526f81831b699771747499d91b7c"

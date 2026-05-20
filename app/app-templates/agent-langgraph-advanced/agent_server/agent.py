@@ -22,6 +22,11 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
+from agent_server.tools.listing_urls import (
+    build_barfoot_url,
+    build_realestate_url,
+    build_trademe_url,
+)
 from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
@@ -66,6 +71,29 @@ def suggest_saved_search(
     hazard, affordability band). Only call for data-backed recommendations — not for
     vague mentions or suburb lists. Do not call more than once per suburb per response."""
     return {"saved": True}
+
+
+@tool
+def generate_listing_links(
+    suburbs: list[str],
+    min_rent: int,
+    max_rent: int,
+    property_type: str = "house",
+) -> dict:
+    """Render listing link cards for NZ rental properties on the frontend.
+    Call immediately when the user names a specific suburb AND states a budget AND uses
+    rental/listing language ("find rentals", "show listings", "houses to rent", etc.).
+    Also call after recommending suburbs when the user reacts positively.
+    Do not narrate the URLs — the frontend renders the cards. One call covers all suburbs."""
+    links = []
+    for suburb in suburbs:
+        links.append({
+            "suburb": suburb,
+            "realestate": build_realestate_url(suburb, min_rent, max_rent),
+            "trademe": build_trademe_url(suburb, min_rent, max_rent),
+            "barfoot": build_barfoot_url(suburb, min_rent, max_rent),
+        })
+    return {"listings": links, "render_widget": True}
 
 
 @tool
@@ -126,6 +154,7 @@ async def init_agent(
         lookup_hazards,
         suggest_saved_search,
         render_visualization,
+        generate_listing_links,
     ] + memory_tools()
     # To use MCP server tools instead, uncomment the below lines:
     mcp_client = init_mcp_client(sp_workspace_client)

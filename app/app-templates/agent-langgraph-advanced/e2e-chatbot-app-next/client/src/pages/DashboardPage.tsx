@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DatabricksDashboard } from '@databricks/aibi-client';
+import { useTheme } from 'next-themes';
 
 interface EmbedConfig {
   workspace_url: string;
@@ -13,6 +14,7 @@ export default function DashboardPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { resolvedTheme } = useTheme()
 
   useEffect(() => {
     let dashboard: DatabricksDashboard | null = null;
@@ -43,7 +45,7 @@ export default function DashboardPage() {
             const fresh: EmbedConfig = await refresh.json();
             return fresh.embed_token;
           },
-          colorScheme: 'light',
+          colorScheme: resolvedTheme == 'dark' ? 'dark' : 'light',
         });
 
         dashboard.initialize();
@@ -59,7 +61,7 @@ export default function DashboardPage() {
     return () => {
       dashboard?.destroy();
     };
-  }, []);
+  }, [resolvedTheme]);
 
   return (
     <motion.div
