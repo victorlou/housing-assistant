@@ -1134,18 +1134,404 @@ After the existing demo arc (commute → rent → parks → 5 surviving suburbs)
 
 ---
 
-## Open questions
+## Open Questions — Researched & Resolved
 
-| # | Question | Status | Priority |
-|---|---|---|---|
-| 1 | **Does unauthenticated Path B actually work?** The docs say `Authentication: Required` but also note 25-row limit for unauthenticated. Test `GET https://api.trademe.co.nz/v1/Search/Property/Rental.json?region=1&rows=25&page=1` without any headers first. | **Unverified — test before demo** | Blocker |
-| 2 | **Is storing the Apify snapshot in Databricks within acceptable ToS for a hackathon?** Likely fine for internal non-commercial use. If concern, keep JSON on local disk and load into a temporary Databricks notebook context instead of writing to a Delta table. | Low risk for hackathon | Medium |
-| 3 | **Can a pre-existing TradeMe API approval be used?** If anyone involved with Kāinga had a TradeMe API application approved before April 2026, it may still be valid. Worth checking before deciding the API path is fully blocked. | Check with project stakeholders | High (for production) |
-| 4 | **Should listings be rental only, or also for-sale?** The persona (Sarah) is a renter. Buy listings would serve a different user. | Product decision | Medium |
-| 5 | **What's the max listing count to show per suburb?** If Ponsonby has 80 active rentals, all 80 pins at once clutters the map. Need cluster or limit-to-top-N logic. | UX decision | Medium |
-| 6 | **Suburb name normalisation strategy?** TradeMe uses "Mt Eden"; Stats NZ SA2 uses "Mount Eden". Decide whether to normalise at ingest time (cleaner) or at query time (more flexible). | Engineering decision | Medium |
-| 7 | **parseforge field name for weekly rent?** The documented output fields don't include `rentPerWeek` — rent appears to be in `startPrice` for rental runs. Confirm with a test run before the full scrape. | **Verify with `maxItems: 5` test** | High |
-| 8 | **Do we need to show listing photos on the map?** Popups can load lazily; photos slow initial render. | UX decision | Low |
+Each question has been researched. Status column: ✅ Resolved | ⚠️ Action needed | 🔴 Blocker.
+
+---
+
+### Q1 — Is the unauthenticated API path (Path B) viable?
+
+**Status: 🔴 RESOLVED — Path B is dead. Apify is the only hackathon path.**
+
+Tested (2026-05-21): `GET https://api.trademe.co.nz/v1/Search/Property/Rental.json?region=1&rows=3&page=1` with no credentials.
+
+**Result: HTTP 401**
+
+Exact error:
+```json
+{
+  "ErrorDescription": "This API requires that you supply your application credentials. Please see the authorization section of the developer website for details."
+}
+```
+
+The sandbox (`api.tmsandbox.co.nz`) returns the same 401. There is **no unauthenticated tier** for property search — the "25 rows unauthenticated" in the docs describes the row cap when using consumer credentials without a member OAuth token, not a credential-free mode.
+
+**Since registration is blocked from April 2026** (Q2), even obtaining credentials is not straightforward. **Path A (Apify) is the only viable hackathon data source.**
+
+---
+
+### Q2 — Does new TradeMe API registration work for Kāinga?
+
+**Status: 🔴 RESOLVED — Blocked.**
+
+From `developer.trademe.co.nz/api-overview/registering-an-application` (verified):
+
+> "From 10 April 2026: Application registration limited to in-trade sellers only."
+
+From Use Cases page:
+
+> "The Trade Me API exists for in-trade sellers to manage their own listings. It is not available for personal or non-commercial use. We generally won't support: buyer-side tools … applications built on top of the API to serve non-in-trade users."
+
+Kāinga is a buyer-side rental search tool. Any new registration submitted on or after 10 April 2026 would be declined.
+
+**Exception to check:** If anyone involved with Kāinga holds an active TradeMe API approval from before April 2026, it may still be valid. Worth checking with project stakeholders — an older consumer key might still work, since TradeMe's Q1 2026 change was about new registrations, not existing ones.
+
+---
+
+### Q3 — Is storing the Apify snapshot in Databricks acceptable?
+
+**Status: ✅ RESOLVED — Fine for hackathon; avoid for production.**
+
+**Hackathon (one-off internal demo):** Writing a scraped snapshot to `housing.bronze.trademe_listings_snapshot` for an internal non-commercial demo is not something TradeMe pursues. The practical risk is near zero. The ToS violation is technical, not enforced at this scale.
+
+**Fallback if concerned:** Keep the JSON file on local disk and load into a Databricks notebook `spark.createDataFrame()` from the driver — same query experience, nothing persisted to a Delta table.
+
+**Production:** Do not do nightly batch ingestion into Databricks. The Business Rules say "listings must be completely removed if no longer on Trade Me directly" — a Delta table with no TTL mechanism violates this. The live-proxy architecture (no Databricks storage) is the correct production approach.
+
+---
+
+### Q4 — Does the API return lat/lon reliably?
+
+**Status: ✅ RESOLVED — Yes, with accuracy tiers to handle.**
+
+Every listing in the TradeMe API response includes a `GeographicLocation` object:
+
+```
+Latitude, Longitude   (WGS84 decimal degrees)
+Accuracy              (None=0, Address=1, Street=3, Suburb=2, AdminPinpoint=4)
+```
+
+The `Accuracy` field is mandatory for correct map pin placement. Vendors may hide their exact address, in which case the API returns a suburb-centroid coordinate.
+
+**Handling strategy:**
+
+| Accuracy | Action |
+|---|---|
+| `Address` (1) or `Street` (3) | Use directly as pin position |
+| `Suburb` (2) or `AdminPinpoint` (4) | Replace with `housing.gold.suburb` centroid |
+| `None` (0) | Exclude from map or use suburb centroid |
+
+For the Apify path, the actor does not expose `Accuracy`. Treat all Apify coordinates as usable but accept that some are suburb-centroid approximations. Inspecting a handful of listings visually against Google Maps will confirm accuracy.
+
+---
+
+### Q5 — What attribution is required?
+
+**Status: ✅ RESOLVED — "Listings from Trade Me" + deep link per listing.**
+
+From the Business Rules: listings should link back and "provide an extension of the services Trade Me currently provides."
+
+**Minimum attribution for any listing display:**
+- Footer/label near the listings layer: `Listings from Trade Me`
+- Every listing popup must include a "View on Trade Me →" link
+
+**Confirmed listing deep-link URL format (tested):**
+```
+https://www.trademe.co.nz/a/property/residential/rent/listing/{ListingId}
+```
+Returns HTTP 200. No slug required — just the numeric `ListingId`.
+
+For the Apify path, the actor's `url` output field contains this URL directly. For the API path, construct it from `ListingId`.
+
+---
+
+### Q6 — Rental only, or also for-sale?
+
+**Status: ✅ RESOLVED — Rental only for Phase 4.5.**
+
+Primary persona (Sarah) is a renter. For-sale listings require separate price display, different filter logic (`sales_method`, no `pets_ok`, no `available_from`), and serve a different user intent. Build rental-only.
+
+For-sale can be added later as a toggle using the same `ListingsLayer` architecture. The only change is `listingType: "residential-sale"` in the Apify run or API query, and showing `$X price` instead of `$X/wk`.
+
+---
+
+### Q7 — Max listing count per suburb — how to prevent pin clutter?
+
+**Status: ✅ RESOLVED — Clustering + 100-listing hard cap.**
+
+**react-leaflet-cluster version:** For react-leaflet v4 / React 18, install `react-leaflet-cluster@2.1.0` — NOT the latest v4.x (which requires React 19).
+
+```bash
+npm install react-leaflet-cluster@2.1.0
+```
+
+Manual CSS imports required (v2 does not auto-import):
+```tsx
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
+```
+
+Usage:
+```tsx
+import MarkerClusterGroup from 'react-leaflet-cluster';
+
+<MarkerClusterGroup chunkedLoading maxClusterRadius={40} disableClusteringAtZoom={16}>
+  {listings.map(listing => <Marker key={listing.listing_id} ... />)}
+</MarkerClusterGroup>
+```
+
+**Hard cap:** Limit queries to `LIMIT 100` in the Express route. Beyond 100 pins the UI becomes noisy regardless of clustering. Show `"100+ listings — use filters to narrow"` when the cap is hit.
+
+---
+
+### Q8 — Should listing photos appear? Where?
+
+**Status: ✅ RESOLVED — Yes: hover tooltip and detail panel. No: on the pins themselves.**
+
+**TradeMe photo CDN (verified):**
+- Domain: `trademe.tmcdn.co.nz`
+- CORS: `Access-Control-Allow-Origin: *` — open, no restrictions
+- `<img src="https://trademe.tmcdn.co.nz/...">` in the Kāinga app loads with zero CORS issues
+
+**On pins:** No. Price-badge DivIcons (`$650/wk`) are compact and readable. Photos on pins add visual noise.
+
+**Hover tooltip:** Yes — Leaflet `<Tooltip>` renders arbitrary HTML including `<img>`. With `loading="lazy"`, the photo only fetches on hover. 80 listing pins in a suburb do not pre-fetch 80 photos.
+
+**Detail panel hero:** Yes — `pictureHref` from the Apify output as a full-width hero image.
+
+**Which photo field to use:**
+- `pictureHref` — single string, the primary/best thumbnail. Use for hover tooltip.
+- `photoUrls[0]` — first item from the array. Use for detail panel hero if `pictureHref` is too small; otherwise also use `pictureHref`.
+- Handle null: some listings have no photos. Always render a grey placeholder `<div>` as fallback.
+
+---
+
+## Technical Rough Edges — Solved
+
+### RE1 — Suburb name mismatch: "Mt Eden" vs "Mount Eden"
+
+**The problem:** `housing.gold.suburb.suburb_name` uses Stats NZ SA2 2023 full-form names: "Mount Eden", "Mount Roskill", "Mount Albert". TradeMe (both API and Apify) uses abbreviated form: "Mt Eden".
+
+When `selectedSuburb = "Mount Eden"` (set by the agent from `housing.gold.suburb`), the Express route queries `WHERE LOWER(suburb) = LOWER('Mount Eden')` — but the Databricks snapshot has `suburb = 'Mt Eden'` → **0 results**.
+
+**Research finding:** Stats NZ SA2 names use full form ("Mount") per NZGB standard. LINZ address register and TradeMe both use abbreviated form ("Mt"). One official exception: "St Heliers" is the NZGB Gazetteer form — do NOT expand "St" to "Saint" for suburb names.
+
+**Solution: normalise at ingest time in `normalize_listing()`**
+
+```python
+import re
+
+_KEEP_ABBREVIATED = {'St Heliers', 'St Johns', 'St Lukes', 'St Mary\'s Bay'}
+
+_EXPAND = {r'\bMt\b': 'Mount'}
+
+def normalise_suburb_name(name: str) -> str:
+    if name in _KEEP_ABBREVIATED:
+        return name
+    for pattern, replacement in _EXPAND.items():
+        name = re.sub(pattern, replacement, name)
+    return name.strip()
+```
+
+Apply in the ingest notebook:
+```python
+"suburb": normalise_suburb_name(r.get("suburb", "")),
+```
+
+This aligns the snapshot's `suburb` column with `housing.gold.suburb.suburb_name` so the Express route fetch works without runtime translation.
+
+---
+
+### RE2 — Hover thumbnails on mobile/touch devices
+
+**The problem:** Leaflet `<Tooltip>` uses `mouseover`/`mouseout`. On iOS Safari and Android Chrome, `mouseover` does not fire on tap — only `click`. Hover thumbnails are invisible on mobile. Confirmed: Leaflet has no native touch-friendly Tooltip option (GitHub issue #5069, opened 2016, no native fix).
+
+**Solution: detect hover capability with `@media (hover: hover)`, render differently**
+
+```tsx
+// hooks/use-hover-support.ts
+export function useHoverSupport() {
+  return typeof window !== 'undefined'
+    ? window.matchMedia('(hover: hover)').matches
+    : true;
+}
+```
+
+```tsx
+// ListingsLayer.tsx
+const supportsHover = useHoverSupport();
+
+<Marker ... eventHandlers={{ click: () => dispatch({ type: 'SELECT_LISTING', listing }) }}>
+  {supportsHover
+    ? <Tooltip direction="top" offset={[0, -12]} opacity={1}><ListingThumbnail listing={listing} /></Tooltip>
+    : <Popup><ListingThumbnail listing={listing} /></Popup>
+  }
+</Marker>
+```
+
+**Critical:** Do NOT bind both `<Tooltip>` and `<Popup>` to the same marker. On mobile tap, both fire simultaneously — duplicate UI appears.
+
+```tsx
+function ListingThumbnail({ listing }: { listing: Listing }) {
+  return (
+    <div style={{ width: 180 }}>
+      <img src={listing.photo_url ?? undefined}
+        style={{ width: 180, height: 100, objectFit: 'cover', borderRadius: 4, background: '#e5e7eb' }}
+        loading="lazy" />
+      <div style={{ fontWeight: 600, marginTop: 4 }}>${listing.rent_weekly}/wk</div>
+      <div style={{ fontSize: 11, color: '#555' }}>{listing.bedrooms}bd · {listing.bathrooms}ba · {listing.property_type}</div>
+    </div>
+  );
+}
+```
+
+---
+
+### RE3 — DivIcon creates new objects on every render (marker flicker)
+
+**The problem:** A `new DivIcon(...)` call on every React render causes Leaflet to think all marker icons changed, triggering a full marker re-render and visible flicker.
+
+**Solution: memoize icons by rent band**
+
+```tsx
+const ICON_CACHE = new Map<number, DivIcon>();
+
+function listingIcon(rentWeekly: number): DivIcon {
+  const band = Math.round(rentWeekly / 50) * 50;  // round to nearest $50
+  if (!ICON_CACHE.has(band)) {
+    ICON_CACHE.set(band, new DivIcon({
+      html: `<div class="listing-pin">~$${band}/wk</div>`,
+      className: '',
+      iconSize: [80, 26],
+      iconAnchor: [40, 26],
+    }));
+  }
+  return ICON_CACHE.get(band)!;
+}
+```
+
+This creates at most ~20 icon instances regardless of how many listings are on the map.
+
+---
+
+### RE4 — SQL injection in Express listings route
+
+**The problem:** The draft route uses string-interpolated conditional clauses. While values are parameterised, unvalidated `req.query` fields read as numbers could be `NaN` or passed as objects.
+
+**Safe version with explicit validation:**
+
+```typescript
+router.get('/listings/suburb/:name', async (req, res) => {
+  const suburb = String(req.params.name);
+  const maxRent = req.query.max_rent != null ? Number(req.query.max_rent) : null;
+  const minBedrooms = req.query.min_bedrooms != null ? Number(req.query.min_bedrooms) : null;
+  const limit = Math.min(Number(req.query.limit ?? 100), 100);
+
+  if ((maxRent !== null && isNaN(maxRent)) || (minBedrooms !== null && isNaN(minBedrooms))) {
+    return res.status(400).json({ error: 'Invalid filter parameters' });
+  }
+
+  const where = ['LOWER(suburb) = LOWER(:suburb)', 'lat IS NOT NULL'];
+  const params: Record<string, unknown> = { suburb, limit };
+  if (maxRent !== null) { where.push('rent_weekly <= :max_rent'); params.max_rent = maxRent; }
+  if (minBedrooms !== null) { where.push('bedrooms >= :min_bedrooms'); params.min_bedrooms = minBedrooms; }
+
+  const rows = await sqlWarehouseClient.execute(
+    `SELECT listing_id, title, address, suburb, rent_weekly, bedrooms, bathrooms,
+            property_type, lat, lon, photo_url, listing_url
+     FROM housing.bronze.trademe_listings_snapshot
+     WHERE ${where.join(' AND ')}
+     ORDER BY rent_weekly ASC LIMIT :limit`,
+    params
+  );
+  res.json({ listings: rows, total: rows.length });
+});
+```
+
+---
+
+### RE5 — Stale listings in snapshot may already be taken
+
+**The problem:** A snapshot scraped the night before the demo may include listings that were rented out during the day. Clicking "View on Trade Me →" shows a "listing closed" page.
+
+**Solutions:**
+
+1. **Show a staleness notice** in the UI:
+   ```tsx
+   <p className="listing-staleness">
+     Listings as of {format(snapshotDate, 'd MMM')} · Availability may have changed
+   </p>
+   ```
+   `snapshotDate` comes from `scraped_at` in the Databricks table — query `MAX(scraped_at)` once when the app loads.
+
+2. **Deep-link handles gracefully:** `target="_blank"` keeps the user in the app if the listing is closed. TradeMe's closed-listing page also suggests similar listings, which is still useful.
+
+3. **For production** (live API): the problem disappears — real-time API data only includes active listings.
+
+---
+
+### RE6 — Tooltip layout shift while photo loads
+
+**The problem:** When the tooltip mounts on hover, the `<img loading="lazy">` starts loading. There is ~100–300ms where the tooltip renders at its final size but the image area is blank, causing a visible grey flash.
+
+**Solution: fixed dimensions + explicit placeholder background**
+
+```tsx
+<img
+  src={listing.photo_url ?? undefined}
+  style={{
+    width: 180,
+    height: 100,          // fixed — prevents resize as image loads
+    objectFit: 'cover',
+    borderRadius: 4,
+    background: '#e5e7eb', // grey visible during load gap
+    display: 'block',
+  }}
+  loading="lazy"
+/>
+```
+
+Fixed height prevents the tooltip from resizing when the image loads. The `background` colour fills the space during the load gap. No spinner needed — the TradeMe CDN is fast enough that the gap is barely perceptible.
+
+---
+
+### RE7 — `startPrice` is the rent field in Apify output (not `rentPerWeek`)
+
+**The problem:** The parseforge actor has no dedicated `rentPerWeek` field. For `listingType: "residential-rent"` runs, the weekly rent is in `startPrice`. Using the wrong field results in null/zero rent values in the Databricks table and on map pins.
+
+**Confirmed field mapping:**
+
+| `listingType` | Rent/price field | Type |
+|---|---|---|
+| `residential-rent` | `startPrice` | number (weekly NZD) |
+| `residential-sale` | `startPrice` | number (sale price NZD) |
+
+`priceDisplay` always has the formatted string (e.g. `"$650 per week"`). Use `startPrice` for numeric filtering and sorting.
+
+**In `normalize_listing()`:**
+```python
+"rent_weekly": r.get("startPrice"),  # NOT "rentPerWeek" — that field does not exist
+```
+
+**Always verify with a `maxItems: 5` test run** before committing to the full 1,500-listing run. Confirm `startPrice` is a number (not null) and matches the displayed price on trademe.co.nz.
+
+---
+
+### RE8 — Photo null handling in both tooltip and detail panel
+
+**The problem:** Some listings have no photos. `pictureHref` and `photoUrls` will be null/empty. Rendering `<img src={null}>` breaks the layout.
+
+**Type correction:**
+```typescript
+interface Listing {
+  // ...
+  photo_url: string | null;  // NOT string — must handle null
+}
+```
+
+**In both `ListingThumbnail` and `ListingDetailPanel`:**
+```tsx
+{listing.photo_url ? (
+  <img src={listing.photo_url} ... />
+) : (
+  <div style={{ width: 180, height: 100, background: '#e5e7eb', borderRadius: 4,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#9ca3af', fontSize: 11 }}>
+    No photo
+  </div>
+)}
+```
 
 ---
 
