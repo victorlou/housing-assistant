@@ -1,4 +1,5 @@
-import { ChevronUp, LoaderIcon } from 'lucide-react';
+import { useState } from 'react';
+import { Brain, ChevronUp, LoaderIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import {
@@ -18,6 +19,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { getAiGradientStyle } from './animation-assistant-icon';
 import type { ClientSession } from '@chat-template/auth';
 import { cn } from '../lib/utils';
+import { MemoriesPanel } from './elements/memories-panel';
 
 export function SidebarUserNav({
   user,
@@ -35,12 +37,14 @@ export function SidebarUserNav({
       : 'unauthenticated';
   const { setTheme, resolvedTheme } = useTheme();
   const { open } = useSidebar();
+  const [memoriesOpen, setMemoriesOpen] = useState(false);
 
   // Use preferred username from Databricks Apps if available, otherwise fall back to existing logic
   const displayName =
     preferredUsername || data?.user?.name || user?.email || 'User';
 
   return (
+    <>
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
@@ -92,6 +96,14 @@ export function SidebarUserNav({
             className="w-(--radix-popper-anchor-width)"
           >
             <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onSelect={() => setMemoriesOpen(true)}
+            >
+              <Brain className="size-4" />
+              Memories
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
               data-testid="user-nav-item-theme"
               className="cursor-pointer"
               onSelect={() =>
@@ -103,6 +115,8 @@ export function SidebarUserNav({
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
-    </SidebarMenu >
+    </SidebarMenu>
+    <MemoriesPanel open={memoriesOpen} onOpenChange={setMemoriesOpen} />
+    </>
   );
 }

@@ -20,6 +20,7 @@ import { configRouter } from './routes/config';
 import { feedbackRouter } from './routes/feedback';
 import { dashboardRouter } from './routes/dashboard';
 import { savedSearchesRouter } from './routes/saved-searches';
+import { memoriesRouter } from './routes/memories';
 import { ChatSDKError } from '@chat-template/core/errors';
 
 // ESM-compatible __dirname
@@ -61,6 +62,7 @@ app.use('/api/config', configRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/saved-searches', savedSearchesRouter);
+app.use('/api/memories', memoriesRouter);
 
 // Agent backend proxy (optional)
 // If API_PROXY is set, proxy /invocations requests to the agent backend

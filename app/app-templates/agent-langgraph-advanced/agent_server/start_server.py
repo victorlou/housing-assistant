@@ -47,6 +47,9 @@ agent_server = AgentServer(
 app = agent_server.app  # noqa: F841
 setup_mlflow_git_based_version_tracking()
 
+from agent_server.api.memories import memories_router  # noqa: E402
+app.include_router(memories_router)
+
 _original_lifespan = app.router.lifespan_context
 
 
