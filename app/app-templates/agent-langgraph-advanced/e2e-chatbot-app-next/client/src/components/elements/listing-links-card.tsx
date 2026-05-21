@@ -3,8 +3,10 @@ import { ExternalLink, Home, Tag, Building2 } from 'lucide-react';
 interface ListingLinksCardProps {
   suburb: string;
   realestate: string;
-  trademe: string;
-  barfoot: string;
+  trademe?: string | null;
+  trademeLocation?: string | null;
+  trademeKeyword?: string | null;
+  barfoot?: string | null;
 }
 
 const SITES = [
@@ -15,15 +17,21 @@ const SITES = [
     Icon: Home,
   },
   {
-    key: 'trademe',
-    name: 'Trade Me Property',
-    description: "NZ's biggest marketplace",
+    key: 'trademeLocation',
+    name: 'Trade Me — location search',
+    description: 'Precise suburb search',
+    Icon: Tag,
+  },
+  {
+    key: 'trademeKeyword',
+    name: 'Trade Me — keyword search',
+    description: 'Broader search by suburb name',
     Icon: Tag,
   },
   {
     key: 'barfoot',
     name: 'Barfoot & Thompson',
-    description: "Auckland's largest agency",
+    description: 'Regional agency listings',
     Icon: Building2,
   },
 ] as const;
@@ -32,9 +40,16 @@ export function ListingLinksCard({
   suburb,
   realestate,
   trademe,
+  trademeLocation,
+  trademeKeyword,
   barfoot,
 }: ListingLinksCardProps) {
-  const hrefs: Record<string, string> = { realestate, trademe, barfoot };
+  const hrefs: Record<string, string | null | undefined> = {
+    realestate,
+    trademeLocation,
+    trademeKeyword: trademeKeyword ?? trademe,
+    barfoot,
+  };
 
   return (
     <div className="my-2 rounded-xl border border-primary/30 bg-muted/30">
@@ -43,10 +58,10 @@ export function ListingLinksCard({
         <span className="flex-1 text-sm font-medium">{suburb}</span>
       </div>
       <div className="flex flex-col divide-y divide-border/50">
-        {SITES.map(({ key, name, description, Icon }) => (
+        {SITES.filter(({ key }) => Boolean(hrefs[key])).map(({ key, name, description, Icon }) => (
           <a
             key={key}
-            href={hrefs[key]}
+            href={hrefs[key] ?? undefined}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors last:rounded-b-xl"

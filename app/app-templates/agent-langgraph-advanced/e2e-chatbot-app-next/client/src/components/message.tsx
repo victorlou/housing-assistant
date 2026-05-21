@@ -454,11 +454,11 @@ const PurePreviewMessage = ({
             .map((p) => {
               const tp = p as {
                 toolCallId: string;
-                output: string | { listings?: Array<{ suburb: string; realestate: string; trademe: string; barfoot: string }> };
+                output: string | { listings?: Array<{ suburb: string; realestate: string; trademe?: string | null; trademe_location?: string | null; trademe_keyword?: string | null; barfoot?: string | null }> };
               };
               const parsed =
                 typeof tp.output === 'string'
-                  ? (JSON.parse(tp.output) as { listings?: Array<{ suburb: string; realestate: string; trademe: string; barfoot: string }> })
+                  ? (JSON.parse(tp.output) as { listings?: Array<{ suburb: string; realestate: string; trademe?: string | null; trademe_location?: string | null; trademe_keyword?: string | null; barfoot?: string | null }> })
                   : tp.output;
               if (!parsed?.listings?.length) return null;
               return (
@@ -469,6 +469,8 @@ const PurePreviewMessage = ({
                       suburb={item.suburb}
                       realestate={item.realestate}
                       trademe={item.trademe}
+                      trademeLocation={item.trademe_location}
+                      trademeKeyword={item.trademe_keyword}
                       barfoot={item.barfoot}
                     />
                   ))}

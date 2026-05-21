@@ -22,11 +22,7 @@ from typing_extensions import Annotated
 
 from agent_server.prompts import SYSTEM_PROMPT
 from agent_server.tools.compute_isochrone import compute_isochrone
-from agent_server.tools.listing_urls import (
-    build_barfoot_url,
-    build_realestate_url,
-    build_trademe_url,
-)
+from agent_server.tools.listing_urls import build_listing_urls
 from agent_server.tools.lookup_hazards import lookup_hazards
 from agent_server.tools.score_affordability import score_affordability
 from agent_server.utils import (
@@ -81,18 +77,22 @@ def generate_listing_links(
     property_type: str = "house",
 ) -> dict:
     """Render listing link cards for NZ rental properties on the frontend.
-    Call immediately when the user names a specific suburb AND states a budget AND uses
-    rental/listing language ("find rentals", "show listings", "houses to rent", etc.).
-    Also call after recommending suburbs when the user reacts positively.
-    Do not narrate the URLs — the frontend renders the cards. One call covers all suburbs."""
+    Call immediately when the user names a specific suburb, uses rental/listing language
+    ("find rentals", "show listings", "houses to rent", etc.), and a rent budget is
+    available either in the message or from retrieved user memory.
+    Before calling, pass the cleanest suburb names you have: prefer canonical suburb
+    names from recommendations or prior tool results, strip address text and dataset
+    micro-area suffixes like North/South/East/West/Central, and keep a region/district
+    hint only if the user supplied one. The URL builder also normalises common variants
+    such as Mt/Mount, St/Saint, macrons, and SA2-style names. It uses a simple showcase
+    workflow: realestate.co.nz gets one predictable link (exact path when resolved,
+    broad search otherwise); Trade Me gets both location and keyword links when resolved,
+    or keyword-only when unresolved; and Barfoot is shown only for supported regions
+    (Auckland, Bay of Plenty, Northland). Do not narrate the URLs — the frontend renders
+    the cards. One call covers all suburbs."""
     links = []
     for suburb in suburbs:
-        links.append({
-            "suburb": suburb,
-            "realestate": build_realestate_url(suburb, min_rent, max_rent),
-            "trademe": build_trademe_url(suburb, min_rent, max_rent),
-            "barfoot": build_barfoot_url(suburb, min_rent, max_rent),
-        })
+        links.append(build_listing_urls(suburb, min_rent, max_rent))
     return {"listings": links, "render_widget": True}
 
 
