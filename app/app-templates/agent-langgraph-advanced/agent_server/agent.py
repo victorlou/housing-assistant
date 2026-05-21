@@ -85,9 +85,9 @@ def generate_listing_links(
     micro-area suffixes like North/South/East/West/Central, and keep a region/district
     hint only if the user supplied one. The URL builder also normalises common variants
     such as Mt/Mount, St/Saint, macrons, and SA2-style names. It uses a simple showcase
-    workflow: realestate.co.nz gets one predictable link (exact path when resolved,
-    broad search otherwise); Trade Me gets both location and keyword links when resolved,
-    or keyword-only when unresolved; and Barfoot is shown only for supported regions
+    workflow: realestate.co.nz gets one exact path link when resolved; skipped when
+    unresolved (no keyword search support); Trade Me gets both location and keyword links
+    when resolved, or keyword-only when unresolved; and Barfoot is shown only for supported regions
     (Auckland, Bay of Plenty, Northland). Do not narrate the URLs — the frontend renders
     the cards. One call covers all suburbs."""
     links = []

@@ -131,7 +131,7 @@ when appropriate (e.g. "Ponsonby West" → "Ponsonby", "Mt Eden South" → "Moun
 (e.g. "Mount Cook Wellington"), and do not invent a region. The tool also normalises Mt/Mount, \
 St/Saint, macrons, punctuation, and small typos, but cleaner input produces better links. The tool owns \
 site-selection decisions using this simple workflow: \
-1. realestate.co.nz — always one predictable link; exact `region/district/suburb` path when resolved, broad rental search otherwise. \
+1. realestate.co.nz — exact `region/district/suburb` path when resolved; skipped when unresolved (no keyword search support). \
 2. Trade Me — show both precise location search and broader rental `search_string` search when resolved; show keyword search only when unresolved. \
 3. Barfoot & Thompson — show only for supported markets (Auckland, Bay of Plenty, Northland) using path filters like `/region=auckland-city/suburb=devonport/rent=300-700` or `/suburb=tauranga-bay/rent=300-700`; skip elsewhere. \
 Do NOT append "Auckland" unless the user actually named an Auckland suburb. \

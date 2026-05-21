@@ -284,24 +284,22 @@ def _fallback_query(suburb: str, location: ListingLocation | None = None) -> str
     return _clean_suburb_input(suburb)
 
 
-def build_realestate_url(suburb: str, min_rent: int, max_rent: int) -> str:
+def build_realestate_url(suburb: str, min_rent: int, max_rent: int) -> str | None:
     """Build the realestate.co.nz link.
 
-    Decision rule: realestate.co.nz is predictable for exact region > district >
-    suburb paths, so we show one Realestate link only. For unknown locations we
-    use their broad rental search rather than inventing a path.
+    Decision rule: realestate.co.nz uses strict region > district > suburb path
+    routing with no keyword search. Return None when the suburb cannot be resolved
+    so the frontend skips the button rather than showing a broken link.
     """
 
     location = resolve_listing_location(suburb)
-    if location:
-        return (
-            "https://www.realestate.co.nz/residential/rental/"
-            f"{location.region_slug}/{location.district_slug}/{location.suburb_slug}"
-        )
+    if not location:
+        return None
 
     return (
-        "https://www.realestate.co.nz/residential/rental"
-        f"?{urlencode({'search': _fallback_query(suburb)})}"
+        "https://www.realestate.co.nz/residential/rental/"
+        f"{location.region_slug}/{location.district_slug}/{location.suburb_slug}"
+        f"?{urlencode({'minp': min_rent, 'maxp': max_rent})}"
     )
 
 
@@ -374,7 +372,7 @@ def build_barfoot_url(suburb: str, min_rent: int, max_rent: int) -> str | None:
 def _site_decision(location: ListingLocation | None) -> SiteDecision:
     if not location:
         return SiteDecision(
-            realestate="show broad rental search because exact region/district/suburb is unknown",
+            realestate="skip — realestate.co.nz requires exact region/district/suburb path and does not support keyword search",
             trademe="show keyword search only because exact location confidence is low",
             barfoot="skip because Barfoot region support is unknown",
         )
@@ -394,12 +392,12 @@ def build_listing_urls(suburb: str, min_rent: int, max_rent: int) -> dict[str, s
 
     logger.info(f"Building listing URLs for suburb='{suburb}', min_rent={min_rent}, max_rent={max_rent}")
     
-    location = resolve_listing_location(suburb)@
+    location = resolve_listing_location(suburb)
     decision = _site_decision(location)
     return {
         "suburb": location.display_name if location else _clean_suburb_input(suburb),
         # Site showcase workflow:
-        # 1. Realestate: always one link. Exact path when resolved; broad search otherwise.
+        # 1. Realestate: exact region/district/suburb path when resolved; None (skip) otherwise.
         # 2. Trade Me: exact location + keyword when resolved; keyword-only when unresolved.
         # 3. Barfoot: show only where Barfoot has meaningful regional rental coverage.
         "realestate": build_realestate_url(suburb, min_rent, max_rent),

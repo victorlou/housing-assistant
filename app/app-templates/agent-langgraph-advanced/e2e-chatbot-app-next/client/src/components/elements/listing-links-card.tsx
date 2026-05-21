@@ -2,7 +2,7 @@ import { ExternalLink, Home, Tag, Building2 } from 'lucide-react';
 
 interface ListingLinksCardProps {
   suburb: string;
-  realestate: string;
+  realestate?: string | null;
   trademe?: string | null;
   trademeLocation?: string | null;
   trademeKeyword?: string | null;
